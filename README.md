@@ -197,7 +197,7 @@ Templates are Jinja2 files used to generate configuration files dynamically on t
 
 * **`caddy/templates/Caddyfile.j2`**: Your primary Caddy configuration. This is where you'll define your domains, proxy settings, CrowdSec integration, and Cloudflare DNS challenge.
 * **`caddy/templates/caddy.service.j2`**: The Systemd unit file for Caddy.
-* **`rathole/templates/config.toml.j2`**: Rathole's configuration file, dynamically generated based on `rathole_role` and `rathole_server_config` or `rathole_client_config`.
+* **`rathole/templates/rathole.toml.j2`**: Rathole's configuration file, dynamically generated based on `rathole_role` and `rathole_server_config` or `rathole_client_config`.
 * **`crowdsec/templates/crowdsec_caddy_bouncer_config.yaml.j2`**: The bouncer configuration used by Caddy's CrowdSec module.
 
 ### Ansible Vault
