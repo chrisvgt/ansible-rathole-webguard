@@ -8,31 +8,20 @@ cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
 
 # === Caddy configurations for multiple domains on this server ===
 caddy_sites:
-  - domain: "app1.yourdomain.com"
-    backend_ip: "127.0.0.1"
-    backend_port: 8080
-    log_file: "/var/log/caddy/app1.log"
-    # Optional: Add specific Caddyfile directives for this domain
-    extra_directives: |
-      header / Content-Security-Policy "default-src 'self'"
-      basicauth / {
-        user_a JDJhJDEwJEVsZkZ2Y0p0d25kY1hYMWp1LndmdHVvY2FjLkVpLzAuQXlJd1d4UXR6ZXVhYW94cXc4Yk5p
-      }
+  - name: blog # Used for generating default log file name
+    domain: "blog.yourdomain.com"
+    local_port: 2368
+    # Optional: Customize log settings per site
+    # log_file: "/var/log/caddy/wikijs_custom.log"
+    # log_roll_size: "20mb"
+    # log_roll_keep: 15
+    # log_roll_keep_for: "48h"
 
-  - domain: "blog.yourdomain.com"
-    backend_ip: "127.0.0.1"
-    backend_port: 2368 # Example for Ghost blog
-    log_file: "/var/log/caddy/blog.log"
-    # No extra directives for this site, or define them if needed
-
-  - domain: "api.yourdomain.com"
-    backend_ip: "10.0.0.50" # Example: an internal IP for a backend
-    backend_port: 5000
-    log_file: "/var/log/caddy/api.log"
-    # Caddy can directly serve static files if backend_ip/port are omitted or handled differently
-    # For example, if you want to serve static files:
-    # root: "/var/www/api"
-    # file_server: true
+  - name: ntfy
+    domain: "notify.yourdomain.com"
+    local_port: 8004
+    # Special regex for ntfy http redirect logic
+    ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)"
 
 # Rathole configuration for server1 (acting as a server)
 rathole_role: "server" # This variable tells the template it's a server
