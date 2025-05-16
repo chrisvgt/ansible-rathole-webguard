@@ -54,9 +54,5 @@ rathole_client_config: # This will contain all top-level client settings
 
     - name: "service2"
       local_addr: "127.0.0.1:1082"
-      # Other options will inherit from global client config.
 
-    - name: "local_web_server"
-      local_addr: "127.0.0.1:8000"
-      type: "tcp"
-      token: "web_token"
+    # Other service-specific options can go here

@@ -79,13 +79,8 @@ rathole_server_config: # This will contain all top-level server settings
       token: "specific_token_for_service1" # Optional. Overrides default_token.
       bind_addr: "0.0.0.0:8081" # The address this specific service is exposed at.
       nodelay: true # Optional.
-      # Other service-specific options can go here
 
     - name: "service2"
       bind_addr: "0.0.0.1:8082"
-      # If type or token are not specified, they will use server's defaults.
 
-    - name: "my_ssh_tunnel"
-      type: "tcp"
-      bind_addr: "0.0.0.0:2222" # Listen on port 2222 on the server
-      token: "ssh_token"
+    # Other service-specific options can go here
