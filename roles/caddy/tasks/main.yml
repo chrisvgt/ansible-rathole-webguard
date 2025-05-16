@@ -24,9 +24,9 @@
     state: present
   become: yes
 
-- name: Create Caddy configuration directory
+- name: Create Caddy config directory
   ansible.builtin.file:
-    path: "{{ caddy_config_path }}"
+    path: "{{ caddy_config_dir }}" # This should be /etc/caddy
     state: directory
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
@@ -43,36 +43,43 @@
   become: yes
 
 - name: Build Caddy with specified plugins using xcaddy
-  ansible.builtin.command: |
-    PATH={{ go_binary_path }}:$PATH {{ xcaddy_install_path }}/xcaddy build \
-    --output {{ caddy_install_path }}/caddy \
-    {% for plugin in caddy_plugins %}
-    --with {{ plugin }} \
-    {% endfor %}
-  args:
-    creates: "{{ caddy_install_path }}/caddy"
-  become: yes
-  # Need to ensure go environment is sourced or PATH is set correctly
+  ansible.builtin.command: # Use 'command' as you're not using shell features like pipes or redirects
+    # The actual command to execute
+    cmd: /usr/local/bin/xcaddy build --output {{ caddy_install_path }} {% if caddy_plugins is defined and caddy_plugins %}{% for plugin in caddy_plugins %} --with {{ plugin }}{% endfor %}{% endif %}
   environment:
-    PATH: "{{ go_binary_path }}:/usr/local/bin:/usr/bin:/bin"
+    # Set environment variables like PATH in this dedicated block
+    # Ensure /usr/local/go/bin is in PATH for xcaddy to find Go tools
+    # Also, ensure no duplicates or invalid paths.
+    PATH: "/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+    # It's also good practice to define GOPATH, as xcaddy might need it.
+    GOPATH: "/root/go" # Or wherever your Go workspace is configured/expected
+    # GOCACHE: "/root/.cache/go-build" # Optional, if you want to control the Go build cache location
+  args:
+    # 'creates' makes the task idempotent: it only runs if the specified file doesn't exist.
+    # This prevents rebuilding Caddy every time you run the playbook.
+    creates: "{{ caddy_install_path }}"
+  become: yes # xcaddy needs permissions to write to /usr/local/bin
+  # Add a handler to restart Caddy if it was rebuilt
+  changed_when: true # Assume change if command runs successfully
+  notify: restart caddy # Trigger handler to restart Caddy if this task actually builds/rebuilds it
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
-    path: "{{ caddy_install_path }}/caddy"
+    path: "{{ caddy_install_path }}"
+    mode: '0755'
     owner: root
     group: root
-    mode: '0755'
   become: yes
 
 - name: Create Caddyfile from template
   ansible.builtin.template:
-    src: "templates/Caddyfile.j2"
-    dest: "{{ caddy_config_path }}/{{ caddy_config_file }}"
+    src: Caddyfile.j2
+    dest: "{{ caddy_config_file }}" # This should be /etc/caddy/Caddyfile
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: '0644'
   become: yes
-  notify: Restart caddy
+  notify: restart caddy
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
@@ -82,7 +89,7 @@
     group: root
     mode: '0644'
   become: yes
-  notify: Restart caddy
+  notify: restart caddy
 
 - name: Reload Systemd daemon
   ansible.builtin.systemd:

@@ -1,6 +1,7 @@
 ---
-- name: Restart caddy
+- name: restart caddy
   ansible.builtin.systemd:
     name: caddy
     state: restarted
+    daemon_reload: yes # Ensures systemd reloads unit files if they changed
   become: yes
