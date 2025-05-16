@@ -1,0 +1,91 @@
+---
+# SSH connection details for server1
+ansible_user: user_for_server1
+ansible_ssh_private_key_file: ~/.ssh/id_rsa_server1
+
+# Global Cloudflare API token if used by multiple domains on this server
+cloudflare_api_token: "{{ vault_cloudflare_api_token_server1 }}"
+
+# === Caddy configurations for multiple domains on this server ===
+caddy_sites:
+  - domain: "app1.yourdomain.com"
+    backend_ip: "127.0.0.1"
+    backend_port: 8080
+    log_file: "/var/log/caddy/app1.log"
+    # Optional: Add specific Caddyfile directives for this domain
+    extra_directives: |
+      header / Content-Security-Policy "default-src 'self'"
+      basicauth / {
+        user_a JDJhJDEwJEVsZkZ2Y0p0d25kY1hYMWp1LndmdHVvY2FjLkVpLzAuQXlJd1d4UXR6ZXVhYW94cXc4Yk5p
+      }
+
+  - domain: "blog.yourdomain.com"
+    backend_ip: "127.0.0.1"
+    backend_port: 2368 # Example for Ghost blog
+    log_file: "/var/log/caddy/blog.log"
+    # No extra directives for this site, or define them if needed
+
+  - domain: "api.yourdomain.com"
+    backend_ip: "10.0.0.50" # Example: an internal IP for a backend
+    backend_port: 5000
+    log_file: "/var/log/caddy/api.log"
+    # Caddy can directly serve static files if backend_ip/port are omitted or handled differently
+    # For example, if you want to serve static files:
+    # root: "/var/www/api"
+    # file_server: true
+
+# Rathole configuration for server1 (acting as a server)
+rathole_role: "server" # This variable tells the template it's a server
+rathole_server_config: # This will contain all top-level server settings
+  listen_addr: "0.0.0.0:2333" # The address Rathole server listens on for clients
+  default_token: "default_token_for_all_services_if_not_specified" # Optional
+  heartbeat_interval: 30 # Optional. In seconds. Set to 0 to disable.
+
+  # Optional: Transport layer configuration
+  # Only ONE 'type' should be uncommented and configured at a time.
+  transport:
+    type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
+
+    # --- Noise Transport Configuration ---
+    noise:
+      # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
+      # pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
+      # Optional: Base64 encoded private key for the server.
+      # local_private_key: "your_server_private_key_base64"
+      # Optional: Base64 encoded public key of the client.
+      # remote_public_key: "your_client_public_key_base64"
+      # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
+      # are usually required for key exchange. Uncomment and provide actual keys.
+
+    # --- TCP Transport Configuration (Commented Out) ---
+    # tcp:
+    #   nodelay: true
+    #   keepalive_secs: 20
+    #   keepalive_interval: 8
+
+    # --- TLS Transport Configuration (Commented Out) ---
+    # tls:
+    #   pkcs12: "/path/to/identify.pfx"
+    #   pkcs12_password: "your_pkcs12_password"
+
+    # --- WebSocket Transport Configuration (Commented Out) ---
+    # websocket:
+    #   tls: true
+
+  # Define multiple services under the Rathole server
+  services:
+    - name: "service1" # Unique name for this service (must match client side)
+      type: "tcp" # Optional. Default is tcp. Can be "tcp", "udp", "socks5".
+      token: "specific_token_for_service1" # Optional. Overrides default_token.
+      bind_addr: "0.0.0.0:8081" # The address this specific service is exposed at.
+      nodelay: true # Optional.
+      # Other service-specific options can go here
+
+    - name: "service2"
+      bind_addr: "0.0.0.1:8082"
+      # If type or token are not specified, they will use server's defaults.
+
+    - name: "my_ssh_tunnel"
+      type: "tcp"
+      bind_addr: "0.0.0.0:2222" # Listen on port 2222 on the server
+      token: "ssh_token"
