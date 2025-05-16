@@ -57,6 +57,7 @@ bind_addr = "{{ service.bind_addr }}"
 {% if service.nodelay is defined %}
 nodelay = {{ service.nodelay | lower }}
 {% endif %}
+
 {% endfor %}
 {% endif %}
 
@@ -128,6 +129,7 @@ nodelay = {{ service.nodelay | lower }}
 {% if service.retry_interval is defined %}
 retry_interval = {{ service.retry_interval }}
 {% endif %}
+
 {% endfor %}
 {% endif %}
 
