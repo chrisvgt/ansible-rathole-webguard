@@ -4,7 +4,7 @@ ansible_user: user_for_server1
 ansible_ssh_private_key_file: ~/.ssh/id_rsa_server1
 
 # Global Cloudflare API token if used by multiple domains on this server
-cloudflare_api_token: "{{ vault_cloudflare_api_token_server1 }}"
+cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
 
 # === Caddy configurations for multiple domains on this server ===
 caddy_sites:
