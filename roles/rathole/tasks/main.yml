@@ -51,7 +51,7 @@
     mode: '0755'
   become: yes
 
-- name: Create default Rathole configuration file (optional)
+- name: Create or update Rathole configuration file
   ansible.builtin.template:
     src: "templates/rathole.toml.j2"
     dest: "{{ rathole_config_path }}/{{ rathole_config_file }}"
