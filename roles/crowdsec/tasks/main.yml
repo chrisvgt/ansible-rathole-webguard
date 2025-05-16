@@ -117,21 +117,6 @@
 
 ## CrowdSec Bouncer Registration (for local bouncer-to-engine communication)
 
-- name: Generate CrowdSec API Key for Caddy bouncer if not set (using /dev/urandom)
-  # CHANGED TO 'shell' MODULE to support pipes
-  ansible.builtin.shell: head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
-  register: generated_api_key_result
-  # Explicitly check for undefined, none, or empty string
-  when: crowdsec_api_key is not defined or crowdsec_api_key is none or crowdsec_api_key == ''
-  changed_when: true # Mark as changed if this command runs (as it's generating new data)
-  become: yes # May need sudo for /dev/urandom access depending on user context
-
-- name: Set CrowdSec API Key fact from generated value
-  ansible.builtin.set_fact:
-    crowdsec_api_key: "{{ generated_api_key_result.stdout }}"
-  when: generated_api_key_result is defined and generated_api_key_result.changed # Only set if the generation task actually ran and changed something
-
-
 - name: Check if Caddy bouncer is already registered with CrowdSec Local API
   ansible.builtin.command: cscli bouncers list -o json
   register: cscli_bouncers_list
@@ -151,14 +136,6 @@
   become: yes
 
 ## Other CrowdSec Configurations (Optional Examples)
-
-# - name: Install CrowdSec Nginx common collection
-#   ansible.builtin.command: cscli collections install crowdsecurity/nginx
-#   args:
-#     creates: "/etc/crowdsec/collections/nginx.yaml" # Idempotency check
-#   become: yes
-#   changed_when: true
-#   notify: restart crowdsec
 
 # - name: Configure CrowdSec to monitor Caddy logs
 #   ansible.builtin.copy:

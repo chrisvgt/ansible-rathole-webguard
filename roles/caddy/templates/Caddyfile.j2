@@ -8,7 +8,7 @@
 {% if enable_crowdsec %}
     crowdsec {
         api_url {{ crowdsec_api_url | default('http://localhost:8080') }}
-        api_key {{ crowdsec_caddy_bouncer_key }}
+        api_key {{ crowdsec_api_key }}
         ticker_interval {{ crowdsec_ticker_interval | default('15s') }}
 {% if crowdsec_disable_streaming is defined and crowdsec_disable_streaming %}
         disable_streaming
