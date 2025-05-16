@@ -1,67 +1,174 @@
 ---
-- name: Download CrowdSec installation script
-  ansible.builtin.get_url:
-    url: "{{ crowdsec_install_script_url }}"
-    dest: "/tmp/install-crowdsec.sh"
-    mode: '0755'
-  register: crowdsec_script_download
-  until: crowdsec_script_download is succeeded
-  retries: 5
-  delay: 2
+# roles/crowdsec/tasks/main.yml
 
-- name: Run CrowdSec installation script
-  ansible.builtin.command: "/tmp/install-crowdsec.sh"
-  args:
-    creates: 
-      - "/usr/bin/crowdsec" # Check for a known file created by the script
-      - "/usr/bin/cscli"
-  become: yes
-  # If the script re-installs CrowdSec, this might implicitly restart it.
-  # However, for explicit control, you might want to add a notify here
-  # if a future task modifies core CrowdSec configuration that requires restart.
-  # For now, we'll focus on bouncer changes.
+# Conditional skip for the entire role if enable_crowdsec is false
+- name: Skip CrowdSec role if disabled in group_vars/all.yml
+  ansible.builtin.meta: end_play
+  when: not enable_crowdsec | default(true)
 
-- name: Create CrowdSec Bouncer (for Caddy)
-  ansible.builtin.command: "/usr/bin/cscli bouncers add {{ crowdsec_caddy_bouncer_name }}"
-  register: crowdsec_bouncer_add_result
-  changed_when: "'API key for' in crowdsec_bouncer_add_result.stdout" # Only mark changed if a new key is generated
-  args:
-    creates: "/etc/crowdsec/bouncers/{{ crowdsec_caddy_bouncer_name }}.yaml" # Check for bouncer config file
-  become: yes
-  notify: Restart crowdsec
+## Repository Installation Steps
 
-- name: Extract CrowdSec Bouncer API key
+- name: Set GPG key and repository paths based on APT version
   ansible.builtin.set_fact:
-    crowdsec_caddy_bouncer_key: "{{ crowdsec_bouncer_add_result.stdout | regex_search('API Key:\\s*(\\S+)', '\\1') | first }}"
-  when: crowdsec_bouncer_add_result.stdout is defined and 'API Key:' in crowdsec_bouncer_add_result.stdout
+    crowdsec_gpg_key_dir: "/etc/apt/keyrings"
+    crowdsec_gpg_key_path: "/etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg"
+    crowdsec_repo_signed_by: " [signed-by=/etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg]"
+  when: ansible_pkg_mgr == "apt" and ansible_distribution_major_version|int >= 24
 
-- name: Update Caddy CrowdSec bouncer configuration with API key
-  ansible.builtin.template:
-    src: "templates/crowdsec_caddy_bouncer_config.yaml.j2"
-    dest: "{{ caddy_config_path }}/crowdsec_caddy_bouncer.yaml" # Place it where Caddy can read it
-    owner: "{{ caddy_user }}"
-    group: "{{ caddy_group }}"
-    mode: '0640'
+- name: Set GPG key and repository paths for older APT versions
+  ansible.builtin.set_fact:
+    crowdsec_gpg_key_dir: "/etc/apt/trusted.gpg.d"
+    crowdsec_gpg_key_path: "/etc/apt/trusted.gpg.d/crowdsec_crowdsec.gpg"
+    crowdsec_repo_signed_by: "" # No signed-by for older APT
+  when: ansible_pkg_mgr == "apt" and ansible_distribution_major_version|int < 24
+
+- name: Ensure curl is installed for repository setup
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: yes
   become: yes
-  when: crowdsec_caddy_bouncer_key is defined and crowdsec_caddy_bouncer_key != ""
-  notify: Restart caddy
 
-- name: Reload Systemd daemon (CrowdSec)
-  ansible.builtin.systemd:
-    daemon_reload: yes
+- name: Create directory for imported GPG keys
+  ansible.builtin.file:
+    path: "{{ crowdsec_gpg_key_dir }}"
+    state: directory
+    mode: '0755'
+  become: yes
+  when: crowdsec_gpg_key_dir is defined
+
+- name: Download and add CrowdSec GPG key
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://packagecloud.io/crowdsec/crowdsec/gpgkey | gpg --dearmor -o {{ crowdsec_gpg_key_path }}
+    creates: "{{ crowdsec_gpg_key_path }}"
+  become: yes
+  when: crowdsec_gpg_key_path is defined
+
+- name: Add CrowdSec APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb{{ crowdsec_repo_signed_by }} https://packagecloud.io/crowdsec/crowdsec/{{ ansible_distribution | lower }}/ {{ ansible_distribution_release | lower }} main"
+    state: present
+    filename: crowdsec_crowdsec
+    update_cache: yes # Automatically runs 'apt update'
+  become: yes
+  when: crowdsec_repo_signed_by is defined
+
+- name: Create CrowdSec data directory '/var/lib/crowdsec'
+  ansible.builtin.file:
+    path: /var/lib/crowdsec
+    state: directory
+    owner: root # Set to root initially, package post-install can adjust if needed
+    group: root
+    mode: '0755'
   become: yes
 
-- name: Enable and start CrowdSec service
+- name: Install CrowdSec and firewall bouncer packages
+  ansible.builtin.apt:
+    name:
+      - crowdsec
+      - crowdsec-firewall-bouncer # Installs the bouncer that interacts with firewall
+    state: present
+  become: yes
+  notify: restart crowdsec # Notify handler to restart/start CrowdSec if newly installed or updated
+
+## Post-Installation Configuration
+
+- name: Ensure CrowdSec service is enabled and started
   ansible.builtin.systemd:
     name: crowdsec
-    enabled: yes
     state: started
+    enabled: yes
+    daemon_reload: yes # Ensures systemd reloads if service unit files changed
   become: yes
 
-- name: Enable and start CrowdSec firewall bouncer (if installed by script)
-  ansible.builtin.systemd:
-    name: cs-firewall-bouncer # Common name for firewall bouncer
-    enabled: yes
-    state: started
+- name: Wait for CrowdSec Local API to be ready
+  ansible.builtin.wait_for:
+    port: 8080 # Default CrowdSec Local API port
+    host: 127.0.0.1
+    timeout: 60 # Wait up to 60 seconds
+    delay: 5 # Check every 5 seconds
+  delegate_to: localhost # Run this check from the Ansible control node
+  become: false # This check doesn't require sudo on the control node
+  when: inventory_hostname == 'prod_web_server' # Apply this check to your main CrowdSec host (Rathole server)
+
+## CrowdSec Console Enrollment (for engine management)
+
+- name: Check if CrowdSec engine is already enrolled with the Console
+  ansible.builtin.command: cscli console status -o json
+  register: cscli_console_status
+  changed_when: false
+  failed_when: false # Don't fail if cscli isn't ready or not enrolled yet
   become: yes
-  ignore_errors: yes # The firewall bouncer might not be installed by default
+
+- name: Enroll CrowdSec engine with the Console
+  # Pass the enrollment key as a positional argument
+  ansible.builtin.command: "cscli console enroll --enable context {{ crowdsec_enrollment_key }}"
+  register: console_enroll_output
+  changed_when: "'Successfully enrolled with the Console' in console_enroll_output.stdout"
+  failed_when: "console_enroll_output.rc != 0 and 'already enrolled' not in console_enroll_output.stderr and 'You are already enrolled' not in console_enroll_output.stdout"
+  become: yes
+  when:
+    - enable_crowdsec | default(true)
+    # Ensure the enrollment key variable is defined and not empty
+    - crowdsec_enrollment_key is defined and crowdsec_enrollment_key | length > 0
+    - cscli_console_status.rc == 0 # Ensure the status command itself ran successfully
+    # Parse stdout as JSON and safely get the 'status' key or an empty string
+    - (cscli_console_status.stdout | from_json).get('status', '') != 'ENROLLED'
+
+## CrowdSec Bouncer Registration (for local bouncer-to-engine communication)
+
+- name: Generate CrowdSec API Key for Caddy bouncer if not set (using /dev/urandom)
+  # CHANGED TO 'shell' MODULE to support pipes
+  ansible.builtin.shell: head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
+  register: generated_api_key_result
+  # Explicitly check for undefined, none, or empty string
+  when: crowdsec_api_key is not defined or crowdsec_api_key is none or crowdsec_api_key == ''
+  changed_when: true # Mark as changed if this command runs (as it's generating new data)
+  become: yes # May need sudo for /dev/urandom access depending on user context
+
+- name: Set CrowdSec API Key fact from generated value
+  ansible.builtin.set_fact:
+    crowdsec_api_key: "{{ generated_api_key_result.stdout }}"
+  when: generated_api_key_result is defined and generated_api_key_result.changed # Only set if the generation task actually ran and changed something
+
+
+- name: Check if Caddy bouncer is already registered with CrowdSec Local API
+  ansible.builtin.command: cscli bouncers list -o json
+  register: cscli_bouncers_list
+  changed_when: false
+  failed_when: false # Don't fail if cscli isn't ready or no bouncers yet
+  become: yes
+
+- name: Register Caddy bouncer with CrowdSec Local API
+  ansible.builtin.command: "cscli bouncers add caddy-bouncer -k {{ crowdsec_api_key }}"
+  when:
+    - enable_crowdsec | default(true) # Only if CrowdSec is enabled
+    - "'caddy-bouncer' not in cscli_bouncers_list.stdout" # Only register if not already there
+    - cscli_bouncers_list.rc == 0 # Only proceed if the `cscli bouncers list` command itself was successful
+  register: bouncer_registration_output
+  changed_when: bouncer_registration_output.rc == 0
+  failed_when: bouncer_registration_output.rc != 0 and 'already exists' not in bouncer_registration_output.stderr
+  become: yes
+
+## Other CrowdSec Configurations (Optional Examples)
+
+# - name: Install CrowdSec Nginx common collection
+#   ansible.builtin.command: cscli collections install crowdsecurity/nginx
+#   args:
+#     creates: "/etc/crowdsec/collections/nginx.yaml" # Idempotency check
+#   become: yes
+#   changed_when: true
+#   notify: restart crowdsec
+
+# - name: Configure CrowdSec to monitor Caddy logs
+#   ansible.builtin.copy:
+#     content: |
+#       filename: "{{ caddy_log_dir }}/access.log" # Make sure this matches your Caddy log path
+#       labels:
+#         type: caddy
+#     dest: /etc/crowdsec/acquis.d/caddy_logs.yaml
+#     owner: root
+#     group: root
+#     mode: '0644'
+#   become: yes
+#   notify: restart crowdsec
