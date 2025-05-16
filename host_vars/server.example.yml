@@ -49,11 +49,11 @@ rathole_server_config: # This will contain all top-level server settings
     # --- Noise Transport Configuration ---
     noise:
       # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
-      # pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
+      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
       # Optional: Base64 encoded private key for the server.
-      # local_private_key: "your_server_private_key_base64"
+      local_private_key: "your_server_private_key_base64"
       # Optional: Base64 encoded public key of the client.
-      # remote_public_key: "your_client_public_key_base64"
+      remote_public_key: "your_client_public_key_base64"
       # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
       # are usually required for key exchange. Uncomment and provide actual keys.
 
