@@ -42,7 +42,7 @@ rathole_server_config: # This will contain all top-level server settings
   heartbeat_interval: 30 # Optional. In seconds. Set to 0 to disable.
 
   # Optional: Transport layer configuration
-  # Only ONE 'type' should be uncommented and configured at a time.
+  # Only ONE 'type' should be configured at a time.
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
@@ -57,20 +57,20 @@ rathole_server_config: # This will contain all top-level server settings
       # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
       # are usually required for key exchange. Uncomment and provide actual keys.
 
-    # --- TCP Transport Configuration (Commented Out) ---
-    # tcp:
-    #   nodelay: true
-    #   keepalive_secs: 20
-    #   keepalive_interval: 8
+    # --- TCP Transport Configuration ---
+    tcp:
+      nodelay: true
+      keepalive_secs: 20
+      keepalive_interval: 8
 
-    # --- TLS Transport Configuration (Commented Out) ---
-    # tls:
-    #   pkcs12: "/path/to/identify.pfx"
-    #   pkcs12_password: "your_pkcs12_password"
+    # --- TLS Transport Configuration ---
+    tls:
+      pkcs12: "/path/to/identify.pfx"
+      pkcs12_password: "your_pkcs12_password"
 
-    # --- WebSocket Transport Configuration (Commented Out) ---
-    # websocket:
-    #   tls: true
+    # --- WebSocket Transport Configuration ---
+    websocket:
+      tls: true # If true, it will use settings from 'server.transport.tls'
 
   # Define multiple services under the Rathole server
   services:

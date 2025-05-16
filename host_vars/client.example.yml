@@ -12,7 +12,7 @@ rathole_client_config: # This will contain all top-level client settings
   retry_interval: 1 # Optional. In seconds.
 
   # Optional: Transport layer configuration for the client
-  # Only ONE 'type' should be uncommented and configured at a time.
+  # Only ONE 'type' should be configured at a time.
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
@@ -28,20 +28,20 @@ rathole_client_config: # This will contain all top-level client settings
       # are usually required for key exchange. Uncomment and provide actual keys.
 
     # --- TCP Transport Configuration (Commented Out) ---
-    # tcp:
-    #   proxy: "socks5://user:passwd@127.0.0.1:1080"
-    #   nodelay: true
-    #   keepalive_secs: 20
-    #   keepalive_interval: 8
+    tcp:
+      proxy: "socks5://user:passwd@127.0.0.1:1080"
+      nodelay: true
+      keepalive_secs: 20
+      keepalive_interval: 8
 
     # --- TLS Transport Configuration (Commented Out) ---
-    # tls:
-    #   trusted_root: "/etc/ssl/certs/your_ca_certificate.pem"
-    #   hostname: "server1.example.com"
+    tls:
+      trusted_root: "/etc/ssl/certs/your_ca_certificate.pem"
+      hostname: "server1.example.com"
 
     # --- WebSocket Transport Configuration (Commented Out) ---
-    # websocket:
-    #   tls: true # If true, it will use settings from 'client.transport.tls'
+    websocket:
+      tls: true # If true, it will use settings from 'client.transport.tls'
 
   # Define multiple services that this client will forward
   services:
