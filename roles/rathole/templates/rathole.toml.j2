@@ -101,15 +101,9 @@ hostname = "{{ rathole_client_config.transport.tls.hostname }}"
 {% endif %}
 {% elif rathole_client_config.transport.type == "noise" and rathole_client_config.transport.noise is defined %}
 [client.transport.noise]
-{% if rathole_client_config.transport.noise.pattern is defined %}
 pattern = "{{ rathole_client_config.transport.noise.pattern }}"
-{% endif %}
-{% if rathole_client_config.transport.noise.local_private_key is defined %}
 local_private_key = "{{ rathole_client_config.transport.noise.local_private_key }}"
-{% endif %}
-{% if rathole_client_config.transport.noise.remote_public_key is defined %}
 remote_public_key = "{{ rathole_client_config.transport.noise.remote_public_key }}"
-{% endif %}
 {% elif rathole_client_config.transport.type == "websocket" and rathole_client_config.transport.websocket is defined %}
 [client.transport.websocket]
 tls = {{ rathole_client_config.transport.websocket.tls | lower }}
