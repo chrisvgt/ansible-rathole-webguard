@@ -1,0 +1,10 @@
+---
+# Variables that apply to all servers
+cloudflare_api_token: "{{ vault_cloudflare_api_token }}" # Still use Ansible Vault!
+
+# EXPERIMENTAL
+# Global toggle for Cloudflare DNS challenges
+enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Caddy plugin
+
+# Global toggle for CrowdSec integration
+enable_crowdsec: true   # Set to 'false' to disable CrowdSec installation and its Caddy plugin
