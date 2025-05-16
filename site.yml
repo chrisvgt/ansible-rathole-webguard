@@ -1,0 +1,57 @@
+---
+- name: ansible-rathole-webguard
+  hosts: web_servers # This group should contain all your target servers (both Rathole servers and clients)
+  become: yes          # Run tasks with root privileges
+
+  pre_tasks:
+    # --- System Update and Common Packages ---
+    - name: Ensure APT cache is updated
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600 # Cache valid for 1 hour (3600 seconds)
+      # This task should run on all Debian/Ubuntu-based hosts.
+      # Consider adding a 'when: ansible_os_family == "Debian"' if you have mixed OS types.
+
+    - name: Install common necessary packages
+      ansible.builtin.apt:
+        name:
+          - build-essential # Essential for compiling Go, xcaddy, Caddy modules
+          - curl            # For downloading files from URLs
+          - unzip           # For extracting archives
+          - git             # Good to have for development/cloning repos
+          - vim             # Common editor
+          - htop            # Process viewer
+        state: present
+      # This task also runs on all Debian/Ubuntu-based hosts.
+      # You can add 'when: rathole_role == "server"' if you want to be extremely minimal
+      # on client-only hosts, but 'build-essential' is often useful broadly.
+      # For simplicity and robustness, applying to all is often fine.
+
+    - name: Ensure /usr/local/bin exists
+      ansible.builtin.file:
+        path: /usr/local/bin
+        state: directory
+        mode: '0755'
+
+  roles:
+    # These roles (Go, xcaddy, Caddy, CrowdSec) are primarily needed for the
+    # full web stack which includes Caddy and CrowdSec.
+    # They will only execute if the host is designated as a "server" for Rathole.
+    - role: go_lang
+      when: rathole_role == "server"
+
+    - role: xcaddy
+      when: rathole_role == "server"
+
+    - role: caddy
+      when: rathole_role == "server"
+
+    # CrowdSec role only runs if it's enabled and the host is a server
+    - role: crowdsec
+      when: rathole_role == "server" and enable_crowdsec
+
+    # The rathole role is designed to configure Rathole as either a server or a client.
+    # Therefore, this role always runs on all hosts in the 'web_servers' group.
+    # The actual server/client configuration within Rathole is determined by the
+    # 'rathole_role' variable in the host's host_vars file and the rathole.toml.j2 template.
+    - role: rathole
