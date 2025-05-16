@@ -1,0 +1,52 @@
+---
+- name: Ensure /usr/local exists
+  ansible.builtin.file:
+    path: "{{ go_install_path }}"
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Check if Go is already installed
+  ansible.builtin.stat:
+    path: "{{ go_binary_path }}/go"
+  register: go_binary_stat
+
+- name: Download Go tarball
+  ansible.builtin.get_url:
+    url: "{{ go_download_url }}"
+    dest: "/tmp/{{ go_archive_name }}"
+    mode: '0644'
+  when: not go_binary_stat.stat.exists
+
+- name: Remove existing Go installation directory if present
+  ansible.builtin.file:
+    path: "{{ go_install_path }}/go"
+    state: absent
+  when: not go_binary_stat.stat.exists
+  become: yes
+
+- name: Extract Go tarball to /usr/local
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ go_archive_name }}"
+    dest: "{{ go_install_path }}"
+    remote_src: yes
+    creates: "{{ go_install_path }}/go/bin/go"
+  when: not go_binary_stat.stat.exists
+  become: yes
+
+- name: Set Go environment variables for all users
+  ansible.builtin.blockinfile:
+    path: "/etc/profile.d/go_env.sh"
+    create: yes
+    mode: '0644'
+    block: |
+      export GOROOT={{ go_install_path }}/go
+      export GOPATH=$HOME/go
+      export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+    marker: "# {mark} ANSIBLE MANAGED BLOCK for Go environment variables"
+  become: yes
+
+- name: Clean up Go tarball
+  ansible.builtin.file:
+    path: "/tmp/{{ go_archive_name }}"
+    state: absent

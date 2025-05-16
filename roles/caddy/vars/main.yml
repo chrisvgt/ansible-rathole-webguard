@@ -1,0 +1,15 @@
+---
+caddy_version: "2.10.0"
+caddy_user: caddy
+caddy_group: caddy
+caddy_install_dir: /usr/local/bin
+caddy_config_dir: /etc/caddy
+caddy_data_dir: /var/lib/caddy
+caddy_log_dir: /var/log/caddy
+
+# Define Caddy plugins conditionally based on enablement variables.
+# The entire Jinja2 expression for the list must be quoted.
+caddy_plugins: "{{
+  (['github.com/caddy-dns/cloudflare'] if enable_cloudflare else []) +
+  (['github.com/hslatman/caddy-crowdsec-bouncer/crowdsec'] if enable_crowdsec else [])
+}}"

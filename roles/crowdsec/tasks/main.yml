@@ -1,0 +1,67 @@
+---
+- name: Download CrowdSec installation script
+  ansible.builtin.get_url:
+    url: "{{ crowdsec_install_script_url }}"
+    dest: "/tmp/install-crowdsec.sh"
+    mode: '0755'
+  register: crowdsec_script_download
+  until: crowdsec_script_download is succeeded
+  retries: 5
+  delay: 2
+
+- name: Run CrowdSec installation script
+  ansible.builtin.command: "/tmp/install-crowdsec.sh"
+  args:
+    creates: 
+      - "/usr/bin/crowdsec" # Check for a known file created by the script
+      - "/usr/bin/cscli"
+  become: yes
+  # If the script re-installs CrowdSec, this might implicitly restart it.
+  # However, for explicit control, you might want to add a notify here
+  # if a future task modifies core CrowdSec configuration that requires restart.
+  # For now, we'll focus on bouncer changes.
+
+- name: Create CrowdSec Bouncer (for Caddy)
+  ansible.builtin.command: "/usr/bin/cscli bouncers add {{ crowdsec_caddy_bouncer_name }}"
+  register: crowdsec_bouncer_add_result
+  changed_when: "'API key for' in crowdsec_bouncer_add_result.stdout" # Only mark changed if a new key is generated
+  args:
+    creates: "/etc/crowdsec/bouncers/{{ crowdsec_caddy_bouncer_name }}.yaml" # Check for bouncer config file
+  become: yes
+  notify: Restart crowdsec
+
+- name: Extract CrowdSec Bouncer API key
+  ansible.builtin.set_fact:
+    crowdsec_caddy_bouncer_key: "{{ crowdsec_bouncer_add_result.stdout | regex_search('API Key:\\s*(\\S+)', '\\1') | first }}"
+  when: crowdsec_bouncer_add_result.stdout is defined and 'API Key:' in crowdsec_bouncer_add_result.stdout
+
+- name: Update Caddy CrowdSec bouncer configuration with API key
+  ansible.builtin.template:
+    src: "templates/crowdsec_caddy_bouncer_config.yaml.j2"
+    dest: "{{ caddy_config_path }}/crowdsec_caddy_bouncer.yaml" # Place it where Caddy can read it
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: '0640'
+  become: yes
+  when: crowdsec_caddy_bouncer_key is defined and crowdsec_caddy_bouncer_key != ""
+  notify: Restart caddy
+
+- name: Reload Systemd daemon (CrowdSec)
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Enable and start CrowdSec service
+  ansible.builtin.systemd:
+    name: crowdsec
+    enabled: yes
+    state: started
+  become: yes
+
+- name: Enable and start CrowdSec firewall bouncer (if installed by script)
+  ansible.builtin.systemd:
+    name: cs-firewall-bouncer # Common name for firewall bouncer
+    enabled: yes
+    state: started
+  become: yes
+  ignore_errors: yes # The firewall bouncer might not be installed by default

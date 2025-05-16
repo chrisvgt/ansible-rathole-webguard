@@ -1,0 +1,9 @@
+# This file is managed by Ansible. Do not edit manually.
+# For Caddy's CrowdSec Bouncer integration
+api_url: http://{{ crowdsec_agent_listen_ip }}:{{ crowdsec_agent_listen_port }}
+api_key: {{ crowdsec_caddy_bouncer_key }}
+tls:
+  insecure_skip_verify: false
+  ca_cert_path: ""
+  cert_path: ""
+  key_path: ""

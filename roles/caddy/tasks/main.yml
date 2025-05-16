@@ -1,0 +1,97 @@
+---
+- name: Install required build dependencies for Caddy
+  ansible.builtin.apt: # Or yum, dnf, etc. depending on your distribution
+    name:
+      - git
+      - build-essential
+    state: present
+  become: yes
+
+- name: Create Caddy user and group
+  ansible.builtin.group:
+    name: "{{ caddy_group }}"
+    state: present
+  become: yes
+
+- name: Create Caddy user
+  ansible.builtin.user:
+    name: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    system: yes
+    shell: "/usr/sbin/nologin"
+    create_home: no
+    home: "{{ caddy_config_path }}" # Caddy expects its home dir to be config dir
+    state: present
+  become: yes
+
+- name: Create Caddy configuration directory
+  ansible.builtin.file:
+    path: "{{ caddy_config_path }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Create Caddy log directory
+  ansible.builtin.file:
+    path: "{{ caddy_log_path }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Build Caddy with specified plugins using xcaddy
+  ansible.builtin.command: |
+    PATH={{ go_binary_path }}:$PATH {{ xcaddy_install_path }}/xcaddy build \
+    --output {{ caddy_install_path }}/caddy \
+    {% for plugin in caddy_plugins %}
+    --with {{ plugin }} \
+    {% endfor %}
+  args:
+    creates: "{{ caddy_install_path }}/caddy"
+  become: yes
+  # Need to ensure go environment is sourced or PATH is set correctly
+  environment:
+    PATH: "{{ go_binary_path }}:/usr/local/bin:/usr/bin:/bin"
+
+- name: Set Caddy binary permissions
+  ansible.builtin.file:
+    path: "{{ caddy_install_path }}/caddy"
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
+- name: Create Caddyfile from template
+  ansible.builtin.template:
+    src: "templates/Caddyfile.j2"
+    dest: "{{ caddy_config_path }}/{{ caddy_config_file }}"
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: '0644'
+  become: yes
+  notify: Restart caddy
+
+- name: Create Caddy Systemd unit file
+  ansible.builtin.template:
+    src: "templates/caddy.service.j2"
+    dest: "/etc/systemd/system/caddy.service"
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Restart caddy
+
+- name: Reload Systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Enable and start Caddy service
+  ansible.builtin.systemd:
+    name: caddy
+    enabled: yes
+    state: started
+  become: yes

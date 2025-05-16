@@ -1,0 +1,55 @@
+# Global options for Caddy
+{
+  # Conditionally enable the CrowdSec middleware globally
+  {% if enable_crowdsec %}
+  crowdsec {
+    api_url http://localhost:8080 # Adjust if CrowdSec LAPI is elsewhere
+    api_key {{ crowdsec_caddy_bouncer_key }}
+  }
+  {% endif %}
+
+  # Conditionally enable Cloudflare DNS challenge
+  {% if enable_cloudflare %}
+  tls {
+    dns cloudflare {{ cloudflare_api_token }}
+  }
+  {% endif %}
+
+  # Global logging for Caddy's internal operations (optional)
+  log {
+    output stderr
+    level INFO
+  }
+}
+
+# Iterate over the list of sites defined in host_vars
+{% for site in caddy_sites %}
+{{ site.domain }} {
+  # If you have an `extra_directives` variable for a site, it will be included here
+  {% if site.extra_directives is defined %}
+  {{ site.extra_directives }}
+  {% endif %}
+
+  # If `root` and `file_server` are defined for a site, Caddy will serve static files
+  {% if site.root is defined and site.file_server is defined %}
+  root * {{ site.root }}
+  file_server
+  {% elif site.backend_ip is defined and site.backend_port is defined %}
+  # Otherwise, assume it's a reverse proxy
+  reverse_proxy {{ site.backend_ip }}:{{ site.backend_port }} {
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Real-IP {remote_host}
+    header_up Host {http.request.host}
+  }
+  {% else %}
+  # Fallback or error if neither static nor proxy config is provided
+  abort 500
+  {% endif %}
+
+  # Access logging per domain
+  log {
+    output file {{ site.log_file }}
+    format json # Or common_log
+  }
+}
+{% endfor %}

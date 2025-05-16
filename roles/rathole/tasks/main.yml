@@ -1,0 +1,84 @@
+---
+- name: Create group for Rathole
+  ansible.builtin.group:
+    name: "{{ rathole_group }}"
+    state: present
+
+- name: Create user for Rathole
+  ansible.builtin.user:
+    name: "{{ rathole_user }}"
+    group: "{{ rathole_group }}"
+    create_home: no
+    shell: "/usr/sbin/nologin" # Changed from /sbin/nologin for broader compatibility
+    state: present
+
+- name: Set Rathole download URL
+  ansible.builtin.set_fact:
+    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ ansible_architecture }}"
+  when: ansible_architecture == "x86_64" # Specific URL for x86_64, adjust for others
+  # Example for arm64 if needed:
+  # - name: Set Rathole download URL for ARM64
+  #   ansible.builtin.set_fact:
+  #     rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-arm64"
+  #   when: ansible_architecture == "aarch64"
+
+- name: Download Rathole binary
+  ansible.builtin.get_url:
+    url: "{{ rathole_download_url }}"
+    dest: "/tmp/{{ rathole_binary_name }}"
+    mode: '0755'
+  register: rathole_download_result
+  until: rathole_download_result is succeeded
+  retries: 5
+  delay: 2
+
+- name: Move Rathole to /usr/local/bin
+  ansible.builtin.copy:
+    src: "/tmp/{{ rathole_binary_name }}"
+    dest: "{{ rathole_install_path }}/{{ rathole_binary_name }}"
+    owner: root
+    group: root
+    mode: '0755'
+    remote_src: yes
+  become: yes
+
+- name: Create Rathole configuration directory
+  ansible.builtin.file:
+    path: "{{ rathole_config_path }}"
+    state: directory
+    owner: "{{ rathole_user }}"
+    group: "{{ rathole_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Create default Rathole configuration file (optional)
+  ansible.builtin.template:
+    src: "templates/config.toml.j2"
+    dest: "{{ rathole_config_path }}/{{ rathole_config_file }}"
+    owner: "{{ rathole_user }}"
+    group: "{{ rathole_group }}"
+    mode: '0644'
+  become: yes
+  notify: Restart rathole
+
+- name: Create Systemd unit file for Rathole
+  ansible.builtin.template:
+    src: "templates/rathole.service.j2"
+    dest: "/etc/systemd/system/rathole.service"
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Restart rathole
+
+- name: Reload Systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Enable and start Rathole service
+  ansible.builtin.systemd:
+    name: rathole
+    enabled: yes
+    state: started
+  become: yes

@@ -1,0 +1,12 @@
+[Unit]
+Description=Rathole - A secure reverse proxy
+After=network.target
+
+[Service]
+User={{ rathole_user }}
+Group={{ rathole_group }}
+Restart=on-failure
+ExecStart={{ rathole_install_path }}/{{ rathole_binary_name }} -c {{ rathole_config_path }}/{{ rathole_config_file }}
+
+[Install]
+WantedBy=multi-user.target

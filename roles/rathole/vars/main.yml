@@ -1,0 +1,8 @@
+rathole_version: "5.0.1"
+rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}"
+rathole_binary_name: "rathole"
+rathole_install_path: "/usr/local/bin"
+rathole_config_path: "/etc/rathole"
+rathole_config_file: "config.toml"
+rathole_user: "rathole"
+rathole_group: "rathole"

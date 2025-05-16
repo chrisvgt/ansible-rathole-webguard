@@ -1,0 +1,6 @@
+---
+- name: Restart rathole
+  ansible.builtin.systemd:
+    name: rathole
+    state: restarted
+  become: yes

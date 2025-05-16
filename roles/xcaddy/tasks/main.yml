@@ -1,0 +1,42 @@
+---
+- name: Ensure xcaddy installation path exists
+  ansible.builtin.file:
+    path: "{{ xcaddy_install_path }}"
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Download xcaddy tarball
+  ansible.builtin.get_url:
+    url: "{{ xcaddy_download_url }}"
+    dest: "/tmp/xcaddy_temp.tar.gz"
+    mode: '0644'
+  register: xcaddy_download_result
+  until: xcaddy_download_result is succeeded
+  retries: 5
+  delay: 2
+
+- name: Extract xcaddy binary
+  ansible.builtin.unarchive:
+    src: "/tmp/xcaddy_temp.tar.gz"
+    dest: "/tmp/"
+    remote_src: yes
+    creates: "/tmp/xcaddy"
+
+- name: Move xcaddy to /usr/local/bin
+  ansible.builtin.copy:
+    src: "/tmp/xcaddy"
+    dest: "{{ xcaddy_install_path }}/xcaddy"
+    owner: root
+    group: root
+    mode: '0755'
+    remote_src: yes
+  become: yes
+
+- name: Clean up xcaddy temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/xcaddy_temp.tar.gz"
+    - "/tmp/xcaddy"
