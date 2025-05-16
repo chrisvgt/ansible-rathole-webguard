@@ -1,55 +1,59 @@
+# roles/caddy/templates/Caddyfile.j2
+# Caddy Configuration File (Managed by Ansible)
+# Path: /etc/caddy/Caddyfile
+
 # Global options for Caddy
 {
-  # Conditionally enable the CrowdSec middleware globally
-  {% if enable_crowdsec %}
-  crowdsec {
-    api_url http://localhost:8080 # Adjust if CrowdSec LAPI is elsewhere
-    api_key {{ crowdsec_caddy_bouncer_key }}
-  }
-  {% endif %}
+    # Conditionally enable the CrowdSec middleware globally
+{% if enable_crowdsec %}
+    crowdsec {
+        api_url {{ crowdsec_api_url | default('http://localhost:8080') }}
+        api_key {{ crowdsec_caddy_bouncer_key }}
+        ticker_interval {{ crowdsec_ticker_interval | default('15s') }}
+{% if crowdsec_disable_streaming is defined and crowdsec_disable_streaming %}
+        disable_streaming
+{% endif %}
+{% if crowdsec_enable_hard_fails is defined and crowdsec_enable_hard_fails %}
+        enable_hard_fails
+{% endif %}
+    }
+{% endif %}
 
-  # Conditionally enable Cloudflare DNS challenge
-  {% if enable_cloudflare %}
-  tls {
-    dns cloudflare {{ cloudflare_api_token }}
-  }
-  {% endif %}
+    # Conditionally enable Cloudflare DNS challenge (if needed for TLS)
+{% if enable_cloudflare %}
+    tls {
+        dns cloudflare {{ cloudflare_api_token }}
+    }
+{% endif %}
 
-  # Global logging for Caddy's internal operations (optional)
-  log {
-    output stderr
-    level INFO
-  }
+    # Global logging for Caddy's internal operations (optional)
+    log {
+        output stderr
+        level INFO
+    }
 }
 
 # Iterate over the list of sites defined in host_vars
 {% for site in caddy_sites %}
-{{ site.domain }} {
-  # If you have an `extra_directives` variable for a site, it will be included here
-  {% if site.extra_directives is defined %}
-  {{ site.extra_directives }}
-  {% endif %}
+{{ site.domain }}:443 {
+    reverse_proxy localhost:{{ site.local_port }}
 
-  # If `root` and `file_server` are defined for a site, Caddy will serve static files
-  {% if site.root is defined and site.file_server is defined %}
-  root * {{ site.root }}
-  file_server
-  {% elif site.backend_ip is defined and site.backend_port is defined %}
-  # Otherwise, assume it's a reverse proxy
-  reverse_proxy {{ site.backend_ip }}:{{ site.backend_port }} {
-    header_up X-Forwarded-For {remote_host}
-    header_up X-Real-IP {remote_host}
-    header_up Host {http.request.host}
-  }
-  {% else %}
-  # Fallback or error if neither static nor proxy config is provided
-  abort 500
-  {% endif %}
+    # Redirect HTTP to HTTPS (for all GET requests by default)
+    @httpget {
+        protocol http
+{% if site.ntfy_path_regexp is defined %}
+        method GET
+        path_regexp {{ site.ntfy_path_regexp }}
+{% endif %}
+    }
+    redir @httpget https://{host}{uri}
 
-  # Access logging per domain
-  log {
-    output file {{ site.log_file }}
-    format json # Or common_log
-  }
+    log {
+        output file {{ site.log_file | default('/var/log/caddy/' + site.name + '.access.log') }} {
+            roll_size {{ site.log_roll_size | default('10mb') }}
+            roll_keep {{ site.log_roll_keep | default(10) }}
+            roll_keep_for {{ site.log_roll_keep_for | default('36h') }}
+        }
+    }
 }
 {% endfor %}
