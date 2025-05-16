@@ -53,13 +53,13 @@
 
 - name: Create default Rathole configuration file (optional)
   ansible.builtin.template:
-    src: "templates/config.toml.j2"
+    src: "templates/rathole.toml.j2"
     dest: "{{ rathole_config_path }}/{{ rathole_config_file }}"
     owner: "{{ rathole_user }}"
     group: "{{ rathole_group }}"
     mode: '0644'
   become: yes
-  notify: Restart rathole
+  notify: restart rathole
 
 - name: Create Systemd unit file for Rathole
   ansible.builtin.template:
