@@ -7,20 +7,19 @@ caddy_config_dir: /etc/caddy
 caddy_data_dir: /var/lib/caddy
 caddy_log_dir: /var/log/caddy
 
+# Define the full path for Caddy's config directory (used for the user's home)
+caddy_config_path: "{{ caddy_config_dir }}" # Define it *first*
+
 # Define the full path to the Caddy executable
 caddy_install_path: "{{ caddy_install_dir }}/caddy"
 
 # Define the full path for Caddy's primary log directory
-caddy_log_path: "{{ caddy_log_dir }}" # This variable is used for creating the log directory
+caddy_log_path: "{{ caddy_log_dir }}"
 
 # Define the full path to the Caddyfile
-caddy_config_path: "{{ caddy_config_dir }}/Caddyfile"
-
-# Alias caddy_config_file to caddy_config_path
-caddy_config_file: "{{ caddy_config_path }}" # <--- ADD THIS LINE
+caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Use caddy_config_dir
 
 # Define Caddy plugins conditionally based on enablement variables.
-# The entire Jinja2 expression for the list must be quoted.
 caddy_plugins: "{{
   (['github.com/caddy-dns/cloudflare'] if enable_cloudflare else []) +
   (['github.com/hslatman/caddy-crowdsec-bouncer/crowdsec'] if enable_crowdsec else [])

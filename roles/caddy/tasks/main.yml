@@ -73,7 +73,7 @@
 
 - name: Create Caddyfile from template
   ansible.builtin.template:
-    src: Caddyfile.j2
+    src: "templates/Caddyfile.j2"
     dest: "{{ caddy_config_file }}" # This should be /etc/caddy/Caddyfile
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"

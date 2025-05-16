@@ -7,8 +7,8 @@ Requires=network-online.target
 [Service]
 User={{ caddy_user }}
 Group={{ caddy_group }}
-ExecStart={{ caddy_install_path }}/caddy run --environ --config {{ caddy_config_path }}/{{ caddy_config_file }}
-ExecReload={{ caddy_install_path }}/caddy reload --config {{ caddy_config_path }}/{{ caddy_config_file }} --force
+ExecStart={{ caddy_install_path }}/caddy run --environ --config {{ caddy_config_file }} --adapter caddyfile
+ExecReload={{ caddy_install_path }}/caddy reload --config {{ caddy_config_file }} --force --adapter caddyfile
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 LimitNPROC=512
