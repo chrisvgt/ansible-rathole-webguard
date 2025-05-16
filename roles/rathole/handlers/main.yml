@@ -1,5 +1,5 @@
 ---
-- name: Restart rathole
+- name: restart rathole
   ansible.builtin.systemd:
     name: rathole
     state: restarted

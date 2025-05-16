@@ -1,6 +1,7 @@
 ---
-- name: Restart crowdsec
+- name: restart crowdsec
   ansible.builtin.systemd:
     name: crowdsec
     state: restarted
+    daemon_reload: yes
   become: yes

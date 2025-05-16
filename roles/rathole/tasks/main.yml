@@ -69,7 +69,7 @@
     group: root
     mode: '0644'
   become: yes
-  notify: Restart rathole
+  notify: restart rathole
 
 - name: Reload Systemd daemon
   ansible.builtin.systemd:
