@@ -68,8 +68,8 @@ The project follows a standard Ansible role-based structure:
 ├── group_vars/               # Variables for host groups (e.g., all.yml)
 │   └── all.yml
 ├── host_vars/                # Variables specific to individual hosts
-│   ├── server1.example.com.yml
-│   └── server2.example.com.yml
+│   ├── client.example.yml
+│   └── server.example.yml
 └── roles/
     ├── caddy/
     │   ├── handlers/
@@ -108,78 +108,21 @@ This file simply defines your target servers and their group memberships. It **d
 
 ```ini
 [web_servers]
-server1.example.com
-server2.example.com
+client.example.com
+server.example.com
 ```
 
 ### Group Variables (`group_vars/`)
 
 This directory contains YAML files where you define variables that apply to specific **groups of hosts**. For instance, `group_vars/all.yml` holds variables that apply to *all* hosts in your inventory.
 
-**Example `group_vars/all.yml`:**
-
-```yaml
----
-# Variables that apply to all servers
-cloudflare_api_token: "{{ vault_cloudflare_api_token }}" # Still use Ansible Vault for this!
-```
-
 ### Host Variables (`host_vars/`)
 
-This is where you store variables that are **specific to individual hosts**. Each file in this directory must be named exactly after a host in your `inventory.ini` (e.g., `server1.example.com.yml`). This is the ideal place for:
+This is where you store variables that are **specific to individual hosts**. Each file in this directory must be named exactly after a host in your `inventory.ini` (e.g., `server.example.yml`). This is the ideal place for:
 
 * **Connection details**: If `ansible_user` or `ansible_ssh_private_key_file` differ per server.
 * **Application-specific settings**: Like a Caddy domain (`caddy_domain`), backend details (`caddy_backend_ip`, `caddy_backend_port`), or whether Rathole acts as a server or client (`rathole_role`).
 * **Host-specific secrets**: If a particular API token or password is only relevant to one server.
-
-**Example `host_vars/server1.example.com.yml` (Rathole Server):**
-
-```yaml
----
-# SSH connection details for server1
-ansible_user: user_for_server1
-ansible_ssh_private_key_file: ~/.ssh/id_rsa_server1
-
-# Caddy config specific to server1 (if this host is a Caddy server)
-caddy_sites:
-  - domain: "app1.yourdomain.com"
-    backend_ip: "127.0.0.1"
-    backend_port: 8080
-    log_file: "/var/log/caddy/app1.log"
-
-# Rathole config for server1 (acting as a server)
-rathole_role: "server"
-rathole_server_config:
-  listen_addr: "0.0.0.0:2333"
-  default_token: "default_token_for_all_services"
-  services:
-    - name: "service1"
-      bind_addr: "0.0.0.0:8081"
-    - name: "my_ssh_tunnel"
-      bind_addr: "0.0.0.0:2222"
-      token: "ssh_token"
-```
-
-**Example `host_vars/server2.example.com.yml` (Rathole Client):**
-
-```yaml
----
-# SSH connection details for server2
-ansible_user: user_for_server2
-ansible_ssh_private_key_file: ~/.ssh/id_rsa_server2
-
-# Rathole config for server2 (acting as a client)
-rathole_role: "client"
-rathole_client_config:
-  remote_addr: "server1.example.com:2333"
-  default_token: "default_token_if_not_specify"
-  services:
-    - name: "service1"
-      local_addr: "127.0.0.1:1081"
-    - name: "my_ssh_tunnel"
-      local_addr: "127.0.0.1:22"
-      token: "ssh_token"
-```
 
 ### Role Variables (`roles/*/vars/main.yml`)
 
@@ -212,20 +155,12 @@ Templates are Jinja2 files used to generate configuration files dynamically on t
 2. **Add your sensitive variables inside**:
 
     ```yaml
-    cloudflare_api_token: "YOUR_CLOUDFLARE_API_TOKEN"
-    # If host-specific tokens:
-    # vault_cloudflare_api_token_server1: "SERVER1_TOKEN_VALUE"
-    # vault_cloudflare_api_token_server2: "SERVER2_TOKEN_VALUE"
+    vault_crowdsec_api_key: "API_KEY"
+    vault_crowdsec_enrollment_key: "ENROLLMENT_KEY"
+    vault_cloudflare_api_token_server: "CLOUDFARE_TOKEN"
     ```
 
-3. **Reference these variables** in your `group_vars/`, `host_vars/`, or templates:
-
-    ```yaml
-    # In group_vars/all.yml or host_vars/*.yml
-    cloudflare_api_token: "{{ vault_cloudflare_api_token }}"
-    ```
-
-4. **Remember your vault password\!**
+3. **Remember your vault password\!**
 
 -----
 
@@ -278,7 +213,7 @@ To change a configuration (e.g., Caddyfile, Rathole config):
 
 ### Adding/Removing Hosts
 
-* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[web_servers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.example.com.yml`) with its specific variables. Re-run the playbook to provision it.
+* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[web_servers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it.
 * **Removing hosts**: Remove the host from `inventory.ini`. If you need to uninstall services, you'd create a separate Ansible playbook for de-provisioning.
 
 ### Checking Service Status

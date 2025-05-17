@@ -1,11 +1,12 @@
 ---
-ansible_user: user_for_server1
-ansible_ssh_private_key_file: ~/.ssh/id_rsa_server1
+# --- Example SSH configuration ---
+ansible_user: your_ssh_user
+ansible_ssh_private_key_file: ~/.ssh/id_rsa
 
 # Global Cloudflare API token if used by multiple domains on this server
 cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
 
-# === Caddy configurations for multiple domains on this server ===
+# --- Example Caddy configuration for multiple domains on this server ---
 caddy_sites:
   - name: blog # Used for generating default log file name
     domain: "blog.yourdomain.com"
@@ -22,14 +23,13 @@ caddy_sites:
     # Special regex for ntfy http redirect logic
     ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)"
 
-# Rathole configuration for server1 (acting as a server)
+# --- Example configuration for rathole server ---
 rathole_role: "server" # This variable tells the template it's a server
 rathole_server_config: # This will contain all top-level server settings
   listen_addr: "0.0.0.0:2333" # The address Rathole server listens on for clients
   default_token: "default_token_for_all_services_if_not_specified" # Optional
   heartbeat_interval: 30 # Optional. In seconds. Set to 0 to disable.
 
-  # Optional: Transport layer configuration
   # Only ONE 'type' should be configured at a time.
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
@@ -60,7 +60,7 @@ rathole_server_config: # This will contain all top-level server settings
     websocket:
       tls: true # If true, it will use settings from 'server.transport.tls'
 
-  # Define multiple services under the Rathole server
+ # --- Define multiple services that this server will bind ---
   services:
     - name: "service1" # Unique name for this service (must match client side)
       type: "tcp" # Optional. Default is tcp. Can be "tcp", "udp", "socks5".
