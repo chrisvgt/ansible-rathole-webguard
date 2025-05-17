@@ -1,4 +1,3 @@
----
 # roles/crowdsec/tasks/main.yml
 
 # Conditional skip for the entire role if enable_crowdsec is false
@@ -6,7 +5,7 @@
   ansible.builtin.meta: end_play
   when: not enable_crowdsec | default(true)
 
-## Repository Installation Steps (Replaced with direct script execution)
+## Repository Installation Steps
 
 - name: Ensure curl is installed for repository setup script
   ansible.builtin.apt:
@@ -18,38 +17,30 @@
 - name: Install CrowdSec repositories via official script
   ansible.builtin.shell:
     cmd: curl -s https://install.crowdsec.net | sudo sh
-    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list # Use a marker file to ensure idempotency
+    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list # Use a marker file for idempotency
   args:
-    # Ensure sudo is handled by Ansible's become, not by the script itself
-    # This might require careful handling if the script *requires* internal sudo.
-    # However, for simple pipe-to-sh, ansible's 'become' is usually sufficient.
     executable: /bin/bash # Ensure a shell is used for the pipe
   become: yes
-  # Note: The 'creates' argument helps with idempotency.
-  # If the file /etc/apt/sources.list.d/crowdsec_crowdsec.list already exists,
-  # Ansible will assume the task has already done its job and skip it.
-  # This makes it more idempotent for *subsequent* runs.
 
-- name: Run apt update after repository installation (if not done by script)
+- name: Run apt update after repository installation (ensure cache is refreshed)
   ansible.builtin.apt:
     update_cache: yes
   become: yes
-  # The install script usually runs apt update, but this ensures it.
 
 - name: Create CrowdSec data directory '/var/lib/crowdsec'
   ansible.builtin.file:
     path: /var/lib/crowdsec
     state: directory
-    owner: root # Set to root initially, package post-install can adjust if needed
+    owner: root
     group: root
     mode: '0755'
   become: yes
 
-- name: Install CrowdSec and firewall bouncer packages
+- name: Install CrowdSec, iptables firewall bouncer, and Caddy bouncer packages
   ansible.builtin.apt:
     name:
       - crowdsec
-      - crowdsec-firewall-bouncer-iptables # Installs the bouncer that interacts with firewall
+      - crowdsec-firewall-bouncer-iptables # For system-level firewall blocking via iptables
     state: present
   become: yes
   notify: restart crowdsec # Notify handler to restart/start CrowdSec if newly installed or updated
@@ -72,7 +63,39 @@
     delay: 5 # Check every 5 seconds
   delegate_to: localhost # Run this check from the Ansible control node
   become: false # This check doesn't require sudo on the control node
-  when: inventory_hostname == 'prod_web_server' # Apply this check to your main CrowdSec host (Rathole server)
+  when: inventory_hostname == 'prod_web_server' # Apply this check to your main CrowdSec host (or all if applicable)
+
+## CrowdSec Hub Initialization and Content Installation
+
+- name: Update CrowdSec Hub
+  ansible.builtin.command: cscli hub update
+  register: cscli_hub_update_output # Register the output here
+  changed_when: "'Nothing to do' not in cscli_hub_update_output.stdout" # Now referencing the registered variable
+  failed_when: cscli_hub_update_output.rc != 0
+  become: yes
+
+- name: Install CrowdSecurity base HTTP scenarios collection
+  ansible.builtin.command: cscli collections install crowdsecurity/base-http-scenarios
+  register: cscli_base_http_scenarios_output # Register the output here
+  changed_when: "'Successfully installed' in cscli_base_http_scenarios_output.stdout or 'Upgraded' in cscli_base_http_scenarios_output.stdout"
+  failed_when: "(cscli_base_http_scenarios_output.rc != 0 and 'already installed' not in cscli_base_http_scenarios_output.stderr and 'already enabled' not in cscli_base_http_scenarios_output.stdout)"
+  become: yes
+
+- name: Install Caddy logs parser
+  ansible.builtin.command: cscli parsers install crowdsecurity/caddy-logs
+  register: cscli_caddy_logs_output # Register the output here
+  changed_when: "'Successfully installed' in cscli_caddy_logs_output.stdout or 'Upgraded' in cscli_caddy_logs_output.stdout"
+  failed_when: "(cscli_caddy_logs_output.rc != 0 and 'already installed' not in cscli_caddy_logs_output.stderr and 'already enabled' not in cscli_caddy_logs_output.stdout)"
+  become: yes
+  # Optional: Add a when condition if Caddy is not always present, e.g.:
+  # when: ansible_service_mgr == 'systemd' and 'caddy' in ansible_facts.services
+
+- name: Install generic HTTP logs parser (optional, useful for other HTTP logs if present)
+  ansible.builtin.command: cscli parsers install crowdsecurity/http-logs
+  register: cscli_http_logs_output # Register the output here
+  changed_when: "'Successfully installed' in cscli_http_logs_output.stdout or 'Upgraded' in cscli_http_logs_output.stdout"
+  failed_when: "(cscli_http_logs_output.rc != 0 and 'already installed' not in cscli_http_logs_output.stderr and 'already enabled' not in cscli_http_logs_output.stdout)"
+  become: yes
 
 ## CrowdSec Console Enrollment (for engine management)
 
@@ -84,7 +107,6 @@
   become: yes
 
 - name: Enroll CrowdSec engine with the Console
-  # Pass the enrollment key as a positional argument
   ansible.builtin.command: "cscli console enroll --enable context {{ crowdsec_enrollment_key }}"
   register: console_enroll_output
   changed_when: "'Successfully enrolled with the Console' in console_enroll_output.stdout"
@@ -92,10 +114,8 @@
   become: yes
   when:
     - enable_crowdsec | default(true)
-    # Ensure the enrollment key variable is defined and not empty
     - crowdsec_enrollment_key is defined and crowdsec_enrollment_key | length > 0
     - cscli_console_status.rc == 0 # Ensure the status command itself ran successfully
-    # Parse stdout as JSON and safely get the 'status' key or an empty string
     - (cscli_console_status.stdout | from_json).get('status', '') != 'ENROLLED'
 
 ## CrowdSec Bouncer Registration (for local bouncer-to-engine communication)
@@ -120,15 +140,16 @@
 
 ## Other CrowdSec Configurations (Optional Examples)
 
-# - name: Configure CrowdSec to monitor Caddy logs
-#   ansible.builtin.copy:
-#     content: |
-#       filename: "{{ caddy_log_dir }}/access.log" # Make sure this matches your Caddy log path
-#       labels:
-#         type: caddy
-#     dest: /etc/crowdsec/acquis.d/caddy_logs.yaml
-#     owner: root
-#     group: root
-#     mode: '0644'
-#   become: yes
-#   notify: restart crowdsec
+- name: Configure CrowdSec to monitor Caddy logs
+  ansible.builtin.copy:
+    content: |
+      filename: "{{ caddy_log_dir | default('/var/log/caddy/access.log') }}" # Ensure this matches your Caddy log path
+      labels:
+        type: caddy
+    dest: /etc/crowdsec/acquis.d/caddy_logs.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart crowdsec
+  # This acquisition file tells CrowdSec where to read Caddy logs for detection.
