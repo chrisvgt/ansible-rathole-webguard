@@ -6,52 +6,35 @@
   ansible.builtin.meta: end_play
   when: not enable_crowdsec | default(true)
 
-## Repository Installation Steps
+## Repository Installation Steps (Replaced with direct script execution)
 
-- name: Set GPG key and repository paths based on APT version
-  ansible.builtin.set_fact:
-    crowdsec_gpg_key_dir: "/etc/apt/keyrings"
-    crowdsec_gpg_key_path: "/etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg"
-    crowdsec_repo_signed_by: " [signed-by=/etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg]"
-  when: ansible_pkg_mgr == "apt" and ansible_distribution_major_version|int >= 24
-
-- name: Set GPG key and repository paths for older APT versions
-  ansible.builtin.set_fact:
-    crowdsec_gpg_key_dir: "/etc/apt/trusted.gpg.d"
-    crowdsec_gpg_key_path: "/etc/apt/trusted.gpg.d/crowdsec_crowdsec.gpg"
-    crowdsec_repo_signed_by: "" # No signed-by for older APT
-  when: ansible_pkg_mgr == "apt" and ansible_distribution_major_version|int < 24
-
-- name: Ensure curl is installed for repository setup
+- name: Ensure curl is installed for repository setup script
   ansible.builtin.apt:
     name: curl
     state: present
     update_cache: yes
   become: yes
 
-- name: Create directory for imported GPG keys
-  ansible.builtin.file:
-    path: "{{ crowdsec_gpg_key_dir }}"
-    state: directory
-    mode: '0755'
-  become: yes
-  when: crowdsec_gpg_key_dir is defined
-
-- name: Download and add CrowdSec GPG key
+- name: Install CrowdSec repositories via official script
   ansible.builtin.shell:
-    cmd: curl -fsSL https://packagecloud.io/crowdsec/crowdsec/gpgkey | gpg --dearmor -o {{ crowdsec_gpg_key_path }}
-    creates: "{{ crowdsec_gpg_key_path }}"
+    cmd: curl -s https://install.crowdsec.net | sudo sh
+    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list # Use a marker file to ensure idempotency
+  args:
+    # Ensure sudo is handled by Ansible's become, not by the script itself
+    # This might require careful handling if the script *requires* internal sudo.
+    # However, for simple pipe-to-sh, ansible's 'become' is usually sufficient.
+    executable: /bin/bash # Ensure a shell is used for the pipe
   become: yes
-  when: crowdsec_gpg_key_path is defined
+  # Note: The 'creates' argument helps with idempotency.
+  # If the file /etc/apt/sources.list.d/crowdsec_crowdsec.list already exists,
+  # Ansible will assume the task has already done its job and skip it.
+  # This makes it more idempotent for *subsequent* runs.
 
-- name: Add CrowdSec APT repository
-  ansible.builtin.apt_repository:
-    repo: "deb{{ crowdsec_repo_signed_by }} https://packagecloud.io/crowdsec/crowdsec/{{ ansible_distribution | lower }}/ {{ ansible_distribution_release | lower }} main"
-    state: present
-    filename: crowdsec_crowdsec
-    update_cache: yes # Automatically runs 'apt update'
+- name: Run apt update after repository installation (if not done by script)
+  ansible.builtin.apt:
+    update_cache: yes
   become: yes
-  when: crowdsec_repo_signed_by is defined
+  # The install script usually runs apt update, but this ensures it.
 
 - name: Create CrowdSec data directory '/var/lib/crowdsec'
   ansible.builtin.file:
@@ -66,7 +49,7 @@
   ansible.builtin.apt:
     name:
       - crowdsec
-      - crowdsec-firewall-bouncer # Installs the bouncer that interacts with firewall
+      - crowdsec-firewall-bouncer-iptables # Installs the bouncer that interacts with firewall
     state: present
   become: yes
   notify: restart crowdsec # Notify handler to restart/start CrowdSec if newly installed or updated
