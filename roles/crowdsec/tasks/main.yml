@@ -138,12 +138,12 @@
   failed_when: bouncer_registration_output.rc != 0 and 'already exists' not in bouncer_registration_output.stderr
   become: yes
 
-## Other CrowdSec Configurations (Optional Examples)
-
 - name: Configure CrowdSec to monitor Caddy logs
   ansible.builtin.copy:
     content: |
-      filename: "{{ caddy_log_dir | default('/var/log/caddy/access.log') }}" # Ensure this matches your Caddy log path
+      # Use 'filenames' (plural) to specify multiple files or a glob pattern
+      filenames:
+        - "{{ caddy_log_dir }}/*.access.log"  # This will catch blog.access.log, notify.access.log etc.
       labels:
         type: caddy
     dest: /etc/crowdsec/acquis.d/caddy_logs.yaml
@@ -151,5 +151,5 @@
     group: root
     mode: '0644'
   become: yes
-  notify: restart crowdsec
+  notify: restart crowdsec # Notify handler to restart/start CrowdSec if newly installed or updated
   # This acquisition file tells CrowdSec where to read Caddy logs for detection.

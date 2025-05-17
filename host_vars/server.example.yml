@@ -11,7 +11,7 @@ caddy_sites:
     domain: "blog.yourdomain.com"
     local_port: 2368
     # Optional: Customize log settings per site
-    # log_file: "/var/log/caddy/wikijs_custom.log"
+    # log_file: "/var/log/caddy/blog.access.log"
     # log_roll_size: "20mb"
     # log_roll_keep: 15
     # log_roll_keep_for: "48h"
