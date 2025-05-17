@@ -17,7 +17,7 @@ caddy_sites:
     # log_roll_keep: 15
     # log_roll_keep_for: "48h"
 
-  - name: ntfy
+  - name: notify
     domain: "notify.yourdomain.com"
     local_port: 8004
     # Special regex for ntfy http redirect logic
