@@ -36,7 +36,7 @@
     mode: '0755'
   become: yes
 
-- name: Install CrowdSec, iptables firewall bouncer, and Caddy bouncer packages
+- name: Install CrowdSec, iptables firewall bouncer
   ansible.builtin.apt:
     name:
       - crowdsec
