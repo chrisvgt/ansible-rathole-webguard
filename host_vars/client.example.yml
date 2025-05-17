@@ -2,7 +2,7 @@
 # --- Example configuration for rathole client ---
 rathole_role: "client" # This variable tells the template it's a client
 rathole_client_config: # This will contain all top-level client settings
-  remote_addr: "server1.example.com:2333" # Necessary. The address of the Rathole server.
+  remote_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # Necessary. The address of the Rathole server.
   default_token: "default_token_if_not_specify" # Optional. Default token for services.
   heartbeat_timeout: 40 # Optional. In seconds.
   retry_interval: 1 # Optional. In seconds.

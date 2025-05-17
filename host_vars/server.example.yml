@@ -26,7 +26,7 @@ caddy_sites:
 # --- Example configuration for rathole server ---
 rathole_role: "server" # This variable tells the template it's a server
 rathole_server_config: # This will contain all top-level server settings
-  listen_addr: "0.0.0.0:2333" # The address Rathole server listens on for clients
+  listen_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # The address Rathole server listens on for clients
   default_token: "default_token_for_all_services_if_not_specified" # Optional
   heartbeat_interval: 30 # Optional. In seconds. Set to 0 to disable.
 
