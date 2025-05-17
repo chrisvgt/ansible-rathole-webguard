@@ -1,0 +1,8 @@
+# Ignore everything
+*
+
+# Dont ignore .gitignore
+!.gitignore
+
+# But unignore all .example.yaml files
+!*.example.yaml
