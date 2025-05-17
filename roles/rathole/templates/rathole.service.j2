@@ -1,3 +1,5 @@
+# Path: roles/rathole/templates/rathole.service.j2
+
 [Unit]
 Description=Rathole - A secure reverse proxy
 After=network.target
@@ -6,7 +8,7 @@ After=network.target
 User={{ rathole_user }}
 Group={{ rathole_group }}
 Restart=on-failure
-ExecStart={{ rathole_install_path }}/{{ rathole_binary_name }} -c {{ rathole_config_path }}/{{ rathole_config_file }}
+ExecStart={{ rathole_install_path }}/{{ rathole_binary_name }} {% if rathole_role == "client" %}-c{% else %}-s{% endif %} {{ rathole_config_path }}/{{ rathole_config_file }}
 
 [Install]
 WantedBy=multi-user.target
