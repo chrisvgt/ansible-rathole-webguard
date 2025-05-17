@@ -1,8 +1,4 @@
 ---
-# --- Example SSH configuration ---
-ansible_user: your_ssh_user
-ansible_ssh_private_key_file: ~/.ssh/id_rsa
-
 # --- Example configuration for rathole client ---
 rathole_role: "client" # This variable tells the template it's a client
 rathole_client_config: # This will contain all top-level client settings
