@@ -1,6 +1,6 @@
 ---
 - name: ansible-rathole-webguard
-  hosts: web_servers # This group should contain all your target servers (both Rathole servers and clients)
+  hosts: webservers # This group should contain all your target servers (both Rathole servers and clients)
   become: yes          # Run tasks with root privileges
 
   pre_tasks:
@@ -51,7 +51,7 @@
       when: rathole_role == "server" and enable_crowdsec
 
     # The rathole role is designed to configure Rathole as either a server or a client.
-    # Therefore, this role always runs on all hosts in the 'web_servers' group.
+    # Therefore, this role always runs on all hosts in the 'webservers' group.
     # The actual server/client configuration within Rathole is determined by the
     # 'rathole_role' variable in the host's host_vars file and the rathole.toml.j2 template.
     - role: rathole

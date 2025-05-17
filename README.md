@@ -107,7 +107,7 @@ This file simply defines your target servers and their group memberships. It **d
 **Example `inventory.ini`:**
 
 ```ini
-[web_servers]
+[webservers]
 client.example.com
 server.example.com
 ```
@@ -213,7 +213,7 @@ To change a configuration (e.g., Caddyfile, Rathole config):
 
 ### Adding/Removing Hosts
 
-* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[web_servers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it.
+* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[webservers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it.
 * **Removing hosts**: Remove the host from `inventory.ini`. If you need to uninstall services, you'd create a separate Ansible playbook for de-provisioning.
 
 ### Checking Service Status
