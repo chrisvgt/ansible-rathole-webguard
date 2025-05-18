@@ -22,5 +22,7 @@ caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Use caddy_config_dir
 # Define Caddy plugins conditionally based on enablement variables.
 caddy_plugins: "{{
   (['github.com/caddy-dns/cloudflare'] if enable_cloudflare else []) +
-  (['github.com/hslatman/caddy-crowdsec-bouncer/crowdsec'] if enable_crowdsec else [])
+  (['github.com/hslatman/caddy-crowdsec-bouncer/http',
+    'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
+    'github.com/hslatman/caddy-crowdsec-bouncer/appsec'] if enable_crowdsec else [])
 }}"
