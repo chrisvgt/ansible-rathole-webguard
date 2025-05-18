@@ -36,7 +36,14 @@
 # Iterate over the list of sites defined in host_vars
 {% for site in caddy_sites %}
 {{ site.domain }}:443 {
+{% if enable_crowdsec %}
+    route {
+        crowdsec
+        reverse_proxy localhost:{{ site.local_port }}
+    }
+{% else %}
     reverse_proxy localhost:{{ site.local_port }}
+{% endif %}
 
     # Redirect HTTP to HTTPS (for all GET requests by default)
     @httpget {
