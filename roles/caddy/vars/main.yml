@@ -8,7 +8,7 @@ caddy_data_dir: /var/lib/caddy
 caddy_log_dir: /var/log/caddy
 
 # Define the full path for Caddy's config directory (used for the user's home)
-caddy_config_path: "{{ caddy_config_dir }}" # Define it *first*
+caddy_config_path: "{{ caddy_config_dir }}"
 
 # Define the full path to the Caddy executable
 caddy_install_path: "{{ caddy_install_dir }}/caddy"
@@ -17,7 +17,7 @@ caddy_install_path: "{{ caddy_install_dir }}/caddy"
 caddy_log_path: "{{ caddy_log_dir }}"
 
 # Define the full path to the Caddyfile
-caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Use caddy_config_dir
+caddy_config_file: "{{ caddy_config_dir }}/Caddyfile"
 
 # Define Caddy plugins conditionally based on enablement variables.
 caddy_plugins: "{{
