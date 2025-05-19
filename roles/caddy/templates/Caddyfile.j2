@@ -7,10 +7,10 @@
     # Conditionally enable the CrowdSec middleware globally
 {% if enable_crowdsec %}
     crowdsec {
-        api_url {{ crowdsec_api_url | default('http://localhost:8080') }}
+        api_url http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}
         api_key {{ crowdsec_api_key }}
-        ticker_interval {{ crowdsec_ticker_interval | default('15s') }}
-        appsec_url http://localhost:7422
+        ticker_interval {{ crowdsec_ticker_interval }}
+        appsec_url http://{{ crowdsec_appsec_ip }}:{{ crowdsec_appsec_port }}
 {% if crowdsec_disable_streaming is defined and crowdsec_disable_streaming %}
         disable_streaming
 {% endif %}
