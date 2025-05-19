@@ -5,10 +5,13 @@ Description=Rathole - A secure reverse proxy
 After=network.target
 
 [Service]
+Type=simple
 User={{ rathole_user }}
 Group={{ rathole_group }}
 Restart=on-failure
+RestartSec=5s
 ExecStart={{ rathole_install_path }}/{{ rathole_binary_name }} {% if rathole_role == "client" %}-c{% else %}-s{% endif %} {{ rathole_config_path }}/{{ rathole_config_file }}
+LimitNOFILE=1048576
 
 [Install]
 WantedBy=multi-user.target
