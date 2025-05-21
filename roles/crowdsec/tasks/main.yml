@@ -55,14 +55,15 @@
     enabled: yes
     daemon_reload: yes
 
-- name: Wait for CrowdSec Local API to be ready
-  ansible.builtin.wait_for:
-    port: "{{ crowdsec_lapi_port }}"
-    host: "{{ crowdsec_lapi_ip }}"
-    timeout: 60
-    delay: 5
-  delegate_to: localhost
-  become: false
+# TODO:
+# - name: Wait for CrowdSec Local API to be ready
+#   ansible.builtin.wait_for:
+#     port: "{{ crowdsec_lapi_port }}"
+#     host: "{{ crowdsec_lapi_ip }}"
+#     timeout: 60
+#     delay: 5
+#   delegate_to: localhost
+#   become: false
 
 ## CrowdSec Hub Content Installation
 
