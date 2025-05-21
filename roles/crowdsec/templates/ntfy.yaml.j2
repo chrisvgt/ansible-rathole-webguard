@@ -1,0 +1,27 @@
+# roles/crowdsec/templates/ntfy.yaml.j2
+
+type: http
+name: ntfy
+log_level: info
+{% raw %}
+format: |
+  {{range . -}}
+  {{$alert := . -}}
+  {{range .Decisions -}}
+  {{.Value}} will get {{.Type}} for next {{.Duration}} for triggering {{.Scenario}}
+  Shodan: https://www.shodan.io/host/{{.Value}}
+  CrowdSec CTI: https://app.crowdsec.net/cti/{{.Value}}
+  {{end -}}
+  Country Code: {{$alert.Source.Cn}}
+  ASN: {{$alert.Source.AsName}} ({{$alert.Source.AsNumber}})
+  {{end -}}
+{% endraw %}
+url: https://{{ ntfy_server }}/{{ ntfy_topic }}
+method: POST
+headers:
+  Content-Type: "text/plain"
+{% if ntfy_auth_token %}
+  Authorization: "Bearer {{ ntfy_auth_token }}"
+{% endif %}
+  Title: "Crowdsec Trigger"
+  Tags: "warning"

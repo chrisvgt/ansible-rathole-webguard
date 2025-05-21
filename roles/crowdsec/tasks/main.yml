@@ -136,7 +136,7 @@
     group: root
     mode: '0644'
   become: yes
-  notify: restart crowdsec # Restart CrowdSec to pick up the new acquisition file
+  notify: restart crowdsec
 
 ## CrowdSec Console Enrollment (for engine management)
 # Enroll the CrowdSec engine with the Central Console for monitoring and advanced features.
@@ -194,5 +194,43 @@
     group: root
     mode: '0644'
   become: yes
-  notify: restart crowdsec # Notify handler to restart/start CrowdSec if newly installed or updated
-  # This acquisition file tells CrowdSec where to read Caddy logs for detection.
+  notify: restart crowdsec
+
+  ## CrowdSec Ntfy Setup
+
+- name: Ensure CrowdSec notifications directory exists
+  ansible.builtin.file:
+    path: /etc/crowdsec/notifications/
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ntfy_enabled
+
+- name: Create ntfy notification configuration file
+  ansible.builtin.template:
+    src: "templates/ntfy.yaml.j2"
+    dest: /etc/crowdsec/notifications/ntfy.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart crowdsec
+  when: ntfy_enabled
+
+- name: Install GeoIP enrichment parser if enabled
+  ansible.builtin.command:
+    cmd: cscli hub install crowdsecurity/geoip-enrich
+  register: geoip_install_output
+  changed_when: "'already installed' not in geoip_install_output.stdout"
+  notify: restart crowdsec
+  when: ntfy_enabled
+
+- name: Create/Overwrite profiles.yaml, activate ntfy or dynamic increase of blocking time
+  ansible.builtin.template:
+    src: "templates/profiles.yaml.j2"
+    dest: /etc/crowdsec/profiles.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart crowdsec
+  when: ntfy_enabled or duration_expr
