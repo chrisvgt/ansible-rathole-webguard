@@ -1,7 +1,6 @@
 ---
 # Variables that apply to all servers
 
-# EXPERIMENTAL
 # Global toggle for Cloudflare DNS challenges
 enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Caddy plugin
 
