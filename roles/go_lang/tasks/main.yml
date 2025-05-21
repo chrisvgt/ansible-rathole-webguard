@@ -1,5 +1,9 @@
 # roles/go_lang/tasks/main.yml
 
+- name: Normalize Go installation path
+  ansible.builtin.set_fact:
+    go_install_path: "{{ go_install_path | regex_replace('/+$', '') }}"
+
 - name: Ensure Go installation path exists
   ansible.builtin.file:
     path: "{{ go_install_path }}" # Typically /usr/local
@@ -8,22 +12,34 @@
   become: yes
 
 - name: Check if Go is already installed
-  ansible.builtin.stat:
-    path: "{{ go_binary_path }}/go" # e.g., /usr/local/go/bin/go
-  register: go_binary_stat
+  ansible.builtin.command:
+    cmd: "{{ go_binary_path }}/go version"
+  register: go_version_check
+  failed_when: false
+  changed_when: false
 
-- name: Download Go tarball
+- name: Set installed Go version fact
+  ansible.builtin.set_fact:
+    installed_go_version: "{{ go_version_check.stdout | regex_search('go[0-9.]+') }}"
+  when: go_version_check.rc == 0
+
+- name: Check if Go tarball version matches installed version
+  ansible.builtin.set_fact:
+    go_version_match: "{{ installed_go_version == ('go' + go_version) }}"
+  when: installed_go_version is defined
+
+- name: Ensure Go tarball is downloaded if not installed or version mismatch
   ansible.builtin.get_url:
     url: "{{ go_download_url }}"
     dest: "/tmp/{{ go_archive_name }}"
     mode: '0644'
-  when: not go_binary_stat.stat.exists # Only download if Go isn't installed
+  when: go_version_check.rc != 0 or not go_version_match | default(false)
 
 - name: Remove existing Go installation directory (if present)
   ansible.builtin.file:
     path: "{{ go_install_path }}/go"
     state: absent
-  when: not go_binary_stat.stat.exists # Only remove if Go needs reinstallation
+  when: go_version_check.rc != 0 or not go_version_match | default(false)
   become: yes
 
 - name: Extract Go tarball to installation path
@@ -31,23 +47,21 @@
     src: "/tmp/{{ go_archive_name }}"
     dest: "{{ go_install_path }}"
     remote_src: yes
-    creates: "{{ go_install_path }}/go/bin/go" # Idempotent: only extract if binary doesn't exist
-  when: not go_binary_stat.stat.exists
+    creates: "{{ go_install_path }}/go/bin/go"
+  when: go_version_check.rc != 0 or not go_version_match | default(false)
   become: yes
 
 - name: Configure Go environment variables for all users
   ansible.builtin.blockinfile:
     path: "/etc/profile.d/go_env.sh"
     create: yes
-    mode: '0644'
+      # Add Go's binary directory to PATH for accessing Go tools
+      # Add GOPATH's binary directory to PATH for accessing installed Go binaries
+      export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
     block: |
       export GOROOT={{ go_install_path }}/go
-      export GOPATH=$HOME/go
+    marker: "# {mark} ANSIBLE MANAGED BLOCK for Go"
       export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
     marker: "# {mark} ANSIBLE MANAGED BLOCK for Go environment variables"
+    validate: "grep -q '{{ go_install_path }}/go' %s && grep -q 'GOPATH=$HOME/go' %s && grep -q 'PATH=$PATH:$GOROOT/bin:$GOPATH/bin' %s"
   become: yes
-
-- name: Clean up Go tarball
-  ansible.builtin.file:
-    path: "/tmp/{{ go_archive_name }}"
-    state: absent
