@@ -200,9 +200,12 @@
   ansible.builtin.command:
     cmd: cscli hub install crowdsecurity/geoip-enrich
   register: geoip_install_output
-  changed_when: "'already installed' not in geoip_install_output.stdout"
+  changed_when: "'Successfully installed' in geoip_install_output.stdout or 'Upgraded' in geoip_install_output.stdout"
+  failed_when: "(geoip_install_output.rc != 0 and 'already installed' not in geoip_install_output.stderr and 'already enabled' not in geoip_install_output.stdout)"
   notify: Restart Crowdsec Service
-  when: ntfy_enabled
+  when: 
+    - ntfy_enabled
+    - "'crowdsecurity/geoip-enrich' not in (cscli_hub_update_output.stdout | default(''))"
 
 - name: Create/update CrowdSec profiles.yaml for Ntfy or dynamic blocking
   ansible.builtin.template:
