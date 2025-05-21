@@ -1,5 +1,5 @@
 ---
-caddy_version: "v2.10.0"
+caddy_version: "2.10.0"
 caddy_user: caddy
 caddy_group: caddy
 caddy_install_dir: /usr/local/bin
