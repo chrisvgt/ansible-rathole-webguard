@@ -4,7 +4,7 @@
 
 - name: Skip CrowdSec role if disabled
   ansible.builtin.meta: end_play
-  when: not enable_crowdsec | default(true) # Role skipped if `enable_crowdsec` is false (defaults to true).
+  when: not enable_crowdsec | default(true)
 
 ## Repository and Package Installation
 
@@ -13,30 +13,22 @@
     name: curl
     state: present
     update_cache: yes
-  become: yes
-  # Installs `curl`, required for adding the CrowdSec repository.
 
 - name: Add CrowdSec APT repository via script
   ansible.builtin.shell:
     cmd: curl -s https://install.crowdsec.net | sudo sh
-    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list # Idempotent: runs only if repo file doesn't exist.
+    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
   args:
     executable: /bin/bash
-  become: yes
 
-- name: Update APT cache
-  ansible.builtin.apt:
-    update_cache: yes
-  become: yes
 
-- name: Create CrowdSec data directory
+- name: Ensure CrowdSec data directory exists
   ansible.builtin.file:
     path: /var/lib/crowdsec
     state: directory
     owner: root
     group: root
     mode: '0755'
-  become: yes
 
 - name: Install CrowdSec agent and iptables bouncer
   ansible.builtin.apt:
@@ -44,7 +36,6 @@
       - crowdsec
       - crowdsec-firewall-bouncer-iptables
     state: present
-  become: yes
   notify: Restart Crowdsec Service
 
 ## Post-Installation and Service Management
@@ -54,8 +45,7 @@
     name: crowdsec
     state: started
     enabled: yes
-    daemon_reload: yes # Reloads systemd units if Caddy's service file changed.
-  become: yes
+    daemon_reload: yes
 
 - name: Wait for CrowdSec Local API to be ready
   ansible.builtin.wait_for:
@@ -65,7 +55,6 @@
     delay: 5
   delegate_to: localhost
   become: false
-  when: inventory_hostname == 'prod_web_server' # Adjust this condition as needed for your specific host.
 
 ## CrowdSec Hub Content Installation
 
@@ -74,28 +63,27 @@
   register: cscli_hub_update_output
   changed_when: "'Nothing to do' not in cscli_hub_update_output.stdout"
   failed_when: cscli_hub_update_output.rc != 0
-  become: yes
 
 - name: Install CrowdSecurity base HTTP scenarios
   ansible.builtin.command: cscli collections install crowdsecurity/base-http-scenarios
   register: cscli_base_http_scenarios_output
   changed_when: "'Successfully installed' in cscli_base_http_scenarios_output.stdout or 'Upgraded' in cscli_base_http_scenarios_output.stdout"
   failed_when: "(cscli_base_http_scenarios_output.rc != 0 and 'already installed' not in cscli_base_http_scenarios_output.stderr and 'already enabled' not in cscli_base_http_scenarios_output.stdout)"
-  become: yes
+  when: "'crowdsecurity/base-http-scenarios' not in (cscli_hub_update_output.stdout | default(''))"
 
 - name: Install Caddy logs parser
   ansible.builtin.command: cscli parsers install crowdsecurity/caddy-logs
   register: cscli_caddy_logs_output
   changed_when: "'Successfully installed' in cscli_caddy_logs_output.stdout or 'Upgraded' in cscli_caddy_logs_output.stdout"
   failed_when: "(cscli_caddy_logs_output.rc != 0 and 'already installed' not in cscli_caddy_logs_output.stderr and 'already enabled' not in cscli_caddy_logs_output.stdout)"
-  become: yes
+  when: "'crowdsecurity/caddy-logs' not in (cscli_hub_update_output.stdout | default(''))"
 
 - name: Install generic HTTP logs parser (optional)
   ansible.builtin.command: cscli parsers install crowdsecurity/http-logs
   register: cscli_http_logs_output
   changed_when: "'Successfully installed' in cscli_http_logs_output.stdout or 'Upgraded' in cscli_http_logs_output.stdout"
   failed_when: "(cscli_http_logs_output.rc != 0 and 'already installed' not in cscli_http_logs_output.stderr and 'already enabled' not in cscli_http_logs_output.stdout)"
-  become: yes
+  when: "'crowdsecurity/http-logs' not in (cscli_hub_update_output.stdout | default(''))"
 
 ## CrowdSec AppSec Setup
 
@@ -104,21 +92,21 @@
   register: cscli_appsec_virtual_patching_output
   changed_when: "'Successfully installed' in cscli_appsec_virtual_patching_output.stdout or 'Upgraded' in cscli_appsec_virtual_patching_output.stdout"
   failed_when: "(cscli_appsec_virtual_patching_output.rc != 0 and 'already installed' not in cscli_appsec_virtual_patching_output.stderr and 'already enabled' not in cscli_appsec_virtual_patching_output.stdout)"
-  become: yes
+  when: "'crowdsecurity/appsec-virtual-patching' not in (cscli_hub_update_output.stdout | default(''))"
 
 - name: Install CrowdSec AppSec generic rules collection
   ansible.builtin.command: cscli collections install crowdsecurity/appsec-generic-rules
   register: cscli_appsec_generic_rules_output
   changed_when: "'Successfully installed' in cscli_appsec_generic_rules_output.stdout or 'Upgraded' in cscli_appsec_generic_rules_output.stdout"
   failed_when: "(cscli_appsec_generic_rules_output.rc != 0 and 'already installed' not in cscli_appsec_generic_rules_output.stderr and 'already enabled' not in cscli_appsec_generic_rules_output.stdout)"
-  become: yes
+  when: "'crowdsecurity/appsec-generic-rules' not in (cscli_hub_update_output.stdout | default(''))"
 
 - name: Install CrowdSec AppSec HTTP CVE collection
   ansible.builtin.command: cscli collections install crowdsecurity/http-cve
   register: cscli_appsec_http_cve_output
   changed_when: "'Successfully installed' in cscli_appsec_http_cve_output.stdout or 'Upgraded' in cscli_appsec_http_cve_output.stdout"
   failed_when: "(cscli_appsec_http_cve_output.rc != 0 and 'already installed' not in cscli_appsec_http_cve_output.stderr and 'already enabled' not in cscli_appsec_http_cve_output.stdout)"
-  become: yes
+  when: "'crowdsecurity/http-cve' not in (cscli_hub_update_output.stdout | default(''))"
 
 - name: Configure CrowdSec to listen for AppSec requests
   ansible.builtin.template:
@@ -136,14 +124,12 @@
   register: cscli_console_status
   changed_when: false
   failed_when: false
-  become: yes
 
 - name: Enroll CrowdSec engine with the Console
   ansible.builtin.command: "cscli console enroll --enable context {{ crowdsec_enrollment_key }}"
   register: console_enroll_output
   changed_when: "'Successfully enrolled with the Console' in console_enroll_output.stdout"
   failed_when: "console_enroll_output.rc != 0 and 'already enrolled' not in console_enroll_output.stderr and 'You are already enrolled' not in console_enroll_output.stdout"
-  become: yes
   when:
     - enable_crowdsec | default(true)
     - crowdsec_enrollment_key is defined and crowdsec_enrollment_key | length > 0
@@ -155,7 +141,6 @@
   register: cscli_bouncers_list
   changed_when: false
   failed_when: false
-  become: yes
 
 - name: Register Caddy bouncer with CrowdSec Local API
   ansible.builtin.command: "cscli bouncers add caddy-bouncer -k {{ crowdsec_api_key }}"
@@ -166,7 +151,6 @@
   register: bouncer_registration_output
   changed_when: bouncer_registration_output.rc == 0
   failed_when: bouncer_registration_output.rc != 0 and 'already exists' not in bouncer_registration_output.stderr
-  become: yes
 
 - name: Configure CrowdSec to monitor Caddy access logs
   ansible.builtin.copy:
@@ -180,7 +164,6 @@
     owner: root
     group: root
     mode: '0644'
-  become: yes
   notify: Restart Crowdsec Service
 
 ## CrowdSec Ntfy and Profile Configuration
