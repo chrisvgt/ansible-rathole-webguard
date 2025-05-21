@@ -6,11 +6,29 @@
     state: directory
     mode: '0755'
 
-- name: Download xcaddy tarball
+- name: Check current xcaddy version
+  ansible.builtin.command:
+    cmd: "{{ xcaddy_install_path }}/xcaddy --version"
+  register: xcaddy_version_check
+  ignore_errors: yes
+
+- name: Set xcaddy version changed flag
+  ansible.builtin.set_fact:
+    xcaddy_version_changed: "{{ xcaddy_version_check.stdout | regex_search('^v?{{ xcaddy_version }}') is not defined }}"
+
+- name: Display xcaddy version change message
+  ansible.builtin.debug:
+    msg: >
+      Current xcaddy version: {{ xcaddy_version_check.stdout | default('not installed') }}.
+      Target version: {{ xcaddy_version }}.
+      Version changed: {{ xcaddy_version_changed }}.
+
+- name: Download xcaddy tarball if version has changed
   ansible.builtin.get_url:
     url: "{{ xcaddy_download_url }}"
     dest: "/tmp/xcaddy_temp.tar.gz"
     mode: '0644'
+  when: xcaddy_version_changed
   register: xcaddy_download_result
   until: xcaddy_download_result is succeeded
   retries: 5
@@ -22,6 +40,7 @@
     dest: "/tmp/"
     remote_src: yes
     creates: "/tmp/xcaddy" # Idempotent: only extract if binary doesn't exist
+  when: xcaddy_version_changed
 
 - name: Move xcaddy to installation directory
   ansible.builtin.copy:
@@ -31,6 +50,7 @@
     group: root
     mode: '0755' # Make executable
     remote_src: yes # Source is on the remote host (downloaded to /tmp)
+  when: xcaddy_version_changed
 
 - name: Clean up xcaddy temporary files
   ansible.builtin.file:
@@ -39,3 +59,4 @@
   with_items:
     - "/tmp/xcaddy_temp.tar.gz"
     - "/tmp/xcaddy"
+  when: xcaddy_version_changed
