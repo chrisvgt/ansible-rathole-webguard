@@ -1,6 +1,10 @@
-- name: restart caddy
+# roles/caddy/handlers/main.yml
+
+# --- Handlers for Caddy Service ---
+
+- name: Restart Caddy Service
   ansible.builtin.systemd:
     name: caddy
     state: restarted
-    daemon_reload: yes # Ensures systemd reloads unit files if they changed
+    daemon_reload: yes # Ensure systemd reloads Caddy's unit file if it changed
   become: yes

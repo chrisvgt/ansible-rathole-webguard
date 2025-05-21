@@ -1,5 +1,6 @@
 # roles/caddy/tasks/main.yml
-- name: Install required build dependencies for Caddy
+
+- name: Install Caddy build dependencies
   ansible.builtin.apt:
     name:
       - git
@@ -9,71 +10,38 @@
     state: present
   become: yes
 
-- name: Create Caddy group
+- name: Create Caddy system group
   ansible.builtin.group:
     name: "{{ caddy_group }}"
     state: present
     system: true
   become: yes
 
-- name: Create Caddy user
+- name: Create Caddy system user
   ansible.builtin.user:
     name: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     system: yes
     shell: "/usr/sbin/nologin"
-    create_home: no
-    # Caddy's HOME will be set via Environment variable in systemd service for better control
+    create_home: no # Caddy's HOME is set via systemd environment variable
     state: present
   become: yes
 
-# --- Ensure Caddy Directories Exist and Have Correct Permissions ---
-- name: Ensure Caddy configuration directory exists and is owned by caddy user
+- name: Ensure Caddy directories exist with correct ownership and permissions
   ansible.builtin.file:
-    path: "{{ caddy_config_dir }}" # /etc/caddy
+    path: "{{ item.path }}"
     state: directory
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
-    mode: '0755'
+    mode: "{{ item.mode }}"
+    recurse: "{{ item.recurse | default(false) }}" # Apply recursively for data directory
+  loop:
+    - { path: "{{ caddy_config_dir }}", mode: '0755' }
+    - { path: "{{ caddy_data_dir }}", mode: '0775', recurse: true } # Writable for autosave.json
+    - { path: "{{ caddy_data_dir }}/caddy", mode: '0775' } # Subdirectory for autosave etc.
+    - { path: "{{ caddy_log_dir }}", mode: '0755' }
   become: yes
 
-- name: Ensure Caddy data directory exists and and is owned by caddy user
-  ansible.builtin.file:
-    path: "{{ caddy_data_dir }}" # /var/lib/caddy
-    state: directory
-    owner: "{{ caddy_user }}"
-    group: "{{ caddy_group }}"
-    mode: '0755'
-  become: yes
-
-- name: Ensure Caddy config subdirectory (for autosave etc.) exists and is writable
-  ansible.builtin.file:
-    path: "{{ caddy_data_dir }}/caddy"
-    state: directory
-    owner: "{{ caddy_user }}"
-    group: "{{ caddy_group }}"
-    mode: '0775'
-  become: yes
-
-- name: Ensure Caddy log directory exists and is owned by caddy user
-  ansible.builtin.file:
-    path: "{{ caddy_log_dir }}" # /var/log/caddy
-    state: directory
-    owner: "{{ caddy_user }}"
-    group: "{{ caddy_group }}"
-    mode: '0755'
-  become: yes
-
-- name: Ensure Caddy's designated HOME directory (data dir) is writable for autosave.json
-  ansible.builtin.file:
-    path: "{{ caddy_data_dir }}" # This is the HOME set in caddy.service.j2
-    owner: "{{ caddy_user }}"
-    group: "{{ caddy_group }}"
-    mode: "0775" # Allow caddy user/group to write within this directory
-    recurse: yes # Important for subdirectories like .config/caddy
-  become: yes
-
-# --- Build and Install Caddy with xcaddy ---
 - name: Build Caddy with specified plugins using xcaddy
   ansible.builtin.command:
     cmd: /usr/local/bin/xcaddy build v{{ caddy_version }} --output {{ caddy_install_path }} {% if caddy_plugins | length > 0 and caddy_plugins[0] != '' %}{% for plugin in caddy_plugins %} --with {{ plugin }}{% endfor %}{% endif %}
@@ -82,8 +50,8 @@
     PATH: "{{ go_binary_path }}:{{ ansible_env.PATH }}"
     GOPATH: "/root/go"
   become: yes
-  changed_when: true
-  notify: restart caddy
+  changed_when: true # Always report as changed for consistency
+  notify: Restart Caddy Service
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
@@ -101,15 +69,15 @@
     group: "{{ caddy_group }}"
     mode: '0644'
   become: yes
-  notify: restart caddy
+  notify: Restart Caddy Service
 
-- name: Format Caddyfile
+- name: Format Caddyfile for readability
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
   become: yes
-  become_user: "{{ caddy_user }}"
-  changed_when: true
-  notify: restart caddy
+  become_user: "{{ caddy_user }}" # Run as caddy user to ensure correct permissions
+  changed_when: true # Always report as changed for consistency
+  notify: Restart Caddy Service
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
@@ -119,9 +87,9 @@
     group: root
     mode: '0644'
   become: yes
-  notify: restart caddy
+  notify: Restart Caddy Service
 
-- name: Reload Systemd daemon
+- name: Reload Systemd daemon to pick up new unit file
   ansible.builtin.systemd:
     daemon_reload: yes
   become: yes

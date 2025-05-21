@@ -1,62 +1,64 @@
+# File Managed by Ansible
 # roles/caddy/templates/Caddyfile.j2
-# Caddy Configuration File (Managed by Ansible)
-# Path: /etc/caddy/Caddyfile
 
-# Global options for Caddy
+# Global Caddy Options
 {
-    # Conditionally enable the CrowdSec middleware globally
-{% if enable_crowdsec %}
+    # Enable CrowdSec middleware globally if `enable_crowdsec` is true
+    {% if enable_crowdsec %}
     crowdsec {
         api_url http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}
         api_key {{ crowdsec_api_key }}
         ticker_interval {{ crowdsec_ticker_interval }}
         appsec_url http://{{ crowdsec_appsec_ip }}:{{ crowdsec_appsec_port }}
-{% if crowdsec_disable_streaming is defined and crowdsec_disable_streaming %}
+        {% if crowdsec_disable_streaming is defined and crowdsec_disable_streaming %}
         disable_streaming
-{% endif %}
-{% if crowdsec_enable_hard_fails is defined and crowdsec_enable_hard_fails %}
+        {% endif %}
+        {% if crowdsec_enable_hard_fails is defined and crowdsec_enable_hard_fails %}
         enable_hard_fails
-{% endif %}
+        {% endif %}
     }
-{% endif %}
+    {% endif %}
 
-    # Conditionally enable Cloudflare DNS challenge (if needed for TLS)
-{% if enable_cloudflare %}
+    # Enable Cloudflare DNS challenge for TLS if `enable_cloudflare` is true
+    {% if enable_cloudflare %}
     tls {
         dns cloudflare {{ cloudflare_api_token }}
     }
-{% endif %}
+    {% endif %}
 
-    # Global logging for Caddy's internal operations (optional)
+    # Global logging for Caddy's internal operations
     log {
         output stderr
         level INFO
     }
 }
 
-# Iterate over the list of sites defined in host_vars
+# Site-specific configurations from `caddy_sites` variable
 {% for site in caddy_sites %}
 {{ site.domain }}:443 {
-{% if enable_crowdsec %}
+    {% if enable_crowdsec %}
+    # Apply CrowdSec protection and reverse proxy
     route {
         crowdsec
         appsec
         reverse_proxy localhost:{{ site.local_port }}
     }
-{% else %}
+    {% else %}
+    # Simple reverse proxy
     reverse_proxy localhost:{{ site.local_port }}
-{% endif %}
+    {% endif %}
 
-    # Redirect HTTP to HTTPS (for all GET requests by default)
+    # Redirect HTTP to HTTPS for GET requests
     @httpget {
         protocol http
-{% if site.ntfy_path_regexp is defined %}
+        {% if site.ntfy_path_regexp is defined %}
         method GET
         path_regexp {{ site.ntfy_path_regexp }}
-{% endif %}
+        {% endif %}
     }
     redir @httpget https://{host}{uri}
 
+    # Access logging for this site
     log {
         output file {{ site.log_file | default('/var/log/caddy/' + site.name + '.access.log') }} {
             roll_size {{ site.log_roll_size | default('10mb') }}
