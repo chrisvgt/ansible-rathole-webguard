@@ -36,6 +36,6 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop:
+  with_items:
     - "/tmp/xcaddy_temp.tar.gz"
     - "/tmp/xcaddy"
