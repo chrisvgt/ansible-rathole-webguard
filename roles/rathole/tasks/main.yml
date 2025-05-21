@@ -45,6 +45,13 @@
   # This task dynamically sets the download URL for different architectures.
   # For example, if ansible_architecture is 'aarch64', it will build URL for 'linux-aarch64'.
 
+- name: Display version difference
+  ansible.builtin.debug:
+    msg: >
+      Rathole installed version: {{ rathole_installed_version | default('not installed') }},
+      Target version: {{ rathole_version }}
+  when: rathole_installed_version != rathole_version
+
 - name: Download Rathole binary
   ansible.builtin.get_url:
     url: "{{ rathole_download_url }}"
