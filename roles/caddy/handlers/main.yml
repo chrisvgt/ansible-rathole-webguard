@@ -7,4 +7,3 @@
     name: caddy
     state: restarted
     daemon_reload: yes # Ensure systemd reloads Caddy's unit file if it changed
-  become: yes

@@ -5,7 +5,6 @@
     path: "{{ xcaddy_install_path }}" # e.g., /usr/local/bin
     state: directory
     mode: '0755'
-  become: yes
 
 - name: Download xcaddy tarball
   ansible.builtin.get_url:
@@ -32,7 +31,6 @@
     group: root
     mode: '0755' # Make executable
     remote_src: yes # Source is on the remote host (downloaded to /tmp)
-  become: yes
 
 - name: Clean up xcaddy temporary files
   ansible.builtin.file:

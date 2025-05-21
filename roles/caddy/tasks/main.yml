@@ -8,14 +8,12 @@
       - apt-transport-https
       - curl
     state: present
-  become: yes
 
 - name: Create Caddy system group
   ansible.builtin.group:
     name: "{{ caddy_group }}"
     state: present
     system: true
-  become: yes
 
 - name: Create Caddy system user
   ansible.builtin.user:
@@ -25,7 +23,6 @@
     shell: "/usr/sbin/nologin"
     create_home: no # Caddy's HOME is set via systemd environment variable
     state: present
-  become: yes
 
 - name: Ensure Caddy directories exist with correct ownership and permissions
   ansible.builtin.file:
@@ -40,7 +37,6 @@
     - { path: "{{ caddy_data_dir }}", mode: '0775', recurse: true } # Writable for autosave.json
     - { path: "{{ caddy_data_dir }}/caddy", mode: '0775' } # Subdirectory for autosave etc.
     - { path: "{{ caddy_log_dir }}", mode: '0755' }
-  become: yes
 
 - name: Build Caddy with specified plugins using xcaddy
   ansible.builtin.command:
@@ -49,7 +45,6 @@
   environment:
     PATH: "{{ go_binary_path }}:{{ ansible_env.PATH }}"
     GOPATH: "/root/go"
-  become: yes
   changed_when: true # Always report as changed for consistency
   notify: Restart Caddy Service
 
@@ -59,7 +54,6 @@
     mode: '0755'
     owner: root
     group: root
-  become: yes
 
 - name: Create Caddyfile from template
   ansible.builtin.template:
@@ -68,7 +62,6 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: '0644'
-  become: yes
   notify: Restart Caddy Service
 
 - name: Format Caddyfile for readability

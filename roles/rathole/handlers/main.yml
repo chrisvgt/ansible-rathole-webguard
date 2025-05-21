@@ -6,4 +6,3 @@
   ansible.builtin.systemd:
     name: rathole
     state: restarted
-  become: yes

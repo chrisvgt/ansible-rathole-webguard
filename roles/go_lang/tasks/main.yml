@@ -9,7 +9,6 @@
     path: "{{ go_install_path }}" # Typically /usr/local
     state: directory
     mode: '0755'
-  become: yes
 
 - name: Check if Go is already installed
   ansible.builtin.command:
@@ -40,7 +39,6 @@
     path: "{{ go_install_path }}/go"
     state: absent
   when: go_version_check.rc != 0 or not go_version_match | default(false)
-  become: yes
 
 - name: Extract Go tarball to installation path
   ansible.builtin.unarchive:
@@ -49,7 +47,6 @@
     remote_src: yes
     creates: "{{ go_install_path }}/go/bin/go"
   when: go_version_check.rc != 0 or not go_version_match | default(false)
-  become: yes
 
 - name: Configure Go environment variables for all users
   ansible.builtin.blockinfile:
@@ -64,4 +61,3 @@
       export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
     marker: "# {mark} ANSIBLE MANAGED BLOCK for Go environment variables"
     validate: "grep -q '{{ go_install_path }}/go' %s && grep -q 'GOPATH=$HOME/go' %s && grep -q 'PATH=$PATH:$GOROOT/bin:$GOPATH/bin' %s"
-  become: yes
