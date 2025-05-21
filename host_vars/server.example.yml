@@ -2,6 +2,8 @@
 # --- Crowdsec Keys ---
 crowdsec_api_key: "{{ vault_crowdsec_api_key }}" # Generate key with: head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
 crowdsec_enrollment_key: "{{ vault_crowdsec_enrollment_key }}" # Enrollment key for crowdsec security engine, connect with console
+duration_expr: true # Activate dynamic increase of blocking time
+
 # --- ntfy Setup ---
 ntfy_enabled: false # Set to true to enable ntfy notifications, false to skip all ntfy tasks
 ntfy_server: "ntfy.sh"

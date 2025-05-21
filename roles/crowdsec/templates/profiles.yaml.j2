@@ -1,0 +1,33 @@
+# /roles/crowdsec/templates/profiles.yaml.j2
+
+name: default_ip_remediation
+#debug: true
+filters:
+ - Alert.Remediation == true && Alert.GetScope() == "Ip"
+decisions:
+ - type: ban
+   duration: 4h
+{% if duration_expr %}
+duration_expr: Sprintf('%dh', (GetDecisionsCount(Alert.GetValue()) + 1) * 4)
+{% endif %}
+{% if ntfy_enabled %}
+notifications:
+   - ntfy
+{% endif %}
+on_success: break
+---
+name: default_range_remediation
+#debug: true
+filters:
+ - Alert.Remediation == true && Alert.GetScope() == "Range"
+decisions:
+ - type: ban
+   duration: 4h
+{% if duration_expr %}
+duration_expr: Sprintf('%dh', (GetDecisionsCount(Alert.GetValue()) + 1) * 4)
+{% endif %}
+{% if ntfy_enabled %}
+notifications:
+   - ntfy
+{% endif %}
+on_success: break
