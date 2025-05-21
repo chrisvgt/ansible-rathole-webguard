@@ -1,41 +1,51 @@
 - name: ansible-rathole-webguard
   hosts: webservers
-  become: yes
+  become: yes # All tasks in this play will run with root privileges
 
-  # Pre-tasks: Prepare the system with required packages and directories
   pre_tasks:
-    - name: Ensure APT cache is updated
+    - name: Update APT cache (Debian-based systems)
       ansible.builtin.apt:
         update_cache: yes
-        cache_valid_time: 3600
+        cache_valid_time: 3600 # Ensure cache is updated, but only once an hour
       when: ansible_os_family == "Debian"
 
-    - name: Install common necessary packages
+    - name: Install common system utilities
       ansible.builtin.apt:
         name:
-          - build-essential
-          - curl
-          - unzip
-          - git
-          - vim
-          - htop
+          - build-essential # For compiling software (e.g., Go/Caddy)
+          - curl          # For downloading files
+          - unzip         # For extracting archives
+          - git           # For version control and cloning repositories
+          - vim           # A popular text editor
+          - htop          # An interactive process viewer
         state: present
 
     - name: Ensure /usr/local/bin exists
       ansible.builtin.file:
         path: /usr/local/bin
         state: directory
-        mode: '0755'
+        mode: '0755' # Standard permissions for executable binaries
 
-  # Roles: Only install server components if rathole_role == "server"
-  # crowdsec is optional and controlled by enable_crowdsec variable
   roles:
+    # The 'go_lang' and 'xcaddy' roles are prerequisites for building Caddy.
+    # They are only included if the host is configured as a Rathole 'server'
+    # because server mode typically involves Caddy as a reverse proxy.
     - role: go_lang
       when: rathole_role == "server"
     - role: xcaddy
       when: rathole_role == "server"
+
+    # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
+    # Caddy acts as the web server and reverse proxy in the server setup.
     - role: caddy
       when: rathole_role == "server"
+
+    # The 'crowdsec' role provides security and is optional.
+    # It's included only if the host is a Rathole 'server' AND 'enable_crowdsec' is true.
     - role: crowdsec
       when: rathole_role == "server" and enable_crowdsec
-    - role: rathole  # Always install rathole role
+
+    # The 'rathole' role is always applied. Its internal tasks will
+    # conditionally configure it as a 'server' or 'client' based on the
+    # 'rathole_role' variable defined for the host.
+    - role: rathole
