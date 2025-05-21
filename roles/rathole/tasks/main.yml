@@ -1,17 +1,19 @@
 # roles/rathole/tasks/main.yml
 
-- name: Create Rathole system group
+- name: Ensure Rathole system group exists
   ansible.builtin.group:
     name: "{{ rathole_group }}"
     state: present
+  when: rathole_group not in ansible_facts['group_names']
 
-- name: Create Rathole system user
+- name: Ensure Rathole system user exists
   ansible.builtin.user:
     name: "{{ rathole_user }}"
     group: "{{ rathole_group }}"
     create_home: no
-    shell: "/usr/sbin/nologin" # Use /usr/sbin/nologin for broader compatibility
+    shell: "/usr/sbin/nologin"
     state: present
+  when: rathole_user not in ansible_facts['users']
 
 - name: Check existing Rathole version
   ansible.builtin.command: "{{ rathole_install_path }}/{{ rathole_binary_name }} --version"
@@ -56,6 +58,7 @@
     group: "{{ rathole_group }}"
     mode: '0755'
   become: yes
+  when: not (ansible_facts['files'][rathole_config_path] is defined and ansible_facts['files'][rathole_config_path]['isdir'])
 
 - name: Create or update Rathole configuration file
   ansible.builtin.template:
@@ -66,6 +69,8 @@
     mode: '0644'
   become: yes
   notify: Restart Rathole Service
+  when: ansible_facts['files'][rathole_config_path + '/' + rathole_config_file]['checksum'] != lookup('file', 'templates/rathole.toml.j2', errors='ignore') | checksum if ansible_facts['files'][rathole_config_path + '/' + rathole_config_file] is defined else true
+  register: rathole_config_changed
 
 - name: Create Systemd unit file for Rathole
   ansible.builtin.template:
@@ -76,11 +81,14 @@
     mode: '0644'
   become: yes
   notify: Restart Rathole Service
+  when: ansible_facts['files']['/etc/systemd/system/rathole.service']['checksum'] != lookup('file', 'templates/rathole.service.j2', errors='ignore') | checksum if ansible_facts['files']['/etc/systemd/system/rathole.service'] is defined else true
+  register: rathole_service_changed
 
 - name: Reload Systemd daemon
   ansible.builtin.systemd:
     daemon_reload: yes
   become: yes
+  when: rathole_service_changed.changed
 
 - name: Enable and start Rathole service
   ansible.builtin.systemd:
@@ -88,3 +96,4 @@
     enabled: yes
     state: started
   become: yes
+  when: rathole_config_changed.changed or rathole_service_changed.changed
