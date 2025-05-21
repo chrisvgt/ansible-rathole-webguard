@@ -1,4 +1,3 @@
----
 - name: restart caddy
   ansible.builtin.systemd:
     name: caddy

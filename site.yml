@@ -1,4 +1,3 @@
----
 - name: ansible-rathole-webguard
   hosts: webservers
   become: yes

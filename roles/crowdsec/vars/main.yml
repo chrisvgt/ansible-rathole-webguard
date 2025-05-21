@@ -1,4 +1,3 @@
----
 crowdsec_lapi_ip: "127.0.0.1"
 crowdsec_lapi_port: "8080"
 crowdsec_ticker_interval: "15s"

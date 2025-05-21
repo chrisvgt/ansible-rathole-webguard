@@ -1,4 +1,3 @@
----
 - name: Ensure /usr/local exists
   ansible.builtin.file:
     path: "{{ go_install_path }}"

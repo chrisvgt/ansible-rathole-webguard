@@ -1,4 +1,3 @@
----
 - name: Ensure xcaddy installation path exists
   ansible.builtin.file:
     path: "{{ xcaddy_install_path }}"

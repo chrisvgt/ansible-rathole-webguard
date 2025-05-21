@@ -1,5 +1,4 @@
 # roles/caddy/tasks/main.yml
----
 - name: Install required build dependencies for Caddy
   ansible.builtin.apt:
     name:
