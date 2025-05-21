@@ -1,10 +1,22 @@
 # roles/rathole/tasks/main.yml
 
+- name: Check if Rathole group exists
+  ansible.builtin.shell: getent group "{{ rathole_group }}"
+  register: rathole_group_check
+  changed_when: false
+  failed_when: false
+
 - name: Ensure Rathole system group exists
   ansible.builtin.group:
     name: "{{ rathole_group }}"
     state: present
-  when: rathole_group not in ansible_facts['group_names']
+  when: rathole_group_check.rc != 0
+
+- name: Check if Rathole user exists
+  ansible.builtin.shell: id -u "{{ rathole_user }}"
+  register: rathole_user_check
+  changed_when: false
+  failed_when: false
 
 - name: Ensure Rathole system user exists
   ansible.builtin.user:
@@ -13,7 +25,7 @@
     create_home: no
     shell: "/usr/sbin/nologin"
     state: present
-  when: rathole_user not in ansible_facts['users']
+  when: rathole_user_check.rc != 0
 
 - name: Check existing Rathole version
   ansible.builtin.command: "{{ rathole_install_path }}/{{ rathole_binary_name }} --version"
@@ -22,9 +34,14 @@
   changed_when: false
   ignore_errors: true
 
+- name: Extract Rathole version from output
+  ansible.builtin.set_fact:
+    rathole_installed_version: "{{ rathole_version_check.stdout | regex_search('Build Version:\\s+([0-9.]+)', '\\1') }}"
+  when: rathole_version_check.rc == 0
+
 - name: Set Rathole download URL based on architecture
   ansible.builtin.set_fact:
-    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}"
+    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ ansible_architecture }}"
   # This task dynamically sets the download URL for different architectures.
   # For example, if ansible_architecture is 'aarch64', it will build URL for 'linux-aarch64'.
 
@@ -37,7 +54,7 @@
   until: rathole_download_result is succeeded
   retries: 5
   delay: 2 # Retry download up to 5 times with a 2-second delay
-  when: "'{{ rathole_version }}' not in rathole_version_check.stdout"
+  when: rathole_installed_version != rathole_version
 
 - name: Move Rathole binary to /usr/local/bin
   ansible.builtin.copy:
@@ -47,7 +64,7 @@
     group: root
     mode: '0755'
     remote_src: yes # Source is on the remote host (downloaded to /tmp)
-  when: "'{{ rathole_version }}' not in rathole_version_check.stdout"
+  when: rathole_installed_version != rathole_version
 
 - name: Create Rathole configuration directory
   ansible.builtin.file:
