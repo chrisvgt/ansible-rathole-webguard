@@ -1,5 +1,7 @@
-go_version: "1.24.3"
-go_archive_name: "go{{ go_version }}.linux-{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}.tar.gz"
-go_download_url: "https://go.dev/dl/{{ go_archive_name }}"
-go_install_path: "/usr/local"
-go_binary_path: "{{ go_install_path }}/go/bin"
+# roles/go_lang/vars/main.yml
+
+go_version: "1.24.3" # Specify the desired Go version
+go_archive_name: "go{{ go_version }}.linux-{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}.tar.gz" # Constructs the archive filename based on OS architecture
+go_download_url: "https://go.dev/dl/{{ go_archive_name }}" # Full URL for downloading the Go tarball
+go_install_path: "/usr/local" # Base directory where Go will be installed (e.g., /usr/local/go)
+go_binary_path: "{{ go_install_path }}/go/bin" # Path to the Go binaries (e.g., /usr/local/go/bin)

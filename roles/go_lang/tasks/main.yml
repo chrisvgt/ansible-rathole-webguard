@@ -1,13 +1,15 @@
-- name: Ensure /usr/local exists
+# roles/go_lang/tasks/main.yml
+
+- name: Ensure Go installation path exists
   ansible.builtin.file:
-    path: "{{ go_install_path }}"
+    path: "{{ go_install_path }}" # Typically /usr/local
     state: directory
     mode: '0755'
   become: yes
 
 - name: Check if Go is already installed
   ansible.builtin.stat:
-    path: "{{ go_binary_path }}/go"
+    path: "{{ go_binary_path }}/go" # e.g., /usr/local/go/bin/go
   register: go_binary_stat
 
 - name: Download Go tarball
@@ -15,25 +17,25 @@
     url: "{{ go_download_url }}"
     dest: "/tmp/{{ go_archive_name }}"
     mode: '0644'
-  when: not go_binary_stat.stat.exists
+  when: not go_binary_stat.stat.exists # Only download if Go isn't installed
 
-- name: Remove existing Go installation directory if present
+- name: Remove existing Go installation directory (if present)
   ansible.builtin.file:
     path: "{{ go_install_path }}/go"
     state: absent
-  when: not go_binary_stat.stat.exists
+  when: not go_binary_stat.stat.exists # Only remove if Go needs reinstallation
   become: yes
 
-- name: Extract Go tarball to /usr/local
+- name: Extract Go tarball to installation path
   ansible.builtin.unarchive:
     src: "/tmp/{{ go_archive_name }}"
     dest: "{{ go_install_path }}"
     remote_src: yes
-    creates: "{{ go_install_path }}/go/bin/go"
+    creates: "{{ go_install_path }}/go/bin/go" # Idempotent: only extract if binary doesn't exist
   when: not go_binary_stat.stat.exists
   become: yes
 
-- name: Set Go environment variables for all users
+- name: Configure Go environment variables for all users
   ansible.builtin.blockinfile:
     path: "/etc/profile.d/go_env.sh"
     create: yes
