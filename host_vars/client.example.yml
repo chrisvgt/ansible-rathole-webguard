@@ -1,53 +1,48 @@
----
-# --- Example configuration for rathole client ---
-rathole_role: "client" # This variable tells the template it's a client
-rathole_client_config: # This will contain all top-level client settings
-  remote_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # Necessary. The address of the Rathole server.
-  default_token: "default_token_if_not_specify" # Optional. Default token for services.
-  heartbeat_timeout: 40 # Optional. In seconds.
-  retry_interval: 1 # Optional. In seconds.
+# --- Rathole Client Configuration Example ---
+rathole_role: "client" # Designates this as a Rathole client configuration
+rathole_client_config: # Top-level client settings
+  remote_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # **Required:** The address of the Rathole server.
+  default_token: "default_token_if_not_specify" # Optional: Default token for all services.
+  heartbeat_timeout: 40 # Optional: Heartbeat timeout in seconds.
+  retry_interval: 1 # Optional: Retry interval in seconds.
 
-  # Only ONE 'type' should be configured at a time.
+  # --- Transport Configuration (Choose ONLY ONE type) ---
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
-    # --- Noise Transport Configuration ---
+    # Noise Transport: Secure and lightweight encryption
+    # **Important:** `local_private_key` and `remote_public_key` are typically needed for key exchange.
     noise:
-      # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
-      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
-      # Optional: Base64 encoded private key for the client.
-      local_private_key: "your_client_private_key_base64"
-      # Optional: Base64 encoded public key of the server.
-      remote_public_key: "your_server_public_key_base64"
-      # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
-      # are usually required for key exchange. Uncomment and provide actual keys.
+      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s" # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
+      local_private_key: "your_client_private_key_base64" # Optional: Base64 encoded private key for the client.
+      remote_public_key: "your_server_public_key_base64" # Optional: Base64 encoded public key of the server.
 
-    # --- TCP Transport Configuration ---
+    # TCP Transport
     tcp:
       proxy: "socks5://user:passwd@127.0.0.1:1080"
       nodelay: true
       keepalive_secs: 20
       keepalive_interval: 8
 
-    # --- TLS Transport Configuration ---
+    # TLS Transport
     tls:
       trusted_root: "/etc/ssl/certs/your_ca_certificate.pem"
       hostname: "server1.example.com"
 
-    # --- WebSocket Transport Configuration ---
+    # WebSocket Transport
     websocket:
-      tls: true # If true, it will use settings from 'client.transport.tls'
+      tls: true # If true, uses settings from `client.transport.tls`.
 
-  # --- Define multiple services that this client will forward ---
+  # --- Service Definitions ---
   services:
-    - name: "service1" # Unique name for this service (must match server side).
-      type: "tcp" # Optional. "tcp", "udp".
-      token: "specific_token_for_service1" # Optional. Overrides default_token.
-      local_addr: "127.0.0.1:1081" # Necessary. The local service to be forwarded.
-      nodelay: true # Optional. Overrides client.transport.nodelay.
-      retry_interval: 1 # Optional. Overrides client.retry_interval.
+    - name: "service1" # Unique service name (must match server-side configuration).
+      type: "tcp" # Optional: Can be "tcp" or "udp".
+      token: "specific_token_for_service1" # Optional: Overrides `default_token`.
+      local_addr: "127.0.0.1:1081" # **Required:** The local service address to be forwarded.
+      nodelay: true # Optional: Overrides `client.transport.nodelay`.
+      retry_interval: 1 # Optional: Overrides `client.retry_interval`.
 
     - name: "service2"
       local_addr: "127.0.0.1:1082"
 
-    # Other service-specific options can go here
+    # Add any other service-specific options here.
