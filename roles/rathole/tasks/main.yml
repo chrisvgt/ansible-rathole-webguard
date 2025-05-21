@@ -13,6 +13,13 @@
     shell: "/usr/sbin/nologin" # Use /usr/sbin/nologin for broader compatibility
     state: present
 
+- name: Check existing Rathole version
+  ansible.builtin.command: "{{ rathole_install_path }}/{{ rathole_binary_name }} --version"
+  register: rathole_version_check
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+
 - name: Set Rathole download URL based on architecture
   ansible.builtin.set_fact:
     rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}"
@@ -28,6 +35,7 @@
   until: rathole_download_result is succeeded
   retries: 5
   delay: 2 # Retry download up to 5 times with a 2-second delay
+  when: "'{{ rathole_version }}' not in rathole_version_check.stdout"
 
 - name: Move Rathole binary to /usr/local/bin
   ansible.builtin.copy:
@@ -38,6 +46,7 @@
     mode: '0755'
     remote_src: yes # Source is on the remote host (downloaded to /tmp)
   become: yes
+  when: "'{{ rathole_version }}' not in rathole_version_check.stdout"
 
 - name: Create Rathole configuration directory
   ansible.builtin.file:
