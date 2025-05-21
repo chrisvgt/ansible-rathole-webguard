@@ -1,21 +1,21 @@
 ---
-# --- Crowdsec Keys ---
-crowdsec_api_key: "{{ vault_crowdsec_api_key }}" # Generate key with: head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
-crowdsec_enrollment_key: "{{ vault_crowdsec_enrollment_key }}" # Enrollment key for crowdsec security engine, connect with console
-duration_expr: true # Activate dynamic increase of blocking time
+# --- Crowdsec Setup ---
+crowdsec_api_key: "{{ vault_crowdsec_api_key }}" # Generate with: `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
+crowdsec_enrollment_key: "{{ vault_crowdsec_enrollment_key }}" # Connect Crowdsec Security Engine to console
+duration_expr: true # Enable dynamic increase of blocking time
 
-# --- ntfy Setup ---
-ntfy_enabled: false # Set to true to enable ntfy notifications, false to skip all ntfy tasks
+# --- Ntfy Setup ---
+ntfy_enabled: false # Set to `true` to enable ntfy notifications
 ntfy_server: "ntfy.sh"
 ntfy_topic: "crowdsec_alerts"
-ntfy_auth_token: "" # Optional: Set your ntfy authentication token if needed
+ntfy_auth_token: "" # Optional: Your ntfy authentication token
 
 # --- Cloudflare Setup ---
-cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}" # Global Cloudflare API token if used by multiple domains on this server
+cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}" # Global API token for Cloudflare, useful for multiple domains on this server
 
-# --- Example Caddy configuration for multiple domains on this server ---
+# --- Caddy Configuration Examples (for multiple domains on this server) ---
 caddy_sites:
-  - name: blog # Used for generating default log file name
+  - name: blog # Used for default log file name
     domain: "blog.yourdomain.com"
     local_port: 2368
     # Optional: Customize log settings per site
@@ -27,55 +27,50 @@ caddy_sites:
   - name: notify
     domain: "notify.yourdomain.com"
     local_port: 8004
-    # Special regex for ntfy http redirect logic
-    ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)"
+    ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)" # Special regex for ntfy HTTP redirect logic
 
-# --- Example configuration for rathole server ---
-rathole_role: "server" # This variable tells the template it's a server
-rathole_server_config: # This will contain all top-level server settings
-  listen_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # The address Rathole server listens on for clients
-  default_token: "default_token_for_all_services_if_not_specified" # Optional
-  heartbeat_interval: 30 # Optional. In seconds. Set to 0 to disable.
+# --- Rathole Server Configuration Example ---
+rathole_role: "server" # Identifies this as a Rathole server configuration
+rathole_server_config: # Top-level server settings
+  listen_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # Address Rathole server listens on for clients
+  default_token: "default_token_for_all_services_if_not_specified" # Optional: Default token for all services
+  heartbeat_interval: 30 # Optional: Heartbeat interval in seconds (0 to disable)
 
-  # Only ONE 'type' should be configured at a time.
+  # --- Transport Configuration (Choose ONE type) ---
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
-    # --- Noise Transport Configuration ---
+    # Noise Transport: Secure and lightweight encryption
+    # Requires 'local_private_key' and 'remote_public_key' for key exchange
     noise:
-      # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
-      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
-      # Optional: Base64 encoded private key for the server.
-      local_private_key: "your_server_private_key_base64"
-      # Optional: Base64 encoded public key of the client.
-      remote_public_key: "your_client_public_key_base64"
-      # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
-      # are usually required for key exchange. Uncomment and provide actual keys.
+      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s" # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s"
+      local_private_key: "your_server_private_key_base64" # Optional: Base64 encoded private key for server
+      remote_public_key: "your_client_public_key_base64" # Optional: Base64 encoded public key of client
 
-    # --- TCP Transport Configuration ---
+    # TCP Transport
     tcp:
       nodelay: true
       keepalive_secs: 20
       keepalive_interval: 8
 
-    # --- TLS Transport Configuration ---
+    # TLS Transport
     tls:
       pkcs12: "/path/to/identify.pfx"
       pkcs12_password: "your_pkcs12_password"
 
-    # --- WebSocket Transport Configuration ---
+    # WebSocket Transport
     websocket:
-      tls: true # If true, it will use settings from 'server.transport.tls'
+      tls: true # If true, uses settings from `server.transport.tls`
 
- # --- Define multiple services that this server will bind ---
+  # --- Service Definitions ---
   services:
-    - name: "service1" # Unique name for this service (must match client side)
-      type: "tcp" # Optional. Default is tcp. Can be "tcp", "udp", "socks5".
-      token: "specific_token_for_service1" # Optional. Overrides default_token.
-      bind_addr: "0.0.0.0:8081" # The address this specific service is exposed at.
-      nodelay: true # Optional.
+    - name: "service1" # Unique service name (must match client side)
+      type: "tcp" # Optional: Default is tcp. Can be "tcp", "udp", "socks5".
+      token: "specific_token_for_service1" # Optional: Overrides `default_token`.
+      bind_addr: "0.0.0.0:8081" # Address this service is exposed at.
+      nodelay: true # Optional
 
     - name: "service2"
       bind_addr: "0.0.0.1:8082"
 
-    # Other service-specific options can go here
+    # Add other service-specific options here
