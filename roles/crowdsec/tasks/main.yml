@@ -121,19 +121,12 @@
   become: yes
 
 - name: Configure CrowdSec to listen for AppSec requests
-  ansible.builtin.copy:
-    content: |
-      # /etc/crowdsec/acquis.d/appsec.yaml
-      source: appsec
-      appsec_config: crowdsecurity/appsec-default
-      labels:
-        type: appsec
-      listen_addr: "{{ crowdsec_appsec_ip }}:{{ crowdsec_appsec_port }}"
+  ansible.builtin.template:
+    src: appsec.yaml.j2
     dest: /etc/crowdsec/acquis.d/appsec.yaml
     owner: root
     group: root
     mode: '0644'
-  become: yes
   notify: Restart Crowdsec Service
 
 ## CrowdSec Console and Bouncer Management

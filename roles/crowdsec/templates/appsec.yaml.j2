@@ -1,0 +1,8 @@
+# File Managed by Ansible
+# /etc/crowdsec/acquis.d/appsec.yaml
+
+source: appsec
+appsec_config: crowdsecurity/appsec-default
+labels:
+type: appsec
+listen_addr: "{{ crowdsec_appsec_ip }}:{{ crowdsec_appsec_port }}"
