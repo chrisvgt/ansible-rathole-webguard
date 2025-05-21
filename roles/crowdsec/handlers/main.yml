@@ -1,4 +1,8 @@
-- name: restart crowdsec
+# roles/crowdsec/handlers/main.yml
+
+# --- Handlers for Crowdsec Service ---
+
+- name: Restart Crowdsec Service
   ansible.builtin.systemd:
     name: crowdsec
     state: restarted
