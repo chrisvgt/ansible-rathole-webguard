@@ -142,7 +142,7 @@ Templates are Jinja2 files that dynamically generate configuration files on the 
 * **`caddy/templates/caddy.service.j2`**: The Systemd unit file for Caddy.
 * **`rathole/templates/rathole.toml.j2`**: Rathole's configuration file, dynamically generated based on `rathole_role` and specific server/client configurations.
 
-### Ansible Vault 🔐
+### Ansible Vault
 
 **It's highly recommended to use Ansible Vault for sensitive data** like Cloudflare API tokens (`cloudflare_api_token`), CrowdSec API keys (`crowdsec_api_key`), or SSH private key passphrases.
 
@@ -218,8 +218,8 @@ To change a configuration (e.g., Caddyfile, Rathole config):
 
 ### Adding/Removing Hosts
 
-* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[webservers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it. ➕
-* **Removing hosts**: Simply remove the host from `inventory.ini`. For full de-provisioning (uninstalling services and cleaning up), you'd typically create a separate Ansible playbook. ➖
+* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[webservers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it.
+* **Removing hosts**: Simply remove the host from `inventory.ini`. For full de-provisioning (uninstalling services and cleaning up), you'd typically create a separate Ansible playbook.
 
 ### Checking Service Status
 
