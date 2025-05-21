@@ -52,12 +52,9 @@
   ansible.builtin.blockinfile:
     path: "/etc/profile.d/go_env.sh"
     create: yes
-      # Add Go's binary directory to PATH for accessing Go tools
-      # Add GOPATH's binary directory to PATH for accessing installed Go binaries
-      export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
     block: |
       export GOROOT={{ go_install_path }}/go
-    marker: "# {mark} ANSIBLE MANAGED BLOCK for Go"
+      export GOPATH=$HOME/go
       export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
     marker: "# {mark} ANSIBLE MANAGED BLOCK for Go environment variables"
     validate: "grep -q '{{ go_install_path }}/go' %s && grep -q 'GOPATH=$HOME/go' %s && grep -q 'PATH=$PATH:$GOROOT/bin:$GOPATH/bin' %s"

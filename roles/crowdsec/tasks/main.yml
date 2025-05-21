@@ -6,6 +6,14 @@
   ansible.builtin.meta: end_play
   when: not enable_crowdsec | default(true)
 
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - crowdsec_lapi_ip | default('') != ''
+      - crowdsec_lapi_port | default('') != ''
+      - crowdsec_enrollment_key | default('') != ''
+    fail_msg: "Required CrowdSec variables are missing or empty."
+
 ## Repository and Package Installation
 
 - name: Ensure curl is installed
