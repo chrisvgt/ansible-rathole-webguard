@@ -1,4 +1,8 @@
-- name: restart rathole
+# roles/rathole/handlers/main.yml
+
+# --- Handlers for Rathole Service ---
+
+- name: Restart Rathole Service
   ansible.builtin.systemd:
     name: rathole
     state: restarted

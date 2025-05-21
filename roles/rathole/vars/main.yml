@@ -1,8 +1,10 @@
-rathole_version: "5.0.1"
-rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}"
-rathole_binary_name: "rathole"
-rathole_install_path: "/usr/local/bin"
-rathole_config_path: "/etc/rathole"
-rathole_config_file: "rathole.toml"
-rathole_user: "rathole"
-rathole_group: "rathole"
+# roles/rathole/vars/main.yml
+
+rathole_version: "5.0.1" # Version of Rathole to install
+rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}" # Base URL for downloading Rathole releases
+rathole_binary_name: "rathole" # Name of the Rathole executable
+rathole_install_path: "/usr/local/bin" # Directory where the Rathole binary will be placed
+rathole_config_path: "/etc/rathole" # Directory for Rathole configuration files
+rathole_config_file: "rathole.toml" # Name of the main Rathole configuration file
+rathole_user: "rathole" # System user for the Rathole service
+rathole_group: "rathole" # System group for the Rathole service

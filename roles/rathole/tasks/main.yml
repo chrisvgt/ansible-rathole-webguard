@@ -1,44 +1,42 @@
-- name: Create group for Rathole
+# roles/rathole/tasks/main.yml
+
+- name: Create Rathole system group
   ansible.builtin.group:
     name: "{{ rathole_group }}"
     state: present
 
-- name: Create user for Rathole
+- name: Create Rathole system user
   ansible.builtin.user:
     name: "{{ rathole_user }}"
     group: "{{ rathole_group }}"
     create_home: no
-    shell: "/usr/sbin/nologin" # Changed from /sbin/nologin for broader compatibility
+    shell: "/usr/sbin/nologin" # Use /usr/sbin/nologin for broader compatibility
     state: present
 
-- name: Set Rathole download URL
+- name: Set Rathole download URL based on architecture
   ansible.builtin.set_fact:
-    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ ansible_architecture }}"
-  when: ansible_architecture == "x86_64" # Specific URL for x86_64, adjust for others
-  # Example for arm64 if needed:
-  # - name: Set Rathole download URL for ARM64
-  #   ansible.builtin.set_fact:
-  #     rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-arm64"
-  #   when: ansible_architecture == "aarch64"
+    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}"
+  # This task dynamically sets the download URL for different architectures.
+  # For example, if ansible_architecture is 'aarch64', it will build URL for 'linux-aarch64'.
 
 - name: Download Rathole binary
   ansible.builtin.get_url:
     url: "{{ rathole_download_url }}"
     dest: "/tmp/{{ rathole_binary_name }}"
-    mode: '0755'
+    mode: '0755' # Make executable
   register: rathole_download_result
   until: rathole_download_result is succeeded
   retries: 5
-  delay: 2
+  delay: 2 # Retry download up to 5 times with a 2-second delay
 
-- name: Move Rathole to /usr/local/bin
+- name: Move Rathole binary to /usr/local/bin
   ansible.builtin.copy:
     src: "/tmp/{{ rathole_binary_name }}"
     dest: "{{ rathole_install_path }}/{{ rathole_binary_name }}"
     owner: root
     group: root
     mode: '0755'
-    remote_src: yes
+    remote_src: yes # Source is on the remote host (downloaded to /tmp)
   become: yes
 
 - name: Create Rathole configuration directory
@@ -58,7 +56,7 @@
     group: "{{ rathole_group }}"
     mode: '0644'
   become: yes
-  notify: restart rathole
+  notify: Restart Rathole Service
 
 - name: Create Systemd unit file for Rathole
   ansible.builtin.template:
@@ -68,7 +66,7 @@
     group: root
     mode: '0644'
   become: yes
-  notify: restart rathole
+  notify: Restart Rathole Service
 
 - name: Reload Systemd daemon
   ansible.builtin.systemd:
