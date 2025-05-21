@@ -68,7 +68,8 @@
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
   become: yes
-  become_user: "{{ caddy_user }}" # Run as caddy user to ensure correct permissions
+  environment:
+    ANSIBLE_REMOTE_TEMP: "/tmp"
   changed_when: true # Always report as changed for consistency
   notify: Restart Caddy Service
 
