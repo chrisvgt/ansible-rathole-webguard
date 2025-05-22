@@ -216,3 +216,24 @@
     mode: "0644"
   notify: Restart Crowdsec Service
   when: ntfy_enabled or duration_expr
+
+  ## CrowdSec Whitelist Configuration
+
+- name: Ensure CrowdSec postoverflow whitelist directory exists
+  ansible.builtin.file:
+    path: /etc/crowdsec/postoverflows/s01-whitelist
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: dynamic_whitelist_enabled
+
+- name: Add dynamic IPs to CrowdSec postoverflow whitelist
+  ansible.builtin.template:
+    src: 01-my-dynamic-whitelist.yaml.j2 # This template will now handle multiple hostnames
+    dest: /etc/crowdsec/postoverflows/s01-whitelist/01-my-dynamic-whitelist.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Crowdsec Service
+  when: dynamic_whitelist_enabled

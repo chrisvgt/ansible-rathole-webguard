@@ -1,0 +1,12 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/01-my-dynamic-whitelist.yaml.j2
+
+name: my/dynamic-whitelist
+description: "Whitelist events from my dynamic IPs"
+whitelist:
+  reason: "My dynamic IPs (resolved via DDNS)"
+  expression:
+    - {% for hostname in dynamic_ddns_hostnames -%}
+      evt.Overflow.Alert.Source.IP in LookupHost("{{ hostname }}")
+      {%- if not loop.last %} or {% endif -%}
+    {% endfor %}
