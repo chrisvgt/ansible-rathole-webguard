@@ -41,20 +41,31 @@
     route {
         crowdsec
         appsec
+{% if site.enable_forward is defined and site.enable_forward %}
+        reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
+            header_up X-Forwarded-For {{ site.forward_ip }}
+        }
+{% endif %}
         reverse_proxy localhost:{{ site.local_port }}
     }
     {% else %}
-    # Simple reverse proxy
-    reverse_proxy localhost:{{ site.local_port }}
-    {% endif %}
+    route {
+{% if site.enable_forward is defined and site.enable_forward %}
+        reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
+            header_up X-Forwarded-For {{ site.forward_ip }}
+        }
+{% endif %}
+        reverse_proxy localhost:{{ site.local_port }}
+    }
+{% endif %}
 
     # Redirect HTTP to HTTPS for GET requests
     @httpget {
         protocol http
-        {% if site.ntfy_path_regexp is defined %}
+{% if site.ntfy_path_regexp is defined %}
         method GET
         path_regexp {{ site.ntfy_path_regexp }}
-        {% endif %}
+{% endif %}
     }
     redir @httpget https://{host}{uri}
 

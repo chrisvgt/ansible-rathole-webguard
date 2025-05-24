@@ -31,7 +31,16 @@ caddy_sites:
   - name: notify
     domain: "notify.yourdomain.com"
     local_port: 8004
-    ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)" # Special regex for ntfy HTTP redirect logic
+    # Optional: Special regex for ntfy HTTP redirect logic
+    # ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)" 
+
+  - name: stream
+    domain: "stream.yourdomain.com"
+    local_port: 8096
+    # Optional: Enable forwarding for specific paths
+    # enable_forward: true
+    # forward_ip: 192.168.0.1
+    # forward_path: "/path/to/"
 
 # --- Rathole Server Configuration Example ---
 rathole_role: "server" # Identifies this as a Rathole server configuration
