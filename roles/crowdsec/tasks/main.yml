@@ -198,7 +198,7 @@
 
 - name: Install GeoIP enrichment parser (if Ntfy enabled)
   ansible.builtin.command:
-    cmd: cscli hub install crowdsecurity/geoip-enrich
+    cmd: cscli parsers install crowdsecurity/geoip-enrich
   register: geoip_install_output
   changed_when: "'Successfully installed' in geoip_install_output.stdout or 'Upgraded' in geoip_install_output.stdout"
   failed_when: "(geoip_install_output.rc != 0 and 'already installed' not in geoip_install_output.stderr and 'already enabled' not in geoip_install_output.stdout)"
