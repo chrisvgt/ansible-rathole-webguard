@@ -83,15 +83,14 @@
   notify: Restart Caddy Service
 
 - name: Reload Systemd daemon to pick up new unit file
-  block:
-    - ansible.builtin.systemd:
-        daemon_reload: true
-      become: true
-- name: Enable and start Caddy service
-  block:
-    - ansible.builtin.systemd:
-        name: caddy
-        enabled: true
-        state: started
-      become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
   become: true
+
+- name: Enable and start Caddy service
+  ansible.builtin.systemd:
+    name: caddy
+    enabled: true
+    state: started
+  become: true
+
