@@ -14,7 +14,10 @@
 
 - name: Set xcaddy version changed flag
   ansible.builtin.set_fact:
-    xcaddy_version_changed: "{{ xcaddy_version_check.stdout is not defined or xcaddy_version_check.rc != 0 or xcaddy_version_check.stdout | regex_search('^v?{{ xcaddy_version }}') is none }}"
+    xcaddy_version_changed: >-
+      {{ xcaddy_version_check.stdout is not defined
+         or xcaddy_version_check.rc != 0
+         or not (xcaddy_version_check.stdout.split()[0] | regex_replace('^v', '') == xcaddy_version) }}
 
 - name: Display xcaddy version change message
   ansible.builtin.debug:
