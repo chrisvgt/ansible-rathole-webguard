@@ -63,3 +63,11 @@
     - "/tmp/xcaddy_temp.tar.gz"
     - "/tmp/xcaddy"
   when: xcaddy_version_changed
+
+- name: Clean up temporary xcaddy files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "/tmp/xcaddy_temp.tar.gz"
+    - "/tmp/xcaddy"

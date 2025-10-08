@@ -92,3 +92,12 @@
       when:
         - ansible_os_family == "Debian"
         - reboot_required_file.stat.exists # Only remove if it might have been created
+
+    # Clean up global temporary files
+    - name: Clean up global temporary files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "/tmp/ansible_temp"
+        - "/tmp/unused_files"

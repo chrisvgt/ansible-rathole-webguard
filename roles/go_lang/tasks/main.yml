@@ -57,3 +57,8 @@
       export GOPATH=$HOME/go
       export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
     marker: "# {mark} ANSIBLE MANAGED BLOCK for Go environment variables"
+
+- name: Clean up temporary Go files
+  ansible.builtin.file:
+    path: "/tmp/{{ go_archive_name }}"
+    state: absent

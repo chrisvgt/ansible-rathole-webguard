@@ -113,3 +113,10 @@
     enabled: true
     state: started
   when: rathole_config_changed.changed or rathole_service_changed.changed
+
+- name: Clean up temporary Rathole files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "/tmp/{{ rathole_binary_name }}"

@@ -237,3 +237,11 @@
     mode: '0644'
   notify: Restart Crowdsec Service
   when: dynamic_whitelist_enabled
+
+- name: Clean up temporary CrowdSec files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "/tmp/crowdsec_install_script.sh"
+    - "/tmp/crowdsec_temp"
