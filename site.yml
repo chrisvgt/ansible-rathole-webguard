@@ -77,7 +77,6 @@
       ansible.builtin.wait_for_connection: # ICMP must work properly
         delay: 10
         timeout: 300 # Wait up to 5 minutes
-      delegate_to: localhost # Run this from the Ansible control node
       when:
         - ansible_os_family == "Debian"
         - reboot_required_file.stat.exists # Only wait if a reboot was actually needed
