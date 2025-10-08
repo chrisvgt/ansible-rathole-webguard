@@ -3,19 +3,22 @@
   become: yes # All tasks in this play will run with root privileges
 
   pre_tasks:
-    - name: Update APT cache (Debian-based systems)
+    - name: Ensure this playbook is only executed on Debian-based systems
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family == "Debian"
+        fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
+        success_msg: "System is Debian-based. Proceeding with the playbook."
+
+    - name: Ensure APT cache is updated and perform a dist-upgrade (Debian-based systems)
       ansible.builtin.apt:
         update_cache: yes
-        cache_valid_time: 3600 # Ensure cache is updated, but only once an hour
+        cache_valid_time: 3600
+        upgrade: dist
+        autoremove: yes
       when: ansible_os_family == "Debian"
 
-    - name: Perform a dist-upgrade (Debian-based systems)
-      ansible.builtin.apt:
-        upgrade: dist # Use 'dist' for intelligent handling of new dependencies
-        autoremove: yes # Remove packages that are no longer needed
-      when: ansible_os_family == "Debian"
-
-    - name: Install common system utilities
+    - name: Install common system utilities (Debian-based systems)
       ansible.builtin.apt:
         name:
           - build-essential # For compiling software (e.g., Go/Caddy)
@@ -25,6 +28,7 @@
           - vim           # A popular text editor
           - htop          # An interactive process viewer
         state: present
+      when: ansible_os_family == "Debian"
 
     - name: Ensure /usr/local/bin exists
       ansible.builtin.file:
