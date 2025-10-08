@@ -1,7 +1,7 @@
 # roles/caddy/vars/main.yml
 
 # --- Caddy Installation & Configuration Paths ---
-caddy_version: "2.10.0" # Caddy version to install
+caddy_version: "2.10.2" # Caddy version to install
 caddy_user: caddy      # System user for Caddy
 caddy_group: caddy     # System group for Caddy
 
