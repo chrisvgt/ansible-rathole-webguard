@@ -1,6 +1,6 @@
 - name: ansible-rathole-webguard
   hosts: webservers
-  become: yes # All tasks in this play will run with root privileges
+  become: true # All tasks in this play will run with root privileges
 
   pre_tasks:
     - name: Ensure this playbook is only executed on Debian-based systems
@@ -12,10 +12,10 @@
 
     - name: Ensure APT cache is updated and perform a dist-upgrade (Debian-based systems)
       ansible.builtin.apt:
-        update_cache: yes
+        update_cache: true
         cache_valid_time: 3600
         upgrade: dist
-        autoremove: yes
+        autoremove: true
       when: ansible_os_family == "Debian"
 
     - name: Install common system utilities (Debian-based systems)

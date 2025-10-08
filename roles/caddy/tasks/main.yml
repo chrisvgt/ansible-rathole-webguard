@@ -19,9 +19,9 @@
   ansible.builtin.user:
     name: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
-    system: yes
+    system: true
     shell: "/usr/sbin/nologin"
-    create_home: no # Caddy's HOME is set via systemd environment variable
+    create_home: false # Caddy's HOME is set via systemd environment variable
     state: present
 
 - name: Ensure Caddy directories exist with correct ownership and permissions
@@ -45,7 +45,6 @@
   environment:
     PATH: "{{ go_binary_path }}:{{ ansible_env.PATH }}"
     GOPATH: "/root/go"
-  changed_when: true # Always report as changed for consistency
   notify: Restart Caddy Service
 
 - name: Set Caddy binary permissions
@@ -67,7 +66,7 @@
 - name: Format Caddyfile for readability
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
-  become: yes
+  become: true
   environment:
     ANSIBLE_REMOTE_TEMP: "/tmp"
   changed_when: true # Always report as changed for consistency
@@ -80,17 +79,19 @@
     owner: root
     group: root
     mode: '0644'
-  become: yes
+  become: true
   notify: Restart Caddy Service
 
 - name: Reload Systemd daemon to pick up new unit file
-  ansible.builtin.systemd:
-    daemon_reload: yes
-  become: yes
-
+  block:
+    - ansible.builtin.systemd:
+        daemon_reload: true
+      become: true
 - name: Enable and start Caddy service
-  ansible.builtin.systemd:
-    name: caddy
-    enabled: yes
-    state: started
-  become: yes
+  block:
+    - ansible.builtin.systemd:
+        name: caddy
+        enabled: true
+        state: started
+      become: true
+  become: true

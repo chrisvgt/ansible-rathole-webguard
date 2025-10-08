@@ -44,14 +44,14 @@
   ansible.builtin.unarchive:
     src: "/tmp/{{ go_archive_name }}"
     dest: "{{ go_install_path }}"
-    remote_src: yes
+    remote_src: true
     creates: "{{ go_install_path }}/go/bin/go"
   when: go_version_check.rc != 0 or not go_version_match | default(false)
 
 - name: Configure Go environment variables for all users
   ansible.builtin.blockinfile:
     path: "/etc/profile.d/go_env.sh"
-    create: yes
+    create: true
     block: |
       export GOROOT={{ go_install_path }}/go
       export GOPATH=$HOME/go

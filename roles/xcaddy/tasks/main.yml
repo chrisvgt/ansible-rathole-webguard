@@ -10,7 +10,7 @@
   ansible.builtin.command:
     cmd: "{{ xcaddy_install_path }}/xcaddy --version"
   register: xcaddy_version_check
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Set xcaddy version changed flag
   ansible.builtin.set_fact:
@@ -38,7 +38,7 @@
   ansible.builtin.unarchive:
     src: "/tmp/xcaddy_temp.tar.gz"
     dest: "/tmp/"
-    remote_src: yes
+    remote_src: true
     creates: "/tmp/xcaddy" # Idempotent: only extract if binary doesn't exist
   when: xcaddy_version_changed
 
@@ -49,7 +49,7 @@
     owner: root
     group: root
     mode: '0755' # Make executable
-    remote_src: yes # Source is on the remote host (downloaded to /tmp)
+    remote_src: true # Source is on the remote host (downloaded to /tmp)
   when: xcaddy_version_changed
 
 - name: Clean up xcaddy temporary files

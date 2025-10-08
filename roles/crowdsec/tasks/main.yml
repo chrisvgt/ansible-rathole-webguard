@@ -20,7 +20,7 @@
   ansible.builtin.apt:
     name: curl
     state: present
-    update_cache: yes
+    update_cache: true
 
 - name: Add CrowdSec APT repository via script
   ansible.builtin.shell:
@@ -52,8 +52,8 @@
   ansible.builtin.systemd:
     name: crowdsec
     state: started
-    enabled: yes
-    daemon_reload: yes
+    enabled: true
+    daemon_reload: true
 
 # TODO:
 # - name: Wait for CrowdSec Local API to be ready

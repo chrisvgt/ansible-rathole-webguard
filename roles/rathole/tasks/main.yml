@@ -22,7 +22,7 @@
   ansible.builtin.user:
     name: "{{ rathole_user }}"
     group: "{{ rathole_group }}"
-    create_home: no
+    create_home: false
     shell: "/usr/sbin/nologin"
     state: present
   when: rathole_user_check.rc != 0
@@ -70,7 +70,7 @@
     owner: root
     group: root
     mode: '0755'
-    remote_src: yes # Source is on the remote host (downloaded to /tmp)
+    remote_src: true # Source is on the remote host (downloaded to /tmp)
   when: (rathole_installed_version | default('not installed')) != rathole_version
 
 - name: Create Rathole configuration directory
@@ -104,12 +104,12 @@
 
 - name: Reload Systemd daemon
   ansible.builtin.systemd:
-    daemon_reload: yes
+    daemon_reload: true
   when: rathole_service_changed.changed
 
 - name: Enable and start Rathole service
   ansible.builtin.systemd:
     name: rathole
-    enabled: yes
+    enabled: true
     state: started
   when: rathole_config_changed.changed or rathole_service_changed.changed
