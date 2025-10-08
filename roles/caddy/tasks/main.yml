@@ -38,14 +38,22 @@
     - { path: "{{ caddy_data_dir }}/caddy", mode: '0775' } # Subdirectory for autosave etc.
     - { path: "{{ caddy_log_dir }}", mode: '0755' }
 
+- name: Check installed Caddy version
+  ansible.builtin.command:
+    cmd: "{{ caddy_install_path }} version"
+  register: caddy_version_check
+  failed_when: false  # Don't fail if the binary doesn't exist
+
 - name: Build Caddy with specified plugins using xcaddy
   ansible.builtin.command:
     cmd: /usr/local/bin/xcaddy build v{{ caddy_version }} --output {{ caddy_install_path }} {% if caddy_plugins | length > 0 and caddy_plugins[0] != '' %}{% for plugin in caddy_plugins %} --with {{ plugin }}{% endfor %}{% endif %}
-    creates: "{{ caddy_install_path }}"
+  args:
+    removes: "{{ caddy_install_path }}"  # Ensure the old binary is removed before building
   environment:
     PATH: "{{ go_binary_path }}:{{ ansible_env.PATH }}"
     GOPATH: "/root/go"
   notify: Restart Caddy Service
+  when: (caddy_version_check.stdout | regex_search('v([0-9.]+)', '\\1')) != ('v' ~ caddy_version)
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
@@ -66,7 +74,6 @@
 - name: Format Caddyfile for readability
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
-  become: true
   environment:
     ANSIBLE_REMOTE_TEMP: "/tmp"
   changed_when: true # Always report as changed for consistency
@@ -94,3 +101,10 @@
     state: started
   become: true
 
+- name: Clean up temporary Caddy build files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "/tmp/caddy_build"
+    - "/tmp/caddy_plugins"
