@@ -73,26 +73,13 @@
   changed_when: "'Nothing to do' not in cscli_hub_update_output.stdout"
   failed_when: cscli_hub_update_output.rc != 0
 
-- name: Install CrowdSecurity base HTTP scenarios
-  ansible.builtin.command: cscli collections install crowdsecurity/base-http-scenarios
-  register: cscli_base_http_scenarios_output
-  changed_when: "'Successfully installed' in cscli_base_http_scenarios_output.stdout or 'Upgraded' in cscli_base_http_scenarios_output.stdout"
-  failed_when: "(cscli_base_http_scenarios_output.rc != 0 and 'already installed' not in cscli_base_http_scenarios_output.stderr and 'already enabled' not in cscli_base_http_scenarios_output.stdout)"
-  when: "'crowdsecurity/base-http-scenarios' not in (cscli_hub_update_output.stdout | default(''))"
-
+# Includes base-http-scenarios collection, caddy-logs parser
 - name: Install CrowdSecurity Caddy collection
   ansible.builtin.command: cscli collections install crowdsecurity/caddy
   register: cscli_caddy_collection_output
   changed_when: "'Successfully installed' in cscli_caddy_collection_output.stdout or 'Upgraded' in cscli_caddy_collection_output.stdout"
   failed_when: "(cscli_caddy_collection_output.rc != 0 and 'already installed' not in cscli_caddy_collection_output.stderr and 'already enabled' not in cscli_caddy_collection_output.stdout)"
   when: "'crowdsecurity/caddy' not in (cscli_hub_update_output.stdout | default(''))"
-
-- name: Install generic HTTP logs parser (optional)
-  ansible.builtin.command: cscli parsers install crowdsecurity/http-logs
-  register: cscli_http_logs_output
-  changed_when: "'Successfully installed' in cscli_http_logs_output.stdout or 'Upgraded' in cscli_http_logs_output.stdout"
-  failed_when: "(cscli_http_logs_output.rc != 0 and 'already installed' not in cscli_http_logs_output.stderr and 'already enabled' not in cscli_http_logs_output.stdout)"
-  when: "'crowdsecurity/http-logs' not in (cscli_hub_update_output.stdout | default(''))"
 
 ## CrowdSec AppSec Setup
 
