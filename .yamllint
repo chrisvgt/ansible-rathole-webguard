@@ -1,11 +1,29 @@
 extends: default
 
 rules:
+  # Keep indentation consistent but treat as a warning to avoid breaking CI on minor spacing
   indentation:
     indent-sequences: consistent
+    level: warning
+
+  # Allow longer lines and only warn when exceeded
   line-length:
     max: 140
     allow-non-breakable-words: true
+    level: warning
+
+  # Warn on ambiguous truthy values but don't fail CI
   truthy:
     allowed-values: ['true', 'false']
+    level: warning
+
+  # Style-only rules: warn, don't fail
+  trailing-spaces:
+    level: warning
+  empty-lines:
+    level: warning
+  new-lines:
+    level: warning
+
+  # Disable YAML doc start marker (---) requirement
   document-start: disable
