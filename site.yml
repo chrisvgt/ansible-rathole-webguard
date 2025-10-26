@@ -42,23 +42,29 @@
     # because server mode typically involves Caddy as a reverse proxy.
     - role: go_lang
       when: rathole_role == "server"
+      tags: go
+
     - role: xcaddy
       when: rathole_role == "server"
+      tags: xcaddy
 
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
     - role: caddy
       when: rathole_role == "server"
+      tags: caddy
 
     # The 'crowdsec' role provides security and is optional.
     # It's included only if the host is a Rathole 'server' AND 'enable_crowdsec' is true.
     - role: crowdsec
       when: rathole_role == "server" and enable_crowdsec
+      tags: crowdsec
 
     # The 'rathole' role is always applied. Its internal tasks will
     # conditionally configure it as a 'server' or 'client' based on the
     # 'rathole_role' variable defined for the host.
     - role: rathole
+      tags: rathole
 
   post_tasks:
     - name: Check if reboot is required after package upgrades
