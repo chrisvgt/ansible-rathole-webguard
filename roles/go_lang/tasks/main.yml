@@ -19,13 +19,13 @@
 
 - name: Set installed Go version fact
   ansible.builtin.set_fact:
-    installed_go_version: "{{ go_version_check.stdout | regex_search('go[0-9.]+') }}"
+    installed_go_version: "{{ go_version_check.stdout | regex_search('go[0-9.]+') | default('') }}"
   when: go_version_check.rc == 0
 
 - name: Check if Go tarball version matches installed version
   ansible.builtin.set_fact:
-    go_version_match: "{{ installed_go_version == ('go' + go_version) }}"
-  when: installed_go_version is defined
+    go_version_match: "{{ installed_go_version | regex_replace('^go', '') == go_version }}"
+  when: installed_go_version is defined and installed_go_version | length > 0
 
 - name: Ensure Go tarball is downloaded if not installed or version mismatch
   ansible.builtin.get_url:
@@ -46,6 +46,7 @@
     dest: "{{ go_install_path }}"
     remote_src: true
     creates: "{{ go_install_path }}/go/bin/go"
+    mode: '0755'
   when: go_version_check.rc != 0 or not go_version_match | default(false)
 
 - name: Configure Go environment variables for all users
@@ -62,3 +63,4 @@
   ansible.builtin.file:
     path: "/tmp/{{ go_archive_name }}"
     state: absent
+  when: (go_version_check.rc != 0 or not go_version_match | default(false)) and go_archive_name is defined
