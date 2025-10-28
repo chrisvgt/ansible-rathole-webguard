@@ -32,7 +32,7 @@ caddy_sites:
     domain: "notify.yourdomain.com"
     local_port: 8004
     # Optional: Special regex for ntfy HTTP redirect logic
-    # ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)" 
+    # ntfy_path_regexp: "^/([-_a-z0-9]{0,64}$|docs/|static/)"
 
   - name: stream
     domain: "stream.yourdomain.com"
@@ -86,4 +86,4 @@ rathole_server_config: # Top-level server settings
     - name: "service2"
       bind_addr: "0.0.0.1:8082"
 
-    # Add other service-specific options here
+      # Add other service-specific options here

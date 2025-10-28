@@ -2,19 +2,19 @@
 
 # --- Caddy Installation & Configuration Paths ---
 caddy_version: "2.10.2" # Caddy version to install
-caddy_user: caddy      # System user for Caddy
-caddy_group: caddy     # System group for Caddy
+caddy_user: caddy # System user for Caddy
+caddy_group: caddy # System group for Caddy
 
 # Base directories
 caddy_install_dir: /usr/local/bin # Directory for Caddy executable
-caddy_config_dir: /etc/caddy      # Directory for Caddy configuration files
-caddy_data_dir: /var/lib/caddy    # Directory for Caddy's data (e.g., TLS certs)
-caddy_log_dir: /var/log/caddy     # Directory for Caddy's logs
+caddy_config_dir: /etc/caddy # Directory for Caddy configuration files
+caddy_data_dir: /var/lib/caddy # Directory for Caddy's data (e.g., TLS certs)
+caddy_log_dir: /var/log/caddy # Directory for Caddy's logs
 
 # Full paths for common Caddy files and directories
-caddy_config_path: "{{ caddy_config_dir }}"          # Full path to Caddy's configuration directory
+caddy_config_path: "{{ caddy_config_dir }}" # Full path to Caddy's configuration directory
 caddy_install_path: "{{ caddy_install_dir }}/caddy" # Full path to the Caddy executable
-caddy_log_path: "{{ caddy_log_dir }}"                # Full path to Caddy's primary log directory
+caddy_log_path: "{{ caddy_log_dir }}" # Full path to Caddy's primary log directory
 caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Full path to the main Caddyfile
 
 # --- Caddy Plugins ---

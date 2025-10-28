@@ -33,16 +33,16 @@
     mode: "{{ item.mode }}"
     recurse: "{{ item.recurse | default(false) }}" # Apply recursively for data directory
   loop:
-    - { path: "{{ caddy_config_dir }}", mode: '0755' }
-    - { path: "{{ caddy_data_dir }}", mode: '0775', recurse: true } # Writable for autosave.json
-    - { path: "{{ caddy_data_dir }}/caddy", mode: '0775' } # Subdirectory for autosave etc.
-    - { path: "{{ caddy_log_dir }}", mode: '0755' }
+    - { path: "{{ caddy_config_dir }}", mode: "0755" }
+    - { path: "{{ caddy_data_dir }}", mode: "0775", recurse: true } # Writable for autosave.json
+    - { path: "{{ caddy_data_dir }}/caddy", mode: "0775" } # Subdirectory for autosave etc.
+    - { path: "{{ caddy_log_dir }}", mode: "0755" }
 
 - name: Check installed Caddy version
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} version"
   register: caddy_version_check
-  failed_when: false  # Don't fail if the binary doesn't exist
+  failed_when: false # Don't fail if the binary doesn't exist
 
 - name: Build Caddy with specified plugins using xcaddy
   ansible.builtin.command:
@@ -58,7 +58,7 @@
 - name: Set Caddy binary permissions
   ansible.builtin.file:
     path: "{{ caddy_install_path }}"
-    mode: '0755'
+    mode: "0755"
     owner: root
     group: root
 
@@ -68,7 +68,7 @@
     dest: "{{ caddy_config_file }}"
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
-    mode: '0644'
+    mode: "0644"
   notify: Restart Caddy Service
 
 - name: Format Caddyfile for readability
@@ -85,7 +85,7 @@
     dest: "/etc/systemd/system/caddy.service"
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   become: true
   notify: Restart Caddy Service
 

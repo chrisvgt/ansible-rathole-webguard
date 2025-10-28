@@ -4,7 +4,7 @@
   ansible.builtin.file:
     path: "{{ xcaddy_install_path }}" # e.g., /usr/local/bin
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Check current xcaddy version
   ansible.builtin.command:
@@ -30,7 +30,7 @@
   ansible.builtin.get_url:
     url: "{{ xcaddy_download_url }}"
     dest: "/tmp/xcaddy_temp.tar.gz"
-    mode: '0644'
+    mode: "0644"
   when: xcaddy_version_changed
   register: xcaddy_download_result
   until: xcaddy_download_result is succeeded
@@ -51,7 +51,7 @@
     dest: "{{ xcaddy_install_path }}/xcaddy"
     owner: root
     group: root
-    mode: '0755' # Make executable
+    mode: "0755" # Make executable
     remote_src: true # Source is on the remote host (downloaded to /tmp)
   when: xcaddy_version_changed
 

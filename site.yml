@@ -1,4 +1,4 @@
-- name: ansible-rathole-webguard
+- name: Ansible-Rathole-Webguard
   hosts: webservers
   become: true # All tasks in this play will run with root privileges
 
@@ -22,11 +22,9 @@
       ansible.builtin.apt:
         name:
           - build-essential # For compiling software (e.g., Go/Caddy)
-          - curl          # For downloading files
-          - unzip         # For extracting archives
-          - git           # For version control and cloning repositories
-          - vim           # A popular text editor
-          - htop          # An interactive process viewer
+          - curl # For downloading files
+          - unzip # For extracting archives
+          - git # For version control and cloning repositories
         state: present
       when: ansible_os_family == "Debian"
 
@@ -34,7 +32,7 @@
       ansible.builtin.file:
         path: /usr/local/bin
         state: directory
-        mode: '0755' # Standard permissions for executable binaries
+        mode: "0755" # Standard permissions for executable binaries
 
   roles:
     # The 'go_lang' and 'xcaddy' roles are prerequisites for building Caddy.

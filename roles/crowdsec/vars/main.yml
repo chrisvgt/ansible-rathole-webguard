@@ -1,7 +1,7 @@
 # roles/crowdsec/vars/main.yml
 
 crowdsec_lapi_ip: "127.0.0.1" # IP address for the Local API (LAPI)
-crowdsec_lapi_port: "8080"    # Port for the Local API (LAPI)
+crowdsec_lapi_port: "8080" # Port for the Local API (LAPI)
 crowdsec_ticker_interval: "15s" # Interval for CrowdSec's ticker to process logs
 crowdsec_appsec_ip: "127.0.0.1" # IP address for the AppSec component
-crowdsec_appsec_port: "7422"    # Port for the AppSec component
+crowdsec_appsec_port: "7422" # Port for the AppSec component

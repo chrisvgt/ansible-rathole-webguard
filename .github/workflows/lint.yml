@@ -2,9 +2,9 @@ name: Lint Ansible
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   lint:
@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: Install linters
         run: |
@@ -30,7 +30,7 @@ jobs:
 
       - name: Ansible-lint
         env:
-          ANSIBLE_DEPRECATION_WARNINGS: 'false'
+          ANSIBLE_DEPRECATION_WARNINGS: "false"
         run: |
           ansible-lint -v site.yml
 

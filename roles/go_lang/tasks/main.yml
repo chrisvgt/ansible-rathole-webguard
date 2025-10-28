@@ -8,7 +8,7 @@
   ansible.builtin.file:
     path: "{{ go_install_path }}" # Typically /usr/local
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Check if Go is already installed
   ansible.builtin.command:
@@ -31,7 +31,7 @@
   ansible.builtin.get_url:
     url: "{{ go_download_url }}"
     dest: "/tmp/{{ go_archive_name }}"
-    mode: '0644'
+    mode: "0644"
   when: go_version_check.rc != 0 or not go_version_match | default(false)
 
 - name: Remove existing Go installation directory (if present)
@@ -46,7 +46,7 @@
     dest: "{{ go_install_path }}"
     remote_src: true
     creates: "{{ go_install_path }}/go/bin/go"
-    mode: '0755'
+    mode: "0755"
   when: go_version_check.rc != 0 or not go_version_match | default(false)
 
 - name: Configure Go environment variables for all users

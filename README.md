@@ -2,12 +2,12 @@
 
 This repository contains Ansible playbooks to deploy and manage a robust and secure web stack, featuring:
 
-* **Rathole**: A lightweight and secure reverse proxy for exposing local services. 🛡️
-* **CrowdSec**: A free, open-source, and participative IPS/IDS that detects and blocks malicious IPs. 🚫
-* **Caddy**: A powerful, auto-HTTPS web server seamlessly integrating with CrowdSec and Cloudflare for DNS challenges. 🌐
-* **Go & xcaddy**: Essential prerequisites for building Caddy with custom modules. 🛠️
+- **Rathole**: A lightweight and secure reverse proxy for exposing local services. 🛡️
+- **CrowdSec**: A free, open-source, and participative IPS/IDS that detects and blocks malicious IPs. 🚫
+- **Caddy**: A powerful, auto-HTTPS web server seamlessly integrating with CrowdSec and Cloudflare for DNS challenges. 🌐
+- **Go & xcaddy**: Essential prerequisites for building Caddy with custom modules. 🛠️
 
------
+---
 
 ## Table of Contents
 
@@ -15,47 +15,47 @@ This repository contains Ansible playbooks to deploy and manage a robust and sec
 2. [Prerequisites](#2-prerequisites)
 3. [Directory Structure](#3-directory-structure)
 4. [Configuration](#4-configuration)
-    * [Inventory (`inventory.ini`)](#inventory-inventoryini)
-    * [Group Variables (`group_vars/`)](#group-variables-group_vars)
-    * [Host Variables (`host_vars/`)](#host-variables-host_vars)
-    * [Role Variables (`roles/*/vars/main.yml`)](#role-variables-rolesvarsmainyml)
-    * [Templates (`roles/*/templates/`)](#templates-roles-templates)
-    * [Ansible Vault](#ansible-vault)
+   - [Inventory (`inventory.ini`)](#inventory-inventoryini)
+   - [Group Variables (`group_vars/`)](#group-variables-group_vars)
+   - [Host Variables (`host_vars/`)](#host-variables-host_vars)
+   - [Role Variables (`roles/*/vars/main.yml`)](#role-variables-rolesvarsmainyml)
+   - [Templates (`roles/*/templates/`)](#templates-roles-templates)
+   - [Ansible Vault](#ansible-vault)
 5. [Deployment](#5-deployment)
 6. [Maintenance](#6-maintenance)
-    * [Updating Software Versions](#updating-software-versions)
-    * [Modifying Configurations](#modifying-configurations)
-    * [Adding/Removing Hosts](#addingremoving-hosts)
-    * [Checking Service Status](#checking-service-status)
-    * [Troubleshooting](#troubleshooting)
+   - [Updating Software Versions](#updating-software-versions)
+   - [Modifying Configurations](#modifying-configurations)
+   - [Adding/Removing Hosts](#addingremoving-hosts)
+   - [Checking Service Status](#checking-service-status)
+   - [Troubleshooting](#troubleshooting)
 7. [Contribution](#7-contribution)
 8. [License](#8-license)
 
------
+---
 
 ## 1\. Overview
 
 This Ansible setup fully automates the deployment and management of Rathole, CrowdSec, and Caddy on your target servers. It handles:
 
-* Initial system preparation, including package cache updates and essential utility installations. ⚙️
-* Installation of Go and xcaddy.
-* Building and configuring Caddy with integrated CrowdSec and Cloudflare DNS modules.
-* Installing and setting up CrowdSec, including bouncer registration and AppSec configuration.
-* Installing and configuring Rathole, which can operate in both server and client modes.
-* Setting up and managing Systemd services for all components. 🚀
+- Initial system preparation, including package cache updates and essential utility installations. ⚙️
+- Installation of Go and xcaddy.
+- Building and configuring Caddy with integrated CrowdSec and Cloudflare DNS modules.
+- Installing and setting up CrowdSec, including bouncer registration and AppSec configuration.
+- Installing and configuring Rathole, which can operate in both server and client modes.
+- Setting up and managing Systemd services for all components. 🚀
 
------
+---
 
 ## 2\. Prerequisites
 
 Before you start, make sure you have:
 
-* **Ansible**: Installed on your **control node** (the machine running Ansible). 💻
-* **SSH Access**: Configured for your **target servers**, ideally using SSH keys. 🔑
-* **Target Servers**: Running a Debian/Ubuntu-based Linux distribution. 🐧
-* **Internet Connectivity**: On your target servers to download packages and binaries. 🔗
+- **Ansible**: Installed on your **control node** (the machine running Ansible). 💻
+- **SSH Access**: Configured for your **target servers**, ideally using SSH keys. 🔑
+- **Target Servers**: Running a Debian/Ubuntu-based Linux distribution. 🐧
+- **Internet Connectivity**: On your target servers to download packages and binaries. 🔗
 
------
+---
 
 ## 3\. Directory Structure
 
@@ -94,7 +94,7 @@ The project uses a standard Ansible role-based directory structure for modularit
         └── vars/
 ```
 
------
+---
 
 ## 4\. Configuration
 
@@ -114,33 +114,33 @@ server.example ansible_host=127.0.0.1 ansible_port=22 ansible_user=ssh_user ansi
 
 ### Group Variables (`group_vars/`)
 
-This directory holds YAML files defining variables that apply to specific **groups of hosts**. For example, `group_vars/all.yml` contains variables that apply to *all* hosts in your inventory.
+This directory holds YAML files defining variables that apply to specific **groups of hosts**. For example, `group_vars/all.yml` contains variables that apply to _all_ hosts in your inventory.
 
 ### Host Variables (`host_vars/`)
 
 Here, you'll find variables **specific to individual hosts**. Each file must be named after a host in your `inventory.ini` (e.g., `server.example.yml`). This is the ideal place for:
 
-* **Connection details**: If `ansible_user` or `ansible_ssh_private_key_file` vary per server.
-* **Application-specific settings**: Like a Caddy domain (`caddy_domain`), backend details (`caddy_backend_ip`, `caddy_backend_port`), or whether Rathole acts as a server or client (`rathole_role`).
-* **Host-specific secrets**: If an API token or password is only relevant to one server.
+- **Connection details**: If `ansible_user` or `ansible_ssh_private_key_file` vary per server.
+- **Application-specific settings**: Like a Caddy domain (`caddy_domain`), backend details (`caddy_backend_ip`, `caddy_backend_port`), or whether Rathole acts as a server or client (`rathole_role`).
+- **Host-specific secrets**: If an API token or password is only relevant to one server.
 
 ### Role Variables (`roles/*/vars/main.yml`)
 
 Each role's `vars/main.yml` file contains **default** variables for that component (e.g., software versions, default installation paths, user/group names). These can be overridden by `group_vars/` or `host_vars/`.
 
-* **`rathole/vars/main.yml`**: Rathole version, paths, user/group.
-* **`go_lang/vars/main.yml`**: Go version and installation details.
-* **`xcaddy/vars/main.yml`**: xcaddy version and installation path.
-* **`caddy/vars/main.yml`**: Caddy version, paths, user/group, and the crucial **`caddy_plugins`** list for custom builds.
-* **`crowdsec/vars/main.yml`**: CrowdSec version, installation script URL, API/AppSec configuration (IPs, ports, ticker interval), and bouncer settings.
+- **`rathole/vars/main.yml`**: Rathole version, paths, user/group.
+- **`go_lang/vars/main.yml`**: Go version and installation details.
+- **`xcaddy/vars/main.yml`**: xcaddy version and installation path.
+- **`caddy/vars/main.yml`**: Caddy version, paths, user/group, and the crucial **`caddy_plugins`** list for custom builds.
+- **`crowdsec/vars/main.yml`**: CrowdSec version, installation script URL, API/AppSec configuration (IPs, ports, ticker interval), and bouncer settings.
 
 ### Templates (`roles/*/templates/`)
 
 Templates are Jinja2 files that dynamically generate configuration files on the target servers. They use variables from `group_vars/` and `host_vars/` to create host-specific configurations.
 
-* **`caddy/templates/Caddyfile.j2`**: Your primary Caddy configuration. This is where you define domains, proxy settings, CrowdSec integration, and Cloudflare DNS challenge.
-* **`caddy/templates/caddy.service.j2`**: The Systemd unit file for Caddy.
-* **`rathole/templates/rathole.toml.j2`**: Rathole's configuration file, dynamically generated based on `rathole_role` and specific server/client configurations.
+- **`caddy/templates/Caddyfile.j2`**: Your primary Caddy configuration. This is where you define domains, proxy settings, CrowdSec integration, and Cloudflare DNS challenge.
+- **`caddy/templates/caddy.service.j2`**: The Systemd unit file for Caddy.
+- **`rathole/templates/rathole.toml.j2`**: Rathole's configuration file, dynamically generated based on `rathole_role` and specific server/client configurations.
 
 ### Ansible Vault
 
@@ -148,21 +148,21 @@ Templates are Jinja2 files that dynamically generate configuration files on the 
 
 1. **Create a vault file**: You can use a single vault file (e.g., `group_vars/all/vault.yml`) or host-specific vault files if secrets vary per host.
 
-    ```bash
-    ansible-vault create group_vars/all/vault.yml
-    ```
+   ```bash
+   ansible-vault create group_vars/all/vault.yml
+   ```
 
 2. **Add your sensitive variables inside**:
 
-    ```yaml
-    vault_crowdsec_api_key: "YOUR_CROWDSEC_API_KEY"
-    vault_crowdsec_enrollment_key: "YOUR_CROWDSEC_ENROLLMENT_KEY"
-    vault_cloudflare_api_token_server: "YOUR_CLOUDFLARE_TOKEN"
-    ```
+   ```yaml
+   vault_crowdsec_api_key: "YOUR_CROWDSEC_API_KEY"
+   vault_crowdsec_enrollment_key: "YOUR_CROWDSEC_ENROLLMENT_KEY"
+   vault_cloudflare_api_token_server: "YOUR_CLOUDFLARE_TOKEN"
+   ```
 
 3. **Remember your vault password\!** 🔑
 
------
+---
 
 ## 5\. Deployment
 
@@ -172,15 +172,15 @@ To deploy the stack on your target servers:
 
 2. Run the main playbook:
 
-    ```bash
-    ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-    ```
+   ```bash
+   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+   ```
 
-    (Omit `--ask-vault-pass` if you're not using Ansible Vault.)
+   (Omit `--ask-vault-pass` if you're not using Ansible Vault.)
 
 Ansible will connect to your servers, perform initial system updates and common package installations, then proceed with installing and configuring the relevant software (Rathole, and conditionally Caddy/CrowdSec/Go/xcaddy), setting up all services automatically. ✨
 
------
+---
 
 ## 6\. Maintenance
 
@@ -194,11 +194,11 @@ To update Rathole, Go, xcaddy, CrowdSec, or Caddy:
 
 3. Re-run the main playbook:
 
-    ```bash
-    ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-    ```
+   ```bash
+   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+   ```
 
-    Ansible's idempotency ensures only necessary steps are performed (e.g., downloading and reinstalling the new version, restarting affected services). 🔄
+   Ansible's idempotency ensures only necessary steps are performed (e.g., downloading and reinstalling the new version, restarting affected services). 🔄
 
 ### Modifying Configurations
 
@@ -210,47 +210,47 @@ To change a configuration (e.g., Caddyfile, Rathole config):
 
 3. Re-run the main playbook:
 
-    ```bash
-    ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-    ```
+   ```bash
+   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+   ```
 
-    Ansible detects template changes and restarts affected services (e.g., Caddy service will restart if `Caddyfile.j2` changes). 📝
+   Ansible detects template changes and restarts affected services (e.g., Caddy service will restart if `Caddyfile.j2` changes). 📝
 
 ### Adding/Removing Hosts
 
-* **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[webservers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it.
-* **Removing hosts**: Simply remove the host from `inventory.ini`. For full de-provisioning (uninstalling services and cleaning up), you'd typically create a separate Ansible playbook.
+- **Adding hosts**: Add the new server's hostname to `inventory.ini` under the appropriate group (e.g., `[webservers]`). Then, create a corresponding YAML file in `host_vars/` (e.g., `host_vars/new_server.yml`) with its specific variables. Re-run the playbook to provision it.
+- **Removing hosts**: Simply remove the host from `inventory.ini`. For full de-provisioning (uninstalling services and cleaning up), you'd typically create a separate Ansible playbook.
 
 ### Checking Service Status
 
 After deployment or during maintenance, you can check the status of services on your target servers via SSH:
 
-* **Rathole**: `sudo systemctl status rathole`
-* **CrowdSec**:
-  * `sudo systemctl status crowdsec`
-  * `sudo cscli metrics` (to see CrowdSec statistics) 📊
-  * `sudo cscli bouncers list` (to verify Caddy bouncer registration)
-* **Caddy**:
-  * `sudo systemctl status caddy`
-  * `sudo journalctl -u caddy -f` (to view Caddy logs in real-time) 👁️
-  * `caddy version` (to check Caddy version and compiled modules)
-* **Go**: `go version`
-* **xcaddy**: `xcaddy version`
+- **Rathole**: `sudo systemctl status rathole`
+- **CrowdSec**:
+  - `sudo systemctl status crowdsec`
+  - `sudo cscli metrics` (to see CrowdSec statistics) 📊
+  - `sudo cscli bouncers list` (to verify Caddy bouncer registration)
+- **Caddy**:
+  - `sudo systemctl status caddy`
+  - `sudo journalctl -u caddy -f` (to view Caddy logs in real-time) 👁️
+  - `caddy version` (to check Caddy version and compiled modules)
+- **Go**: `go version`
+- **xcaddy**: `xcaddy version`
 
 ### Troubleshooting 🩺
 
-* **Playbook Failures**: Review the Ansible output for specific error messages. Common issues include SSH connection problems (check `ansible_user`, `ansible_ssh_private_key_file`), incorrect variable values, or syntax errors in templates.
-* **Service Not Starting**: Check the service logs using `sudo journalctl -u <service_name> -f` for detailed error messages (e.g., `journalctl -u caddy -f`).
-* **Permission Issues**: Ensure the Caddy user (`caddy`), Rathole user (`rathole`), and their respective groups have appropriate permissions to directories and files.
-* **Network/Firewall**: Verify that firewalls (on the server or network) aren't blocking necessary ports (e.g., 80, 443 for Caddy, Rathole's configured ports). 🚧
+- **Playbook Failures**: Review the Ansible output for specific error messages. Common issues include SSH connection problems (check `ansible_user`, `ansible_ssh_private_key_file`), incorrect variable values, or syntax errors in templates.
+- **Service Not Starting**: Check the service logs using `sudo journalctl -u <service_name> -f` for detailed error messages (e.g., `journalctl -u caddy -f`).
+- **Permission Issues**: Ensure the Caddy user (`caddy`), Rathole user (`rathole`), and their respective groups have appropriate permissions to directories and files.
+- **Network/Firewall**: Verify that firewalls (on the server or network) aren't blocking necessary ports (e.g., 80, 443 for Caddy, Rathole's configured ports). 🚧
 
------
+---
 
 ## 7\. Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions for improvements or bug fixes. Your contributions are welcome\! 🤝
 
------
+---
 
 ## 8\. License
 

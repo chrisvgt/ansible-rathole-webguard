@@ -29,14 +29,13 @@
   args:
     executable: /bin/bash
 
-
 - name: Ensure CrowdSec data directory exists
   ansible.builtin.file:
     path: /var/lib/crowdsec
     state: directory
     owner: root
     group: root
-    mode: '0755'
+    mode: "0755"
 
 - name: Install CrowdSec agent and iptables bouncer
   ansible.builtin.apt:
@@ -110,7 +109,7 @@
     dest: /etc/crowdsec/acquis.d/appsec.yaml
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   notify: Restart Crowdsec Service
 
 ## CrowdSec Console and Bouncer Management
@@ -159,7 +158,7 @@
     dest: /etc/crowdsec/acquis.d/caddy_logs.yaml
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   notify: Restart Crowdsec Service
 
 ## CrowdSec Ntfy and Profile Configuration
@@ -190,7 +189,7 @@
   changed_when: "'Successfully installed' in geoip_install_output.stdout or 'Upgraded' in geoip_install_output.stdout"
   failed_when: "(geoip_install_output.rc != 0 and 'already installed' not in geoip_install_output.stderr and 'already enabled' not in geoip_install_output.stdout)"
   notify: Restart Crowdsec Service
-  when: 
+  when:
     - ntfy_enabled
     - "'crowdsecurity/geoip-enrich' not in (cscli_hub_update_output.stdout | default(''))"
 
@@ -212,7 +211,7 @@
     state: directory
     owner: root
     group: root
-    mode: '0755'
+    mode: "0755"
   when: dynamic_whitelist_enabled
 
 - name: Add dynamic IPs to CrowdSec postoverflow whitelist
@@ -221,7 +220,7 @@
     dest: /etc/crowdsec/postoverflows/s01-whitelist/01-my-dynamic-whitelist.yaml
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   notify: Restart Crowdsec Service
   when: dynamic_whitelist_enabled
 
