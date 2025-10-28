@@ -11,6 +11,7 @@
     cmd: "{{ xcaddy_install_path }}/xcaddy --version"
   register: xcaddy_version_check
   ignore_errors: true
+  changed_when: false
 
 - name: Set xcaddy version changed flag
   ansible.builtin.set_fact:
