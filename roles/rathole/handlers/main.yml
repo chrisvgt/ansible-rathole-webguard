@@ -2,6 +2,10 @@
 
 # --- Handlers for Rathole Service ---
 
+- name: Reload Systemd Daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
 - name: Restart Rathole Service
   ansible.builtin.systemd:
     name: rathole

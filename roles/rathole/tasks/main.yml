@@ -1,31 +1,18 @@
 # roles/rathole/tasks/main.yml
 
-- name: Check if Rathole group exists
-  ansible.builtin.shell: getent group "{{ rathole_group }}"
-  register: rathole_group_check
-  changed_when: false
-  failed_when: false
-
 - name: Ensure Rathole system group exists
   ansible.builtin.group:
     name: "{{ rathole_group }}"
     state: present
-  when: rathole_group_check.rc != 0
-
-- name: Check if Rathole user exists
-  ansible.builtin.shell: id -u "{{ rathole_user }}"
-  register: rathole_user_check
-  changed_when: false
-  failed_when: false
 
 - name: Ensure Rathole system user exists
   ansible.builtin.user:
     name: "{{ rathole_user }}"
     group: "{{ rathole_group }}"
     create_home: false
+    system: true
     shell: "/usr/sbin/nologin"
     state: present
-  when: rathole_user_check.rc != 0
 
 - name: Check existing Rathole version
   ansible.builtin.command: "{{ rathole_install_path }}/{{ rathole_binary_name }} --version"
@@ -42,8 +29,6 @@
 - name: Set Rathole download URL based on architecture
   ansible.builtin.set_fact:
     rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ ansible_architecture }}"
-  # This task dynamically sets the download URL for different architectures.
-  # For example, if ansible_architecture is 'aarch64', it will build URL for 'linux-aarch64'.
 
 - name: Display version difference
   ansible.builtin.debug:
@@ -80,7 +65,7 @@
     owner: "{{ rathole_user }}"
     group: "{{ rathole_group }}"
     mode: "0755"
-  when: not (ansible_facts['files'][rathole_config_path] is defined and ansible_facts['files'][rathole_config_path]['isdir'])
+    recurse: true
 
 - name: Create or update Rathole configuration file
   ansible.builtin.template:
@@ -99,13 +84,12 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Rathole Service
+  notify:
+    - Reload Systemd Daemon
+    - Restart Rathole Service
   register: rathole_service_changed
 
-- name: Reload Systemd daemon
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: rathole_service_changed.changed
+  # Systemd daemon reload is handled by a handler triggered above
 
 - name: Enable and start Rathole service
   ansible.builtin.systemd:
