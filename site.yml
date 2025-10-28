@@ -1,6 +1,7 @@
 - name: Ansible-Rathole-Webguard
   hosts: webservers
   become: true # All tasks in this play will run with root privileges
+  gather_facts: true
 
   pre_tasks:
     - name: Ensure this playbook is only executed on Debian-based systems
@@ -27,12 +28,14 @@
           - git # For version control and cloning repositories
         state: present
       when: ansible_os_family == "Debian"
+      tags: [base]
 
     - name: Ensure /usr/local/bin exists
       ansible.builtin.file:
         path: /usr/local/bin
         state: directory
         mode: "0755" # Standard permissions for executable binaries
+      tags: [base]
 
   roles:
     # The 'go_lang' and 'xcaddy' roles are prerequisites for building Caddy.
@@ -70,6 +73,7 @@
         path: /var/run/reboot-required
       register: reboot_required_file
       when: ansible_os_family == "Debian" # Only run on Debian-based systems
+      tags: [reboot]
 
     - name: Reboot host if required
       ansible.builtin.reboot:
@@ -80,6 +84,7 @@
       when:
         - ansible_os_family == "Debian"
         - reboot_required_file.stat.exists # Only reboot if /var/run/reboot-required file exists
+      tags: [reboot]
 
     - name: Wait for host to reboot
       ansible.builtin.wait_for_connection: # ICMP must work properly
@@ -88,20 +93,15 @@
       when:
         - ansible_os_family == "Debian"
         - reboot_required_file.stat.exists # Only wait if a reboot was actually needed
+      tags: [reboot]
 
-    - name: Clean up rebooted sentinel file
-      ansible.builtin.file:
-        path: /tmp/rebooted
-        state: absent
-      when:
-        - ansible_os_family == "Debian"
-        - reboot_required_file.stat.exists # Only remove if it might have been created
-
-    # Clean up global temporary files
+    # Optional cleanup can be enabled by setting cleanup_temp to true
     - name: Clean up global temporary files
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
-      with_items:
+      loop:
         - "/tmp/ansible_temp"
         - "/tmp/unused_files"
+      when: cleanup_temp | default(false)
+      tags: [cleanup]
