@@ -8,6 +8,7 @@
       - apt-transport-https
       - curl
     state: present
+    update_cache: true
 
 - name: Create Caddy system group
   ansible.builtin.group:
@@ -33,27 +34,49 @@
     mode: "{{ item.mode }}"
     recurse: "{{ item.recurse | default(false) }}" # Apply recursively for data directory
   loop:
-    - { path: "{{ caddy_config_dir }}", mode: "0755" }
-    - { path: "{{ caddy_data_dir }}", mode: "0775", recurse: true } # Writable for autosave.json
-    - { path: "{{ caddy_data_dir }}/caddy", mode: "0775" } # Subdirectory for autosave etc.
-    - { path: "{{ caddy_log_dir }}", mode: "0755" }
+    - path: "{{ caddy_config_dir }}"
+      mode: "0755"
+    - path: "{{ caddy_data_dir }}"
+      mode: "0775"
+      recurse: true # Writable for autosave.json
+    - path: "{{ caddy_data_dir }}/caddy"
+      mode: "0775" # Subdirectory for autosave etc.
+    - path: "{{ caddy_log_dir }}"
+      mode: "0755"
 
 - name: Check installed Caddy version
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} version"
   register: caddy_version_check
   failed_when: false # Don't fail if the binary doesn't exist
+  changed_when: false
+
+- name: Build final Caddy plugin list
+  ansible.builtin.set_fact:
+    caddy_plugins_effective: >-
+      {{ (caddy_plugins | default([]))
+         + (enable_cloudflare | default(false) | ternary(['github.com/caddy-dns/cloudflare'], []))
+         + (enable_crowdsec | default(false) | ternary([
+              'github.com/hslatman/caddy-crowdsec-bouncer/http',
+              'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
+              'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
+            ], [])) }}
 
 - name: Build Caddy with specified plugins using xcaddy
   ansible.builtin.command:
-    cmd: /usr/local/bin/xcaddy build v{{ caddy_version }} --output {{ caddy_install_path }} {% if caddy_plugins | length > 0 and caddy_plugins[0] != '' %}{% for plugin in caddy_plugins %} --with {{ plugin }}{% endfor %}{% endif %}
-  args:
-    removes: "{{ caddy_install_path }}"  # Ensure the old binary is removed before building
+    cmd: >-
+      /usr/local/bin/xcaddy build v{{ caddy_version }}
+      --output {{ caddy_install_path }}
+      {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
   environment:
-    PATH: "{{ go_binary_path }}:{{ ansible_env.PATH }}"
+    # Use Go binary path from go_lang role if available, otherwise default to /usr/local/go/bin
+    PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_env.PATH }}"
     GOPATH: "/root/go"
   notify: Restart Caddy Service
-  when: (caddy_version_check.stdout | regex_search('v([0-9.]+)', '\\1')) != ('v' ~ caddy_version)
+  changed_when: true
+  when: >-
+    (caddy_version_check.stdout | default('') | regex_search('v([0-9.]+)', '\\1') | default(''))
+    != (caddy_version | string)
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
@@ -76,7 +99,7 @@
     cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
   environment:
     ANSIBLE_REMOTE_TEMP: "/tmp"
-  changed_when: true # Always report as changed for consistency
+  changed_when: false
   notify: Restart Caddy Service
 
 - name: Create Caddy Systemd unit file
@@ -108,3 +131,4 @@
   with_items:
     - "/tmp/caddy_build"
     - "/tmp/caddy_plugins"
+  changed_when: false

@@ -18,10 +18,6 @@ caddy_log_path: "{{ caddy_log_dir }}" # Full path to Caddy's primary log directo
 caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Full path to the main Caddyfile
 
 # --- Caddy Plugins ---
-# Conditionally define Caddy plugins based on feature enablement variables.
-caddy_plugins: "{{
-  (['github.com/caddy-dns/cloudflare'] if enable_cloudflare else []) +
-  (['github.com/hslatman/caddy-crowdsec-bouncer/http',
-    'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
-    'github.com/hslatman/caddy-crowdsec-bouncer/appsec'] if enable_crowdsec else [])
-}}"
+# Optional extra plugins can be specified by the user; by default, none are added here.
+# Core plugins based on enable flags are resolved at runtime in tasks.
+caddy_plugins: []
