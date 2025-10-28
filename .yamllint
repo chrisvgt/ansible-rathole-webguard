@@ -8,7 +8,7 @@ rules:
 
   # Allow longer lines and only warn when exceeded
   line-length:
-    max: 140
+    max: 300
     allow-non-breakable-words: true
     level: warning
 
@@ -23,6 +23,11 @@ rules:
   empty-lines:
     level: warning
   new-lines:
+    level: warning
+
+  # Align comment spacing with Prettier (1 space before inline comments)
+  comments:
+    min-spaces-from-content: 1
     level: warning
 
   # Disable YAML doc start marker (---) requirement

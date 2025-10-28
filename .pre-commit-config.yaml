@@ -11,8 +11,7 @@ repos:
     hooks:
       - id: prettier
         additional_dependencies:
-          - prettier@^3.3.3
-          - prettier-plugin-ini@^1.1.0
+          - prettier@4.0.0-alpha.8
         files: \.(ya?ml|json|md)$
 
   - repo: https://github.com/adrienverge/yamllint
@@ -20,3 +19,11 @@ repos:
     hooks:
       - id: yamllint
         args: ["-s"]
+
+  - repo: local
+    hooks:
+      - id: ansible-lint
+        name: ansible-lint (comprehensive)
+        entry: ansible-lint -v site.yml
+        language: system
+        pass_filenames: false

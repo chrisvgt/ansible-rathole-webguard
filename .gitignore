@@ -1,1 +1,3 @@
 inventory.ini
+node_modules
+.ansible
