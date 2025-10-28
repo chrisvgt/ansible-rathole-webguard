@@ -4,4 +4,10 @@
 enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Caddy plugin
 
 # Global toggle for CrowdSec integration
-enable_crowdsec: true   # Set to 'false' to disable CrowdSec installation and its Caddy plugin
+enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its Caddy plugin
+
+# CrowdSec console enrollment (optional, disabled by default for safety)
+crowdsec_enable_console_enroll: false
+
+# Optional: cleanup /tmp files created by some tasks
+cleanup_temp: false
