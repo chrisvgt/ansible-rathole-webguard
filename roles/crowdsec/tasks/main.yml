@@ -145,6 +145,8 @@
     - enable_crowdsec | default(true)
     - "'caddy-bouncer' not in crowdsec_cscli_bouncers_list.stdout"
     - crowdsec_cscli_bouncers_list.rc == 0
+    - crowdsec_api_key is defined
+    - crowdsec_api_key | length > 0
   register: crowdsec_bouncer_registration_output
   changed_when: crowdsec_bouncer_registration_output.rc == 0
   failed_when: crowdsec_bouncer_registration_output.rc != 0 and 'already exists' not in crowdsec_bouncer_registration_output.stderr
@@ -172,7 +174,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: ntfy_enabled
+  when: ntfy_enabled | default(false)
 
 - name: Create Ntfy notification configuration file
   ansible.builtin.template:
@@ -182,7 +184,7 @@
     group: root
     mode: "0644"
   notify: Restart Crowdsec Service
-  when: ntfy_enabled
+  when: ntfy_enabled | default(false)
 
 - name: Install GeoIP enrichment parser (if Ntfy enabled)
   ansible.builtin.command:
@@ -192,7 +194,7 @@
   failed_when: "(crowdsec_geoip_install_output.rc != 0 and 'already installed' not in crowdsec_geoip_install_output.stderr and 'already enabled' not in crowdsec_geoip_install_output.stdout)"
   notify: Restart Crowdsec Service
   when:
-    - ntfy_enabled
+    - ntfy_enabled | default(false)
     - "'crowdsecurity/geoip-enrich' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
 
 - name: Create/update CrowdSec profiles.yaml for Ntfy or dynamic blocking
@@ -203,7 +205,7 @@
     group: root
     mode: "0644"
   notify: Restart Crowdsec Service
-  when: ntfy_enabled or duration_expr
+  when: (ntfy_enabled | default(false)) or (duration_expr | default(false))
 
   ## CrowdSec Whitelist Configuration
 
@@ -214,7 +216,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: dynamic_whitelist_enabled
+  when: dynamic_whitelist_enabled | default(false)
 
 - name: Add dynamic IPs to CrowdSec postoverflow whitelist
   ansible.builtin.template:
@@ -224,7 +226,7 @@
     group: root
     mode: "0644"
   notify: Restart Crowdsec Service
-  when: dynamic_whitelist_enabled
+  when: dynamic_whitelist_enabled | default(false)
 
 - name: Clean up temporary CrowdSec files
   ansible.builtin.file:
