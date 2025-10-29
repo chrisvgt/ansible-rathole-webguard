@@ -45,9 +45,8 @@
         reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
             header_up X-Forwarded-For {{ site.forward_ip }}
         }
-        {% else %}
-        reverse_proxy localhost:{{ site.local_port }}
         {% endif %}
+        reverse_proxy localhost:{{ site.local_port }}
     }
     {% else %}
     route {
@@ -55,9 +54,8 @@
         reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
             header_up X-Forwarded-For {{ site.forward_ip }}
         }
-        {% else %}
-        reverse_proxy localhost:{{ site.local_port }}
         {% endif %}
+        reverse_proxy localhost:{{ site.local_port }}
     }
 {% endif %}
 
