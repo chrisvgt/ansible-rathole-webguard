@@ -1,6 +1,6 @@
 # roles/rathole/vars/main.yml
 
-rathole_version: "5.0.1" # Version of Rathole to install
+rathole_version: "0.5.1" # Version of Rathole to install
 rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}" # Base URL for downloading Rathole releases
 rathole_binary_name: "rathole" # Name of the Rathole executable
 rathole_install_path: "/usr/local/bin" # Directory where the Rathole binary will be placed
@@ -8,3 +8,19 @@ rathole_config_path: "/etc/rathole" # Directory for Rathole configuration files
 rathole_config_file: "rathole.toml" # Name of the main Rathole configuration file
 rathole_user: "rathole" # System user for the Rathole service
 rathole_group: "rathole" # System group for the Rathole service
+
+# Map Ansible architecture to Rathole release target triples (Linux)
+# Based on available assets like:
+# - rathole-x86_64-unknown-linux-gnu.zip
+# - rathole-x86_64-unknown-linux-musl.zip
+# - rathole-aarch64-unknown-linux-musl.zip
+# - rathole-armv7-unknown-linux-musleabihf.zip
+# - rathole-arm-unknown-linux-musleabi.zip
+rathole_target_map:
+  Linux:
+    x86_64: x86_64-unknown-linux-gnu
+    amd64: x86_64-unknown-linux-gnu
+    aarch64: aarch64-unknown-linux-musl
+    arm64: aarch64-unknown-linux-musl
+    armv7l: armv7-unknown-linux-musleabihf
+    armv6l: arm-unknown-linux-musleabi

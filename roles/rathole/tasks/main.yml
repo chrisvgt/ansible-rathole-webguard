@@ -26,9 +26,17 @@
     rathole_installed_version: "{{ rathole_version_check.stdout | regex_search('Build Version:\\s+([0-9.]+)', '\\1') }}"
   when: rathole_version_check.rc == 0
 
-- name: Set Rathole download URL based on architecture
+- name: Determine Rathole target triple
   ansible.builtin.set_fact:
-    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_binary_name }}-{{ ansible_system | lower }}-{{ ansible_architecture }}"
+    rathole_target_triple: "{{ (rathole_target_map[ansible_system] | default({}))[ansible_architecture] | default('x86_64-unknown-linux-gnu') }}"
+
+- name: Determine Rathole asset name and download URL
+  ansible.builtin.set_fact:
+    rathole_asset_name: "{{ rathole_binary_name }}-{{ rathole_target_triple }}.zip"
+
+- name: Determine Rathole download URL
+  ansible.builtin.set_fact:
+    rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_asset_name }}"
 
 - name: Display version difference
   ansible.builtin.debug:
@@ -37,26 +45,42 @@
       Target version: {{ rathole_version }}
   when: (rathole_installed_version | default('not installed')) != rathole_version
 
-- name: Download Rathole binary
+- name: Download Rathole zip asset
   ansible.builtin.get_url:
     url: "{{ rathole_download_url }}"
-    dest: "/tmp/{{ rathole_binary_name }}"
-    mode: "0755" # Make executable
+    dest: "/tmp/{{ rathole_asset_name }}"
+    mode: "0644"
   register: rathole_download_result
   until: rathole_download_result is succeeded
   retries: 5
   delay: 2 # Retry download up to 5 times with a 2-second delay
   when: (rathole_installed_version | default('not installed')) != rathole_version
 
+- name: Ensure Rathole unpack directory exists
+  ansible.builtin.file:
+    path: "/tmp/rathole_unpacked"
+    state: directory
+    mode: "0755"
+  when: (rathole_installed_version | default('not installed')) != rathole_version
+
+- name: Unarchive Rathole asset
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ rathole_asset_name }}"
+    dest: "/tmp/rathole_unpacked"
+    remote_src: true
+    mode: "0755"
+  when: (rathole_installed_version | default('not installed')) != rathole_version
+
 - name: Move Rathole binary to /usr/local/bin
   ansible.builtin.copy:
-    src: "/tmp/{{ rathole_binary_name }}"
+    src: "/tmp/rathole_unpacked/{{ rathole_binary_name }}"
     dest: "{{ rathole_install_path }}/{{ rathole_binary_name }}"
     owner: root
     group: root
     mode: "0755"
     remote_src: true # Source is on the remote host (downloaded to /tmp)
   when: (rathole_installed_version | default('not installed')) != rathole_version
+  notify: Restart Rathole Service
 
 - name: Create Rathole configuration directory
   ansible.builtin.file:
@@ -103,4 +127,5 @@
     path: "{{ item }}"
     state: absent
   with_items:
-    - "/tmp/{{ rathole_binary_name }}"
+    - "/tmp/{{ rathole_asset_name }}"
+    - "/tmp/rathole_unpacked"
