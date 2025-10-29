@@ -2,10 +2,3 @@
 # Ansible Lint configuration
 # Keep it strict enough to catch issues, but skip role metadata until added.
 profile: production
-
-skip_list:
-  - meta-no-info      # roles are missing meta/main.yml for now
-  - meta-incorrect    # same as above
-
-# Optionally, you can list specific files to lint, but CI runs ansible-lint site.yml
-# to traverse roles used by the playbook automatically.
