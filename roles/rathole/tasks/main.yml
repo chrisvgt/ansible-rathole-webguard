@@ -23,7 +23,7 @@
 
 - name: Extract Rathole version from output
   ansible.builtin.set_fact:
-    rathole_installed_version: "{{ rathole_version_check.stdout | regex_search('Build Version:\\s+([0-9.]+)', '\\1') }}"
+    rathole_installed_version: "{{ rathole_version_check.stdout | default('') | regex_search('([0-9]+\\.[0-9]+\\.[0-9]+)') | default('') }}"
   when: rathole_version_check.rc == 0
 
 - name: Determine Rathole target triple
@@ -38,12 +38,10 @@
   ansible.builtin.set_fact:
     rathole_download_url: "{{ rathole_download_url_base }}/{{ rathole_asset_name }}"
 
-- name: Display version difference
+- name: Report Rathole installed and target version
   ansible.builtin.debug:
     msg: >
-      Rathole installed version: {{ rathole_installed_version | default('not installed') }},
-      Target version: {{ rathole_version }}
-  when: (rathole_installed_version | default('not installed')) != rathole_version
+      Rathole installed version: {{ rathole_installed_version | default('not installed') }}, Target version: {{ rathole_version }}
 
 - name: Download Rathole zip asset
   ansible.builtin.get_url:
