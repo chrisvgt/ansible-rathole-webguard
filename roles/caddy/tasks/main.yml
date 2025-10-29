@@ -62,6 +62,17 @@
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
             ], [])) }}
 
+- name: Compute hash of effective Caddy plugins
+  ansible.builtin.set_fact:
+    caddy_plugins_hash: "{{ caddy_plugins_effective | to_nice_json | hash('sha1') }}"
+
+- name: Read previous Caddy plugins hash (if any)
+  ansible.builtin.slurp:
+    src: "{{ caddy_plugins_hash_file }}"
+  register: caddy_plugins_hash_prev
+  failed_when: false
+  changed_when: false
+
 - name: Build Caddy with specified plugins using xcaddy
   ansible.builtin.command:
     cmd: >-
@@ -75,8 +86,10 @@
   notify: Restart Caddy Service
   changed_when: true
   when: >-
-    (caddy_version_check.stdout | default('') | regex_search('v([0-9.]+)', '\\1') | default(''))
-    != (caddy_version | string)
+    ((caddy_version_check.stdout | default('') | regex_search('v([0-9.]+)', '\\1') | default(''))
+    != (caddy_version | string))
+    or
+    ((caddy_plugins_hash_prev.content | default('') | b64decode | trim) != caddy_plugins_hash)
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
@@ -84,6 +97,15 @@
     mode: "0755"
     owner: root
     group: root
+
+- name: Persist current Caddy plugins hash
+  ansible.builtin.copy:
+    content: "{{ caddy_plugins_hash }}\n"
+    dest: "{{ caddy_plugins_hash_file }}"
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: "0644"
+  when: caddy_plugins_hash is defined
 
 - name: Create Caddyfile from template
   ansible.builtin.template:

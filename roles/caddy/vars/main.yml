@@ -21,3 +21,6 @@ caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Full path to the main Ca
 # Optional extra plugins can be specified by the user; by default, none are added here.
 # Core plugins based on enable flags are resolved at runtime in tasks.
 caddy_plugins: []
+
+# File to record the hash of the effective Caddy plugin list to trigger rebuilds when it changes
+caddy_plugins_hash_file: "{{ caddy_data_dir }}/.plugins.sha1"

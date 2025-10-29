@@ -25,6 +25,9 @@ RestartSec=10
 Environment="HOME={{ caddy_data_dir }}"
 Environment="XDG_CONFIG_HOME={{ caddy_data_dir }}"
 Environment="XDG_DATA_HOME={{ caddy_data_dir }}"
+{% if enable_cloudflare | default(false) and caddy_cloudflare_api_token is defined and (caddy_cloudflare_api_token | length > 0) %}
+Environment="CLOUDFLARE_API_TOKEN={{ caddy_cloudflare_api_token }}"
+{% endif %}
 
 [Install]
 WantedBy=multi-user.target
