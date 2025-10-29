@@ -10,12 +10,6 @@
         api_key {{ crowdsec_api_key }}
         ticker_interval {{ crowdsec_ticker_interval }}
         appsec_url http://{{ crowdsec_appsec_ip }}:{{ crowdsec_appsec_port }}
-        {% if crowdsec_disable_streaming is defined and crowdsec_disable_streaming %}
-        disable_streaming
-        {% endif %}
-        {% if crowdsec_enable_hard_fails is defined and crowdsec_enable_hard_fails %}
-        enable_hard_fails
-        {% endif %}
     }
     {% endif %}
 
