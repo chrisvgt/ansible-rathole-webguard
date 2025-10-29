@@ -128,9 +128,9 @@ Here, you'll find variables **specific to individual hosts**. Each file must be 
 
 Each role's `vars/main.yml` file contains **default** variables for that component (e.g., software versions, default installation paths, user/group names). These can be overridden by `group_vars/` or `host_vars/`.
 
-- **`rathole/vars/main.yml`**: Rathole version, paths, user/group.
+- **`rathole/vars/main.yml`**: Rathole version, paths, user/group, and target-triple mapping used to download the correct release asset for your OS/architecture.
 - **`go_lang/vars/main.yml`**: Go version and installation details.
-- **`xcaddy/vars/main.yml`**: xcaddy version and installation path.
+- **`xcaddy/vars/main.yml`**: xcaddy version, installation path, and architecture mapping for the correct binary.
 - **`caddy/vars/main.yml`**: Caddy version, paths, user/group, and the crucial **`caddy_plugins`** list for custom builds.
 - **`crowdsec/vars/main.yml`**: CrowdSec version, installation script URL, API/AppSec configuration (IPs, ports, ticker interval), and bouncer settings.
 
@@ -141,6 +141,40 @@ Templates are Jinja2 files that dynamically generate configuration files on the 
 - **`caddy/templates/Caddyfile.j2`**: Your primary Caddy configuration. This is where you define domains, proxy settings, CrowdSec integration, and Cloudflare DNS challenge.
 - **`caddy/templates/caddy.service.j2`**: The Systemd unit file for Caddy.
 - **`rathole/templates/rathole.toml.j2`**: Rathole's configuration file, dynamically generated based on `rathole_role` and specific server/client configurations.
+
+### Global toggles and useful variables
+
+- `enable_cloudflare` (bool, default false): Adds the Cloudflare DNS plugin to Caddy builds. If enabled, set `caddy_cloudflare_api_token` with a Cloudflare API token (store it in Vault). The Caddy systemd unit injects it as `CLOUDFLARE_API_TOKEN`.
+- `enable_crowdsec` (bool, default true): Installs and configures CrowdSec and related Caddy bouncer modules.
+- `cleanup_temp` (bool, default false): Performs optional cleanup of temporary files at the end of the play.
+- CrowdSec extras (all optional; guarded to avoid undefined-variable failures):
+  - `ntfy_enabled`
+  - `duration_expr`
+  - `dynamic_whitelist_enabled`
+  - `crowdsec_api_key` (required if registering the Caddy bouncer)
+
+### Caddy plugins and rebuild behavior
+
+- The Caddy role compiles Caddy with a combined plugin list based on `caddy_plugins` plus flags like `enable_cloudflare` and `enable_crowdsec`.
+- A hash of the effective plugin list is persisted. Caddy is rebuilt when either the version changes or the plugin list changes, ensuring consistent binaries across runs.
+
+### Rathole downloads and checksums
+
+- The Rathole role downloads zipped release assets based on a target-triple mapping derived from `ansible_system` and `ansible_architecture` (e.g., `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-musl`). Common Linux targets and macOS (Darwin) are supported; `amd64` is aliased to `x86_64`.
+- Optional checksum verification is supported. Define a map of filenames to SHA-256 sums, for example:
+
+  ```yaml
+  # group_vars/all.yml or host_vars/<host>.yml
+  rathole_checksums:
+    "rathole-x86_64-unknown-linux-gnu.zip": "9f6b4b333e4a8577aaddc297b0c00feffd4c1cdc6f92c03622734defb84c5868"
+    "rathole-aarch64-unknown-linux-musl.zip": "219226a2cf32a0a74735bcb4b315b7f087fa8a3fb448509ff77fad2d8415bd4b"
+  ```
+
+  When provided, downloads are verified automatically.
+
+### Rolling updates
+
+- The main play uses `serial: 1` to roll out changes one host at a time, minimizing downtime during upgrades and reboots.
 
 ### Ansible Vault
 
@@ -158,6 +192,8 @@ Templates are Jinja2 files that dynamically generate configuration files on the 
    vault_crowdsec_api_key: "YOUR_CROWDSEC_API_KEY"
    vault_crowdsec_enrollment_key: "YOUR_CROWDSEC_ENROLLMENT_KEY"
    vault_cloudflare_api_token_server: "YOUR_CLOUDFLARE_TOKEN"
+   # Optionally map to the Caddy role variable expected by the systemd unit
+   caddy_cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
    ```
 
 3. **Remember your vault password\!** 🔑
