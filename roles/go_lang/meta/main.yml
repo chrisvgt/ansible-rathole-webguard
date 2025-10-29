@@ -3,12 +3,12 @@ galaxy_info:
   author: chrisvgt
   description: Install Go language toolchain
   license: MIT
-  min_ansible_version: '2.14'
+  min_ansible_version: "2.14"
   platforms:
     - name: Debian
-      versions: ['bullseye', 'bookworm']
+      versions: ["bullseye", "bookworm"]
     - name: Ubuntu
-      versions: ['focal', 'jammy', 'noble']
+      versions: ["focal", "jammy", "noble"]
   galaxy_tags:
     - go
     - golang

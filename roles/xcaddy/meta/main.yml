@@ -3,12 +3,12 @@ galaxy_info:
   author: chrisvgt
   description: Install xcaddy binary to build custom Caddy
   license: MIT
-  min_ansible_version: '2.14'
+  min_ansible_version: "2.14"
   platforms:
     - name: Debian
-      versions: ['bullseye', 'bookworm']
+      versions: ["bullseye", "bookworm"]
     - name: Ubuntu
-      versions: ['focal', 'jammy', 'noble']
+      versions: ["focal", "jammy", "noble"]
   galaxy_tags:
     - caddy
     - xcaddy

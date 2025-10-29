@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   author: chrisvgt
-  description: Install and manage Rathole service
+  description: Install and configure Caddy with optional plugins (Cloudflare, CrowdSec)
   license: MIT
   min_ansible_version: "2.14"
   platforms:
@@ -10,8 +10,11 @@ galaxy_info:
     - name: Ubuntu
       versions: ["focal", "jammy", "noble"]
   galaxy_tags:
-    - tunnel
+    - caddy
+    - http
     - reverseproxy
-    - rathole
+    - tls
+    - crowdsec
+    - cloudflare
 
 dependencies: []
