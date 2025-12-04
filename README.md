@@ -13,27 +13,28 @@ This repository contains Ansible playbooks to deploy and manage a robust and sec
 
 1. [Overview](#1-overview)
 2. [Prerequisites](#2-prerequisites)
-3. [Directory Structure](#3-directory-structure)
-4. [Configuration](#4-configuration)
+3. [Quickstart](#3-quickstart)
+4. [Directory Structure](#4-directory-structure)
+5. [Configuration](#5-configuration)
    - [Inventory (`inventory.ini`)](#inventory-inventoryini)
    - [Group Variables (`group_vars/`)](#group-variables-group_vars)
    - [Host Variables (`host_vars/`)](#host-variables-host_vars)
    - [Role Variables (`roles/*/vars/main.yml`)](#role-variables-rolesvarsmainyml)
    - [Templates (`roles/*/templates/`)](#templates-roles-templates)
    - [Ansible Vault](#ansible-vault)
-5. [Deployment](#5-deployment)
-6. [Maintenance](#6-maintenance)
+6. [Deployment](#6-deployment)
+7. [Maintenance](#7-maintenance)
    - [Updating Software Versions](#updating-software-versions)
    - [Modifying Configurations](#modifying-configurations)
    - [Adding/Removing Hosts](#addingremoving-hosts)
    - [Checking Service Status](#checking-service-status)
    - [Troubleshooting](#troubleshooting)
-7. [Contribution](#7-contribution)
-8. [License](#8-license)
+8. [Contribution](#8-contribution)
+9. [License](#9-license)
 
 ---
 
-## 1\. Overview
+## 1. Overview
 
 This Ansible setup fully automates the deployment and management of Rathole, CrowdSec, and Caddy on your target servers. It handles:
 
@@ -46,18 +47,45 @@ This Ansible setup fully automates the deployment and management of Rathole, Cro
 
 ---
 
-## 2\. Prerequisites
+## 2. Prerequisites
 
 Before you start, make sure you have:
 
-- **Ansible**: Installed on your **control node** (the machine running Ansible). 💻
+- **Ansible**: Installed on your **control node** (the machine running Ansible). Recommended: Ansible 2.13+ (adjust as needed for your environment). 💻
 - **SSH Access**: Configured for your **target servers**, ideally using SSH keys. 🔑
 - **Target Servers**: Running a Debian/Ubuntu-based Linux distribution. 🐧
 - **Internet Connectivity**: On your target servers to download packages and binaries. 🔗
 
 ---
 
-## 3\. Directory Structure
+## 3. Quickstart
+
+Minimal example to get started quickly from the repository root.
+
+Example `group_vars/all.yml` (very small set of useful defaults):
+
+```yaml
+# group_vars/all.yml
+enable_crowdsec: true
+enable_cloudflare: false
+cleanup_temp: false
+```
+
+Example `host_vars/server.example.yml`:
+
+```yaml
+# host_vars/server.example.yml
+ansible_host: 203.0.113.10
+ansible_user: ubuntu
+caddy_domain: example.com
+rathole_role: server
+```
+
+Replace values above with your real hostnames/IPs and variables.
+
+---
+
+## 4. Directory Structure
 
 The project uses a standard Ansible role-based directory structure for modularity:
 
@@ -96,7 +124,7 @@ The project uses a standard Ansible role-based directory structure for modularit
 
 ---
 
-## 4\. Configuration
+## 5. Configuration
 
 All configuration is managed through Ansible variables and templates, ensuring flexibility and dynamic deployment.
 
@@ -174,11 +202,22 @@ Templates are Jinja2 files that dynamically generate configuration files on the 
 
 ### Rolling updates
 
-- The main play uses `serial: 1` to roll out changes one host at a time, minimizing downtime during upgrades and reboots.
+- Rolling updates are not enforced by this repository's playbook by default. If you'd like to roll out changes one host at a time, set `serial` in your play. Example:
+
+```yaml
+- hosts: webservers
+  serial: 1 # apply changes one host at a time
+  roles:
+    - caddy
+    - crowdsec
+    - rathole
+```
+
+Adjust `serial` to a value suitable for your environment (for example, a percentage like `serial: 10%`).
 
 ### Ansible Vault
 
-**It's highly recommended to use Ansible Vault for sensitive data** like Cloudflare API tokens (`cloudflare_api_token`), CrowdSec API keys (`crowdsec_api_key`), or SSH private key passphrases.
+**It's highly recommended to use Ansible Vault for sensitive data** like Cloudflare API tokens (`caddy_cloudflare_api_token`), CrowdSec API keys (`crowdsec_api_key`), or SSH private key passphrases.
 
 1. **Create a vault file**: You can use a single vault file (e.g., `group_vars/all/vault.yml`) or host-specific vault files if secrets vary per host.
 
@@ -186,39 +225,51 @@ Templates are Jinja2 files that dynamically generate configuration files on the 
    ansible-vault create group_vars/all/vault.yml
    ```
 
-2. **Add your sensitive variables inside**:
+2. **Add your sensitive variables inside**. Example using a canonical role variable mapping:
 
    ```yaml
+   # vault file (group_vars/all/vault.yml)
    vault_crowdsec_api_key: "YOUR_CROWDSEC_API_KEY"
    vault_crowdsec_enrollment_key: "YOUR_CROWDSEC_ENROLLMENT_KEY"
    vault_cloudflare_api_token_server: "YOUR_CLOUDFLARE_TOKEN"
-   # Optionally map to the Caddy role variable expected by the systemd unit
+
+   # map the vault secret to the role variable used by Caddy
    caddy_cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
    ```
 
-3. **Remember your vault password\!** 🔑
+3. **Remember your vault password!** 🔑
 
 ---
 
-## 5\. Deployment
+## 6. Deployment
 
 To deploy the stack on your target servers:
 
-1. Navigate to your `~/ansible/` directory.
+1. From the repository root, run the main playbook:
 
-2. Run the main playbook:
+```bash
+ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+```
 
-   ```bash
-   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-   ```
-
-   (Omit `--ask-vault-pass` if you're not using Ansible Vault.)
+(Omit `--ask-vault-pass` if you're not using Ansible Vault.)
 
 Ansible will connect to your servers, perform initial system updates and common package installations, then proceed with installing and configuring the relevant software (Rathole, and conditionally Caddy/CrowdSec/Go/xcaddy), setting up all services automatically. ✨
 
+## Helper script
+
+A small helper script is included at `scripts/run-playbook.sh` to simplify running the playbook with common options. Make it executable and run from the repository root:
+
+```bash
+chmod +x scripts/run-playbook.sh
+./scripts/run-playbook.sh                # prompts for vault password by default
+./scripts/run-playbook.sh --no-vault     # run without Ansible Vault
+./scripts/run-playbook.sh --vault-file ~/.vault_pass.txt
+./scripts/run-playbook.sh --inventory myhosts.ini --playbook site.yml
+```
+
 ---
 
-## 6\. Maintenance
+## 7. Maintenance
 
 ### Updating Software Versions
 
@@ -230,11 +281,11 @@ To update Rathole, Go, xcaddy, CrowdSec, or Caddy:
 
 3. Re-run the main playbook:
 
-   ```bash
-   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-   ```
+```bash
+ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+```
 
-   Ansible's idempotency ensures only necessary steps are performed (e.g., downloading and reinstalling the new version, restarting affected services). 🔄
+Ansible's idempotency ensures only necessary steps are performed (e.g., downloading and reinstalling the new version, restarting affected services). 🔄
 
 ### Modifying Configurations
 
@@ -246,11 +297,11 @@ To change a configuration (e.g., Caddyfile, Rathole config):
 
 3. Re-run the main playbook:
 
-   ```bash
-   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-   ```
+```bash
+ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+```
 
-   Ansible detects template changes and restarts affected services (e.g., Caddy service will restart if `Caddyfile.j2` changes). 📝
+Ansible detects template changes and restarts affected services (e.g., Caddy service will restart if `Caddyfile.j2` changes). 📝
 
 ### Adding/Removing Hosts
 
@@ -282,12 +333,12 @@ After deployment or during maintenance, you can check the status of services on 
 
 ---
 
-## 7\. Contribution
+## 8. Contribution
 
-Feel free to open issues or submit pull requests if you have suggestions for improvements or bug fixes. Your contributions are welcome\! 🤝
+Feel free to open issues or submit pull requests if you have suggestions for improvements or bug fixes. Your contributions are welcome! 🤝
 
 ---
 
-## 8\. License
+## 9. License
 
 This project is open-source and available under the **MIT License**. 📝
