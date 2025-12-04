@@ -1,6 +1,6 @@
 xcaddy_version: "0.4.5" # Specify the desired xcaddy version
 
-# Map ansible_architecture to xcaddy release arch identifiers
+# Map ansible_facts['architecture'] to xcaddy release arch identifiers
 xcaddy_arch_map:
   x86_64: amd64
   aarch64: arm64

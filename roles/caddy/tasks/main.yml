@@ -81,7 +81,7 @@
       {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
   environment:
     # Use Go binary path from go_lang role if available, otherwise default to /usr/local/go/bin
-    PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_env.PATH }}"
+    PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_facts['env'].PATH }}"
     GOPATH: "/root/go"
   notify: Restart Caddy Service
   changed_when: true

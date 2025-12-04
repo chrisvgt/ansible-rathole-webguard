@@ -28,7 +28,7 @@
 
 - name: Determine Rathole target triple
   ansible.builtin.set_fact:
-    rathole_target_triple: "{{ (rathole_target_map[ansible_system] | default({}))[ansible_architecture] | default('x86_64-unknown-linux-gnu') }}"
+    rathole_target_triple: "{{ (rathole_target_map[ansible_facts['system']] | default({}))[ansible_facts['architecture']] | default('x86_64-unknown-linux-gnu') }}"
 
 - name: Determine Rathole asset name and download URL
   ansible.builtin.set_fact:

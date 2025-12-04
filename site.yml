@@ -7,7 +7,7 @@
     - name: Ensure this playbook is only executed on Debian-based systems
       ansible.builtin.assert:
         that:
-          - ansible_os_family == "Debian"
+          - ansible_facts["os_family"] == "Debian"
         fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
         success_msg: "System is Debian-based. Proceeding with the playbook."
 
@@ -17,7 +17,7 @@
         cache_valid_time: 3600
         upgrade: dist
         autoremove: true
-      when: ansible_os_family == "Debian"
+      when: ansible_facts["os_family"] == "Debian"
 
     - name: Install common system utilities (Debian-based systems)
       ansible.builtin.apt:
@@ -27,7 +27,7 @@
           - unzip # For extracting archives
           - git # For version control and cloning repositories
         state: present
-      when: ansible_os_family == "Debian"
+      when: ansible_facts["os_family"] == "Debian"
       tags: [base]
 
     - name: Ensure /usr/local/bin exists
@@ -72,7 +72,7 @@
       ansible.builtin.stat:
         path: /var/run/reboot-required
       register: reboot_required_file
-      when: ansible_os_family == "Debian" # Only run on Debian-based systems
+      when: ansible_facts["os_family"] == "Debian" # Only run on Debian-based systems
       tags: [reboot]
 
     - name: Reboot host if required
@@ -82,7 +82,7 @@
         post_reboot_delay: 10 # Wait 10 seconds after reboot before re-establishing connection
         connect_timeout: 300 # Max time to wait for connection to come back
       when:
-        - ansible_os_family == "Debian"
+        - ansible_facts["os_family"] == "Debian"
         - reboot_required_file.stat.exists # Only reboot if /var/run/reboot-required file exists
       tags: [reboot]
 
@@ -91,7 +91,7 @@
         delay: 10
         timeout: 300 # Wait up to 5 minutes
       when:
-        - ansible_os_family == "Debian"
+        - ansible_facts["os_family"] == "Debian"
         - reboot_required_file.stat.exists # Only wait if a reboot was actually needed
       tags: [reboot]
 
