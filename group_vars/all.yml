@@ -6,6 +6,9 @@ enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Cadd
 # Global toggle for CrowdSec integration
 enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its Caddy plugin
 
+# Global toggle for Coraza WAF
+enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
+
 # CrowdSec console enrollment (optional, disabled by default for safety)
 crowdsec_enable_console_enroll: false
 

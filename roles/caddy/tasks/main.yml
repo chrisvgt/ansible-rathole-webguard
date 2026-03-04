@@ -60,7 +60,8 @@
               'github.com/hslatman/caddy-crowdsec-bouncer/http',
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
-            ], [])) }}
+            ], []))
+         + (enable_coraza_waf | default(false) | ternary(['github.com/corazawaf/coraza-caddy/v2'], [])) }}
 
 - name: Compute hash of effective Caddy plugins
   ansible.builtin.set_fact:

@@ -3,6 +3,10 @@
 
 # Global Caddy Options
 {
+    {% if enable_coraza_waf %}
+    order coraza_waf first
+    {% endif %}
+
     # Enable CrowdSec middleware globally if `enable_crowdsec` is true
     {% if enable_crowdsec %}
     crowdsec {
@@ -30,6 +34,19 @@
 # Site-specific configurations from `caddy_sites` variable
 {% for site in caddy_sites %}
 {{ site.domain }}:443 {
+    {% if enable_coraza_waf %}
+    # Coraza WAF (Web Application Firewall) configuration
+    coraza_waf {
+        load_owasp_crs
+        directives `
+            Include @coraza.conf-recommended
+            Include @crs-setup.conf.example
+            Include @owasp_crs/*.conf
+            SecRuleEngine DetectionOnly
+        `
+    }
+    {% endif %}
+
     {% if enable_crowdsec %}
     # Apply CrowdSec protection and reverse proxy
     route {
