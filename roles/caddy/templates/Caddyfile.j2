@@ -35,13 +35,19 @@
 {% for site in caddy_sites %}
 {{ site.domain }}:443 {
     {% if enable_coraza_waf %}
-    # Coraza WAF (Web Application Firewall) configuration
+    # Coraza WAF (Web Application Firewall) - Optimized for performance
+    # Request-only inspection (lightweight, fast)
+    # Complements CrowdSec IPS/IDS for defense-in-depth
     coraza_waf {
         load_owasp_crs
         directives `
             Include @coraza.conf-recommended
             Include @crs-setup.conf.example
-            Include @owasp_crs/*.conf
+            Include @owasp_crs/REQUEST-*.conf
+            SecRequestBodyLimit 20971520
+            SecRequestBodyInMemoryLimit 5242880
+            SecResponseBodyAccess Off
+            SecAuditEngine Off
         `
     }
     {% endif %}
@@ -67,7 +73,7 @@
         {% endif %}
         reverse_proxy localhost:{{ site.local_port }}
     }
-{% endif %}
+    {% endif %}
 
     # Redirect HTTP to HTTPS for GET requests
     @httpget {
