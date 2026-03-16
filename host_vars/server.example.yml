@@ -10,7 +10,7 @@ dynamic_ddns_hostnames:
 
 # --- Ntfy Setup ---
 ntfy_enabled: false # Set to `true` to enable ntfy notifications
-ntfy_server: "ntfy.sh"
+ntfy_server: "ntfy.example.com"
 ntfy_topic: "crowdsec_alerts"
 ntfy_auth_token: "" # Optional: Your ntfy authentication token
 
@@ -31,6 +31,8 @@ caddy_sites:
   - name: notify
     domain: "notify.yourdomain.com"
     local_port: 8004
+    # Override: site.enable_waf = false → WAF disabled despite global setting
+    # enable_waf: false
 
   - name: stream
     domain: "stream.yourdomain.com"

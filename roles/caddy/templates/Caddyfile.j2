@@ -3,10 +3,6 @@
 
 # Global Caddy Options
 {
-    {% if enable_coraza_waf %}
-    order coraza_waf first
-    {% endif %}
-
     {% if enable_crowdsec %}
     crowdsec {
         api_url http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}
@@ -38,7 +34,7 @@
     # The 'route' block guarantees the strict execution order of your security pipeline.
     # Traffic cannot reach the reverse_proxy without surviving Coraza, CrowdSec, and AppSec first.
     route {
-        {% if enable_coraza_waf %}
+        {% if site.enable_waf | default(enable_coraza_waf) %}
         # 1. Coraza WAF: catches malformed requests, SQLi, XSS
         coraza_waf {
             load_owasp_crs
