@@ -53,7 +53,18 @@
         appsec
         {% endif %}
 
-        # 4. Reverse Proxy: Only clean, encrypted traffic reaches this point
+        # 4. Rate limiting: Prevent brute force and DDoS
+        {% if enable_rate_limit | default(true) %}
+        rate_limit {
+            zone {{ site.name | default(site.domain | replace('.', '_')) }} {
+                key "{http.request.remote.ip}"
+                window {{ site.rate_limit_window | default('1m') }}
+                events {{ site.rate_limit_events | default(500) }}
+            }
+        }
+        {% endif %}
+
+        # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
         {% if site.enable_forward is defined and site.enable_forward %}
         # Route specific paths to different backends when configured
         @forward_path path {{ site.forward_path }}*
@@ -64,7 +75,6 @@
 
         # Default proxy for all other paths
         reverse_proxy localhost:{{ site.local_port }} {
-            header_up X-Forwarded-For {remote}
             header_up X-Request-ID {http.request.uuid}
         }
     }
@@ -81,12 +91,6 @@
         Referrer-Policy "strict-origin-when-cross-origin"
         # Feature policy / Permissions policy
         Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-    }
-
-    # Rate limiting: Higher default for streaming clients (Jellyfin makes many small requests)
-    rate_limit {{ site.rate_limit | default('500r/s') }} {
-        key "{http.request.remote.ip}"
-        status 429
     }
 
     # Caching headers for static media/metadata to reduce requests

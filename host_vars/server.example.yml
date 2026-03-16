@@ -41,6 +41,8 @@ caddy_sites:
     # enable_forward: true
     # forward_ip: 192.168.0.1
     # forward_path: "/path/to/"
+    # rate_limit_window: "1m"     # Optional: 1 minute window
+    # rate_limit_events: 500      # Optional: 500 requests allowed
 
 # --- Rathole Server Configuration Example ---
 rathole_role: "server" # Identifies this as a Rathole server configuration

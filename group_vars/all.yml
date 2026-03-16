@@ -1,5 +1,8 @@
 # Variables that apply to all servers
 
+# Global toggle for ratelimit
+enable_rate_limit: true
+
 # Global toggle for Cloudflare DNS challenges
 enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Caddy plugin
 
