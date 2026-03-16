@@ -7,7 +7,6 @@
     order coraza_waf first
     {% endif %}
 
-    # Enable CrowdSec middleware globally if `enable_crowdsec` is true
     {% if enable_crowdsec %}
     crowdsec {
         api_url http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}
@@ -17,14 +16,10 @@
     }
     {% endif %}
 
-    # Enable Cloudflare DNS challenge for TLS if `enable_cloudflare` is true
     {% if enable_cloudflare %}
-    tls {
-        dns cloudflare {{ cloudflare_api_token }}
-    }
+    acme_dns cloudflare {{ cloudflare_api_token }}
     {% endif %}
 
-    # Global logging for Caddy's internal operations
     log {
         output stderr
         level INFO
@@ -33,60 +28,49 @@
 
 # Site-specific configurations from `caddy_sites` variable
 {% for site in caddy_sites %}
-{{ site.domain }}:443 {
-    {% if enable_coraza_waf %}
-    # Coraza WAF (Web Application Firewall) - Optimized for performance
-    # Request-only inspection (lightweight, fast)
-    # Complements CrowdSec IPS/IDS for defense-in-depth
-    coraza_waf {
-        load_owasp_crs
-        directives `
-            Include @coraza.conf-recommended
-            Include @crs-setup.conf.example
-            Include @owasp_crs/REQUEST-*.conf
-            SecRequestBodyLimit 20971520
-            SecRequestBodyInMemoryLimit 5242880
-            SecResponseBodyAccess Off
-            SecAuditEngine Off
-        `
-    }
-    {% endif %}
+{{ site.domain }} {
 
-    {% if enable_crowdsec %}
-    # Apply CrowdSec protection and reverse proxy
+    # The 'route' block guarantees the strict execution order of your security pipeline.
+    # Traffic cannot reach the reverse_proxy without surviving Coraza, CrowdSec, and AppSec first.
     route {
+        {% if enable_coraza_waf %}
+        # 1. Coraza WAF: catches malformed requests, SQLi, XSS
+        coraza_waf {
+            load_owasp_crs
+            directives `
+                Include @coraza.conf-recommended
+                Include @crs-setup.conf.example
+                Include @owasp_crs/REQUEST-*.conf
+                SecRequestBodyLimit 20971520
+                SecRequestBodyInMemoryLimit 5242880
+                SecResponseBodyAccess Off
+                SecAuditEngine Off
+            `
+        }
+        {% endif %}
+
+        {% if enable_crowdsec %}
+        # 2. CrowdSec: blocks known bad IPs
         crowdsec
-        appsec
-        {% if site.enable_forward is defined and site.enable_forward %}
-        reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
-            header_up X-Forwarded-For {{ site.forward_ip }}
-        }
-        {% endif %}
-        reverse_proxy localhost:{{ site.local_port }}
-    }
-    {% else %}
-    route {
-        {% if site.enable_forward is defined and site.enable_forward %}
-        reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
-            header_up X-Forwarded-For {{ site.forward_ip }}
-        }
-        {% endif %}
-        reverse_proxy localhost:{{ site.local_port }}
-    }
-    {% endif %}
 
-    # Redirect HTTP to HTTPS for GET requests
-    @httpget {
-        protocol http
-        {% if site.ntfy_path_regexp is defined %}
-        method GET
-        path_regexp {{ site.ntfy_path_regexp }}
+        # 3. CrowdSec AppSec: deep behavior/application inspection
+        appsec
         {% endif %}
+
+        # 4. Reverse Proxy: Only clean, encrypted traffic reaches this point
+        {% if site.enable_forward is defined and site.enable_forward %}
+        reverse_proxy {{ site.forward_path }} localhost:{{ site.local_port }} {
+            header_up X-Forwarded-For {{ site.forward_ip }}
+        }
+        {% endif %}
+
+        # Fallback proxy for all other paths not caught by the specific forward_path above
+        reverse_proxy localhost:{{ site.local_port }}
     }
-    redir @httpget https://{host}{uri}
 
     # Access logging for this site
     log {
+        format json
         output file {{ site.log_file | default('/var/log/caddy/' + site.name + '.access.log') }} {
             roll_size {{ site.log_roll_size | default('10mb') }}
             roll_keep {{ site.log_roll_keep | default(10) }}
