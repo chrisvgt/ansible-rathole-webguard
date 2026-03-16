@@ -16,11 +16,6 @@
     acme_dns cloudflare {{ cloudflare_api_token }}
     {% endif %}
 
-    # HTTPS binding: Caddy auto-enables HTTPS on port 443; HTTP on port 80 redirects to HTTPS
-    auto_https on
-    http_port 80
-    https_port 443
-
     log {
         output stderr
         level INFO
