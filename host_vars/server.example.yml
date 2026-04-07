@@ -61,12 +61,14 @@ rathole_server_config: # Top-level server settings
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
-    # Noise Transport: Secure and lightweight encryption
-    # Requires 'local_private_key' and 'remote_public_key' for key exchange
+    # Noise Transport Configuration
+    # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
+    # are usually required for key exchange. Uncomment and provide actual keys.
     noise:
-      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s" # Optional: Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s"
+      # Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
+      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
+      # Base64 encoded private key for the server, generate with: `rathole --genkey x25519`
       local_private_key: "your_server_private_key_base64" # Optional: Base64 encoded private key for server
-      remote_public_key: "your_client_public_key_base64" # Optional: Base64 encoded public key of client
 
     # TCP Transport
     tcp:

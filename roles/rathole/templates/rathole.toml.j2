@@ -36,7 +36,6 @@ pkcs12_password = "{{ rathole_server_config.transport.tls.pkcs12_password }}"
 [server.transport.noise]
 pattern = "{{ rathole_server_config.transport.noise.pattern }}"
 local_private_key = "{{ rathole_server_config.transport.noise.local_private_key }}"
-remote_public_key = "{{ rathole_server_config.transport.noise.remote_public_key }}"
 {% elif rathole_server_config.transport.type == "websocket" and rathole_server_config.transport.websocket is defined %}
 [server.transport.tls]
 pkcs12 = "{{ rathole_server_config.transport.tls.pkcs12 }}"
@@ -108,7 +107,6 @@ hostname = "{{ rathole_client_config.transport.tls.hostname }}"
 {% elif rathole_client_config.transport.type == "noise" and rathole_client_config.transport.noise is defined %}
 [client.transport.noise]
 pattern = "{{ rathole_client_config.transport.noise.pattern }}"
-local_private_key = "{{ rathole_client_config.transport.noise.local_private_key }}"
 remote_public_key = "{{ rathole_client_config.transport.noise.remote_public_key }}"
 {% elif rathole_client_config.transport.type == "websocket" and rathole_client_config.transport.websocket is defined %}
 [client.transport.tls]
