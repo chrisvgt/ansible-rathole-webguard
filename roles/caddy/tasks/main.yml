@@ -51,6 +51,17 @@
   failed_when: false # Don't fail if the binary doesn't exist
   changed_when: false
 
+- name: Determine if Coraza plugin needs to be built
+  ansible.builtin.set_fact:
+    caddy_coraza_needed: >-
+      {{ (enable_coraza_waf | default(false))
+         and (((coraza_mode_default | default('off')) != 'off')
+              or ((caddy_sites | default([]))
+                  | selectattr('coraza_mode', 'defined')
+                  | selectattr('coraza_mode', 'ne', 'off')
+                  | list
+                  | length > 0)) }}
+
 - name: Build final Caddy plugin list
   ansible.builtin.set_fact:
     caddy_plugins_effective: >-
@@ -61,7 +72,7 @@
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
             ], []))
-         + (enable_coraza_waf | default(false) | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
+         + (caddy_coraza_needed | default(false) | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
          + (enable_rate_limit | default(true) | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
 
 - name: Compute hash of effective Caddy plugins
