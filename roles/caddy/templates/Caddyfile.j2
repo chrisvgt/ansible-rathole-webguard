@@ -29,16 +29,31 @@
     # The 'route' block guarantees the strict execution order of your security pipeline.
     # Traffic cannot reach the reverse_proxy without surviving Coraza, CrowdSec, and AppSec first.
     route {
-        {% if site.enable_waf | default(enable_coraza_waf) %}
+        {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default) %}
+        {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
         # 1. Coraza WAF: catches malformed requests, SQLi, XSS
         coraza_waf {
             load_owasp_crs
             directives `
                 Include @coraza.conf-recommended
                 Include @crs-setup.conf.example
+                {% if effective_coraza_mode == 'minimal' %}
+                # Minimal mode: Lowest resource usage, allows WebSockets and large uploads (512MB)
+                SecRuleEngine DetectionOnly
+                SecRequestBodyLimit 536870912
+                SecRequestBodyInMemoryLimit 134217728
+                {% elif effective_coraza_mode == 'moderate' %}
+                # Moderate mode: Balanced security, relaxed for WebSockets/uploads (512MB)
+                Include @owasp_crs/REQUEST-*.conf
+                SecRuleRemoveById 920350  # Allow WebSocket frames
+                SecRequestBodyLimit 536870912
+                SecRequestBodyInMemoryLimit 134217728
+                {% elif effective_coraza_mode == 'strict' %}
+                # Strict mode: Full protection (high resource usage, may block WebSockets/uploads)
                 Include @owasp_crs/REQUEST-*.conf
                 SecRequestBodyLimit 20971520
                 SecRequestBodyInMemoryLimit 5242880
+                {% endif %}
                 SecResponseBodyAccess Off
                 SecAuditEngine Off
             `

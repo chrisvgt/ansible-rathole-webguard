@@ -56,6 +56,7 @@ Example `group_vars/all.yml`:
 enable_crowdsec: true
 enable_cloudflare: false
 enable_coraza_waf: false
+coraza_mode_default: moderate # Default mode for sites
 cleanup_temp: false
 ```
 
@@ -144,6 +145,11 @@ Jinja2 templates dynamically generate configuration files using variables from `
 - `enable_cloudflare` (default: false): Adds Cloudflare DNS plugin to Caddy. Requires `cloudflare_api_token` in Vault.
 - `enable_crowdsec` (default: true): Installs CrowdSec with Caddy bouncer modules.
 - `enable_coraza_waf` (default: false): Adds Coraza WAF plugin to Caddy builds.
+- `coraza_mode_default` (default: moderate): Default Coraza WAF mode for all sites. Can be overridden per site with `site.coraza_mode`.
+  - `minimal`: Lowest resource usage (DetectionOnly mode). Allows WebSockets and large uploads (512MB). Use for apps with compatibility issues (e.g., Jellyfin WebSockets, Nextcloud uploads).
+  - `moderate`: Balanced security and compatibility. Includes REQUEST rules but relaxes WebSocket/upload restrictions. Suitable for most apps on lightweight VPS (2GB RAM).
+  - `strict`: Full OWASP CRS protection (high resource usage). May block WebSockets/uploads. Use only for high-security needs with sufficient RAM (>4GB).
+  - `off`: Disables WAF for the site (no coraza_waf block generated).
 - `cleanup_temp` (default: false): Cleanup temporary files after deployment.
 
 ### Caddy Plugin Management

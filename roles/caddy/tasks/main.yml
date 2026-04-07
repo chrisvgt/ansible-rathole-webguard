@@ -62,7 +62,7 @@
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
             ], []))
          + (enable_coraza_waf | default(false) | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
-         + (enable_rate_limit | default(false) | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
+         + (enable_rate_limit | default(true) | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
 
 - name: Compute hash of effective Caddy plugins
   ansible.builtin.set_fact:

@@ -27,12 +27,16 @@ caddy_sites:
     # log_roll_size: "20mb"
     # log_roll_keep: 15
     # log_roll_keep_for: "48h"
+    # Optional: Override global coraza_mode per site (e.g., 'minimal' for WebSocket apps)
+    # coraza_mode: "moderate"
 
   - name: notify
     domain: "notify.yourdomain.com"
     local_port: 8004
-    # Override: site.enable_waf = false → WAF disabled despite global setting
-    # enable_waf: false
+    # Disable WAF for this site.
+    # coraza_mode: "off"
+    # Optional: Override global coraza_mode per site instead
+    # coraza_mode: "minimal"
 
   - name: stream
     domain: "stream.yourdomain.com"
@@ -43,6 +47,8 @@ caddy_sites:
     # forward_path: "/path/to/"
     # rate_limit_window: "1m"     # Optional: 1 minute window
     # rate_limit_events: 500      # Optional: 500 requests allowed
+    # Optional: Override global coraza_mode per site (e.g., 'minimal' for Jellyfin)
+    # coraza_mode: "minimal"
 
 # --- Rathole Server Configuration Example ---
 rathole_role: "server" # Identifies this as a Rathole server configuration

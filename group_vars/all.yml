@@ -12,6 +12,9 @@ enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its 
 # Global toggle for Coraza WAF
 enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
 
+# Default Coraza WAF mode for sites (can be overridden per site with site.coraza_mode)
+coraza_mode_default: moderate # Choose 'minimal', 'moderate', 'strict', or 'off' as default
+
 # CrowdSec console enrollment (optional, disabled by default for safety)
 crowdsec_enable_console_enroll: false
 
