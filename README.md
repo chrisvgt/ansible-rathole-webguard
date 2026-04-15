@@ -145,11 +145,17 @@ Jinja2 templates dynamically generate configuration files using variables from `
 - `enable_cloudflare` (default: false): Adds Cloudflare DNS plugin to Caddy. Requires `cloudflare_api_token` in Vault.
 - `enable_crowdsec` (default: true): Installs CrowdSec with Caddy bouncer modules.
 - `enable_coraza_waf` (default: false): Adds Coraza WAF plugin to Caddy builds.
-- `coraza_mode_default` (default: moderate): Default Coraza WAF mode for all sites. Can be overridden per site with `site.coraza_mode`.
-  - `minimal`: Lowest resource usage (DetectionOnly mode). Allows WebSockets and large uploads (512MB). Use for apps with compatibility issues (e.g., Jellyfin WebSockets, Nextcloud uploads).
-  - `moderate`: Balanced security and compatibility. Includes REQUEST rules but relaxes WebSocket/upload restrictions. Suitable for most apps on lightweight VPS (2GB RAM).
-  - `strict`: Full OWASP CRS protection (high resource usage). May block WebSockets/uploads. Use only for high-security needs with sufficient RAM (>4GB).
-  - `off`: Disables WAF for the site (no coraza_waf block generated).
+- `coraza_mode_default` (default: `minimal`): Default Coraza WAF mode for all sites. Can be overridden per site with `site.coraza_mode`.
+  - `minimal` (**recommended default**): Optimized for compatibility and low overhead (DetectionOnly). Enables:
+    - ✅ WebSockets (Jellyfin, seer, etc.)
+    - ✅ Large/chunked uploads (Nextcloud >50 MB, 512 MB allowed)
+    - **Dropped rules**: `920350`, `920460`, `930100`, `932100`, `930110` (WebSocket), plus `920270–78`, `920400–402`, `920240–41`, `920170` (multipart/chunk).
+    - Adds `SecRequestBodyNoFilesLimit 10485760`, `SecRequestBodyAccess On`.
+  - `moderate`: Balanced security (includes REQUEST rules, relaxes WebSocket/upload restrictions).
+    - **Same limit as `minimal`** but **no explicit rule removals** — suitable when you want CRS protection without deep customization.
+    - Drops `920350`, `920460`, etc. (WebSocket), but _not_ chunk-upload rules (92027x/92040x) unless needed.
+  - `strict`: Full OWASP CRS enforcement (high CPU/RAM). May break WebSockets/uploads. Not recommended unless resource-rich (≥4 GB RAM).
+  - `off`: Disables Coraza WAF entirely for the site.
 - `cleanup_temp` (default: false): Cleanup temporary files after deployment.
 
 ### Caddy Plugin Management
