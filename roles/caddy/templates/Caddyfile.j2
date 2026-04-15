@@ -38,18 +38,25 @@
                 Include @coraza.conf-recommended
                 Include @crs-setup.conf.example
                 {% if effective_coraza_mode == 'minimal' %}
-                # Minimal mode: Lowest resource usage, allows WebSockets and large uploads (512MB)
+                # Minimal mode: Optimized for WebSockets & large/chunked uploads
                 SecRuleEngine DetectionOnly
                 SecRequestBodyLimit 536870912
                 SecRequestBodyInMemoryLimit 134217728
+                SecRequestBodyNoFilesLimit 10485760
+                SecRequestBodyAccess On
+                # Relax WebSocket rules
+                SecRuleRemoveById 920350 920460 930100 932100 930110
+                # Relax chunked upload / multipart rules
+                SecRuleRemoveById 920170 920240 920241 920270 920271 920272 920273 920274 920275 920276 920277 920278 920400 920401 920402
                 {% elif effective_coraza_mode == 'moderate' %}
-                # Moderate mode: Balanced security, relaxed for WebSockets/uploads (512MB)
+                # Moderate mode: CRS with relaxed WebSocket/upload rules
                 Include @owasp_crs/REQUEST-*.conf
-                SecRuleRemoveById 920350  # Allow WebSocket frames
                 SecRequestBodyLimit 536870912
                 SecRequestBodyInMemoryLimit 134217728
+                # Relax WebSocket rules only (chunk rules may still apply)
+                SecRuleRemoveById 920350 920460 930100 932100 930110
                 {% elif effective_coraza_mode == 'strict' %}
-                # Strict mode: Full protection (high resource usage, may block WebSockets/uploads)
+                # Strict mode: Full CRS, but may break WebSockets/uploads
                 Include @owasp_crs/REQUEST-*.conf
                 SecRequestBodyLimit 20971520
                 SecRequestBodyInMemoryLimit 5242880
