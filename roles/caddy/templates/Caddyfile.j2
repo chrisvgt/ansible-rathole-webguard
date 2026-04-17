@@ -9,6 +9,7 @@
         api_key {{ crowdsec_api_key }}
         ticker_interval {{ crowdsec_ticker_interval }}
         appsec_url http://{{ crowdsec_appsec_ip }}:{{ crowdsec_appsec_port }}
+        appsec_timeout {{ crowdsec_appsec_timeout | default('10s') }}
     }
     {% endif %}
 
@@ -71,8 +72,10 @@
         # 2. CrowdSec: blocks known bad IPs
         crowdsec
 
+        {% if not site.disable_appsec | default(false) %}
         # 3. CrowdSec AppSec: deep behavior/application inspection
         appsec
+        {% endif %}
         {% endif %}
 
         # 4. Rate limiting: Prevent brute force and DDoS
@@ -92,12 +95,24 @@
         @forward_path path {{ site.forward_path }}*
         reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
             header_up X-Forwarded-For {{ site.forward_ip }}
+            {% if site.proxy_timeout is defined %}
+            transport http {
+                response_header_timeout {{ site.proxy_timeout }}
+                dial_timeout {{ site.proxy_timeout }}
+            }
+            {% endif %}
         }
         {% endif %}
 
         # Default proxy for all other paths
         reverse_proxy localhost:{{ site.local_port }} {
             header_up X-Request-ID {http.request.uuid}
+            {% if site.proxy_timeout is defined %}
+            transport http {
+                response_header_timeout {{ site.proxy_timeout }}
+                dial_timeout {{ site.proxy_timeout }}
+            }
+            {% endif %}
         }
     }
 
