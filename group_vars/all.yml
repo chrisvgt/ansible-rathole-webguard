@@ -6,6 +6,9 @@ enable_rate_limit: true
 # Global toggle for Cloudflare DNS challenges
 enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Caddy plugin
 
+# Global toggle for Wildcard support, requires Cloudflare
+enable_wildcard: false
+
 # Global toggle for CrowdSec integration
 enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its Caddy plugin
 

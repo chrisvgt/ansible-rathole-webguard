@@ -50,6 +50,21 @@ caddy_sites:
     # Optional: Override global coraza_mode per site (e.g., 'minimal' for Jellyfin)
     # coraza_mode: "minimal"
 
+# --- Example Dynamic Wildcard Configuration for Multiple Domains ---
+wildcard_sites:
+  # --- yourdomain.com domain group -
+  - domain: "*.yourdomain.com"
+    sites:
+      - name: blog
+        subdomain: "blog"
+        port: 2368
+  # --- example.com domain group -
+  - domain: "*.example.com"
+    sites:
+      - name: blog
+        subdomain: "blog"
+        port: 2368
+
 # --- Rathole Server Configuration Example ---
 rathole_role: "server" # Identifies this as a Rathole server configuration
 rathole_server_config: # Top-level server settings

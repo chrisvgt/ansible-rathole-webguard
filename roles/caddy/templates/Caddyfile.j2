@@ -1,7 +1,7 @@
 # File Managed by Ansible
 # roles/caddy/templates/Caddyfile.j2
 
-# Global Caddy Options
+# === GLOBAL CONFIGURATION ===
 {
     {% if enable_crowdsec %}
     crowdsec {
@@ -23,7 +23,173 @@
     }
 }
 
-# Site-specific configurations from `caddy_sites` variable
+# === WILDCARD MODE (supporting multiple base domains) ===
+{% if enable_wildcard | default(false) %}
+
+# Process each base domain separately (e.g., *.example.com, *.example.net)
+{% for base_domain_config in wildcard_sites | default([]) %}
+{% set base_domain = base_domain_config.domain %}
+{% set sites = base_domain_config.sites | default([]) %}
+
+{{ base_domain }} {
+
+    # Access logging for this domain
+    log {
+        format json
+        output file {{ wildcard_log_file | default('/var/log/caddy/' + base_domain | replace('.', '_') + '.access.log') }} {
+            roll_size {{ wildcard_log_roll_size | default('10mb') }}
+            roll_keep {{ wildcard_log_roll_keep | default(10) }}
+            roll_keep_for {{ wildcard_log_roll_keep_for | default('36h') }}
+        }
+    }
+
+    route {
+        # Global CrowdSec / AppSec (applies to all subdomains)
+        {% if enable_crowdsec %}
+        # 2. CrowdSec: blocks known bad IPs
+        crowdsec
+        {% if not disable_appsec_global | default(false) %}
+        # 3. CrowdSec AppSec: deep behavior/application inspection
+        appsec
+        {% endif %}
+        {% endif %}
+
+        # Global Rate Limit (default, can be overridden per subdomain)
+        {% if enable_rate_limit | default(true) %}
+        rate_limit {
+            zone {{ base_domain | replace('.', '_') }}_global {
+                key "{http.request.remote.ip}"
+                window 1m
+                events 500
+            }
+        }
+        {% endif %}
+
+        # === PER-SUBDOMAIN HANDLES ===
+        {% for site in sites %}
+        # Match exact subdomain for this base domain (e.g., test.example.com)
+        @{{ site.name }} host {{ site.subdomain }}.{{ base_domain | replace('*.','') }}
+        handle @{{ site.name }} {
+            # The 'route' block guarantees the strict execution order of your security pipeline.
+            # Traffic cannot reach the reverse_proxy without surviving Coraza, CrowdSec, and AppSec first.
+            route {
+                {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('moderate')) %}
+                {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
+                # 1. Coraza WAF: catches malformed requests, SQLi, XSS
+                coraza_waf {
+                    load_owasp_crs
+                    directives `
+                        Include @coraza.conf-recommended
+                        Include @crs-setup.conf.example
+                        {% if effective_coraza_mode == 'minimal' %}
+                        # Minimal mode: Optimized for WebSockets & large/chunked uploads
+                        SecRuleEngine DetectionOnly
+                        SecRequestBodyLimit 536870912
+                        SecRequestBodyInMemoryLimit 134217728
+                        SecRequestBodyNoFilesLimit 10485760
+                        SecRequestBodyAccess On
+                        # Relax WebSocket rules
+                        SecRuleRemoveById 920350 920460 930100 932100 930110
+                        # Relax chunked upload / multipart rules
+                        SecRuleRemoveById 920170 920240 920241 920270 920271 920272 920273 920274 920275 920276 920277 920278 920400 920401 920402
+                        {% elif effective_coraza_mode == 'moderate' %}
+                        # Moderate mode: CRS with relaxed WebSocket/upload rules
+                        Include @owasp_crs/REQUEST-*.conf
+                        SecRequestBodyLimit 536870912
+                        SecRequestBodyInMemoryLimit 134217728
+                        # Relax WebSocket rules only (chunk rules may still apply)
+                        SecRuleRemoveById 920350 920460 930100 932100 930110
+                        {% elif effective_coraza_mode == 'strict' %}
+                        # Strict mode: Full CRS, but may break WebSockets/uploads
+                        Include @owasp_crs/REQUEST-*.conf
+                        SecRequestBodyLimit 20971520
+                        SecRequestBodyInMemoryLimit 5242880
+                        {% endif %}
+                        SecResponseBodyAccess Off
+                        SecAuditEngine Off
+                    `
+                }
+                {% endif %}
+
+                {% if enable_crowdsec and site.disable_appsec | default(false) %}
+                # Skip AppSec for this subdomain if configured
+                # 3. CrowdSec AppSec: deep behavior/application inspection
+                {% elif enable_crowdsec %}
+                # 3. CrowdSec AppSec: deep behavior/application inspection
+                appsec
+                {% endif %}
+
+                # Per-service rate limit (overrides global default)
+                {% if enable_rate_limit | default(true) %}
+                rate_limit {
+                    zone {{ site.name | default(site.subdomain | replace('.', '_')) }} {
+                        key "{http.request.remote.ip}"
+                        window {{ site.rate_limit_window | default('1m') }}
+                        events {{ site.rate_limit_events | default(500) }}
+                    }
+                }
+                {% endif %}
+
+                # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
+                {% if site.enable_forward is defined and site.enable_forward %}
+                # Route specific paths to different backends when configured
+                @forward_path path {{ site.forward_path }}*
+                reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.port) }} {
+                    header_up X-Forwarded-For {{ site.forward_ip }}
+                    {% if site.proxy_timeout is defined %}
+                    transport http {
+                        response_header_timeout {{ site.proxy_timeout }}
+                        dial_timeout {{ site.proxy_timeout }}
+                    }
+                    {% endif %}
+                }
+                {% endif %}
+
+                # Default proxy for all other paths
+                reverse_proxy localhost:{{ site.port }} {
+                    header_up X-Request-ID {http.request.uuid}
+                    {% if site.proxy_timeout is defined %}
+                    transport http {
+                        response_header_timeout {{ site.proxy_timeout }}
+                        dial_timeout {{ site.proxy_timeout }}
+                    }
+                    {% endif %}
+                }
+            }
+
+            # Security headers (applies only to this subdomain)
+            header {
+                # Prevent clickjacking
+                X-Frame-Options "SAMEORIGIN"
+                # Prevent MIME sniffing
+                X-Content-Type-Options "nosniff"
+                # Enable XSS protection in older browsers
+                X-XSS-Protection "1; mode=block"
+                # Referrer policy
+                Referrer-Policy "strict-origin-when-cross-origin"
+                # Feature policy / Permissions policy
+                Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+            }
+
+            # Caching headers for static media/metadata to reduce requests
+            @static_assets path /Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif
+            header @static_assets Cache-Control "public, max-age=86400"
+            header @static_assets ETag {http.response.header.ETag}
+        }
+        {% endfor %}
+
+        # Fallback for unmatched subdomains
+        handle {
+            respond "Service not found" 404
+        }
+    }
+}
+
+{% endfor %}
+
+# === TRADITIONAL MODE (NO Wildcard) ===
+{% else %}
+
 {% for site in caddy_sites %}
 {{ site.domain }} {
 
@@ -147,3 +313,4 @@
 }
 
 {% endfor %}
+{% endif %}
