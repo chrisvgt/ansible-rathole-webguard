@@ -1,287 +1,331 @@
 # Ansible-Rathole-WebGuard
 
-This repository contains Ansible playbooks to deploy and manage a robust and secure web stack, featuring:
+Deploy a complete, hardened web infrastructure with one command. This Ansible playbook sets up **Caddy** (auto-HTTPS), **CrowdSec** (IPS/IDS), **Rathole** (reverse tunnel), and optional **Coraza WAF** + **Cloudflare** on Debian/Ubuntu servers.
 
-- **Rathole**: A lightweight and secure reverse proxy for exposing local services.
-- **CrowdSec**: A free, open-source IPS/IDS that detects and blocks malicious IPs.
-- **Caddy**: A powerful, auto-HTTPS web server with CrowdSec and Cloudflare integration.
-- **Coraza WAF**: Web Application Firewall for advanced request filtering.
-- **Go & xcaddy**: Prerequisites for building Caddy with custom modules.
-
----
-
-## Table of Contents
-
-1. [Overview](#1-overview)
-2. [Prerequisites](#2-prerequisites)
-3. [Quickstart](#3-quickstart)
-4. [Directory Structure](#4-directory-structure)
-5. [Configuration](#5-configuration)
-6. [Deployment](#6-deployment)
-7. [Maintenance](#7-maintenance)
-8. [Contribution](#8-contribution)
-9. [License](#9-license)
-
----
-
-## 1. Overview
-
-This Ansible setup automates the deployment and management of Rathole, CrowdSec, Caddy, and Coraza WAF on target servers. It handles:
-
-- System preparation (package updates, utility installation)
-- Go and xcaddy installation
-- Caddy builds with CrowdSec, Cloudflare, and Coraza WAF plugins
-- CrowdSec installation and bouncer registration
-- Rathole (server or client mode)
-- Systemd service configuration
-
----
-
-## 2. Prerequisites
-
-Before you start:
-
-- **Ansible**: 2.13+ on your control node
-- **SSH Access**: Configured for target servers (SSH keys recommended)
-- **Target Servers**: Debian/Ubuntu-based Linux
-- **Internet Connectivity**: On target servers for package/binary downloads
-
----
-
-## 3. Quickstart
-
-Example `group_vars/all.yml`:
-
-```yaml
-enable_crowdsec: true
-enable_cloudflare: false
-enable_coraza_waf: false
-coraza_mode_default: moderate # Default mode for sites
-cleanup_temp: false
 ```
-
-Example `host_vars/server.example.yml`:
-
-```yaml
-ansible_host: 203.0.113.10
-ansible_user: ubuntu
-caddy_domain: example.com
-rathole_role: server
+ansible-playbook -i inventory.ini site.yml
 ```
 
 ---
 
-## 4. Directory Structure
+## Quickstart
 
-The project uses a standard Ansible role-based directory structure for modularity:
+### 1. Clone and configure inventory
 
-```
-/ansible-rathole-webguard/
-├── inventory.ini
-├── site.yml
-├── group_vars/
-│   └── all.yml
-├── host_vars/
-│   ├── client.example.yml
-│   └── server.example.yml
-└── roles/
-    ├── caddy/
-    ├── crowdsec/
-    ├── go_lang/
-    ├── rathole/
-    └── xcaddy/
+```bash
+git clone https://github.com/yourusername/ansible-rathole-webguard.git
+cd ansible-rathole-webguard
+cp inventory.example.ini inventory.ini
 ```
 
----
-
-## 5. Configuration
-
-All configuration is managed through Ansible variables and templates, ensuring flexibility and dynamic deployment.
-
-### Inventory (`inventory.ini`)
-
-This file lists your target servers and their group memberships.
-
-**Example `inventory.ini`:**
+Create `inventory.ini` with your server IPs:
 
 ```ini
 [webservers]
-client.example ansible_host=127.0.0.1 ansible_port=22 ansible_user=ssh_user ansible_ssh_private_key_file=~/.ssh/id_ed25519
-server.example ansible_host=127.0.0.1 ansible_port=22 ansible_user=ssh_user ansible_ssh_private_key_file=~/.ssh/id_ed25519
+server ansible_host=203.0.113.10 ansible_user=ubuntu
+client ansible_host=203.0.113.20 ansible_user=ubuntu
 ```
 
-### Group Variables (`group_vars/`)
+### 2. Configure your server
 
-This directory holds YAML files defining variables for specific host groups. `group_vars/all.yml` contains variables that apply to all hosts.
+```bash
+cp host_vars/server.example.yml host_vars/server.yml
+```
 
-### Host Variables (`host_vars/`)
-
-Variables specific to individual hosts. Each file is named after a host in `inventory.ini` (e.g., `server.example.yml`). Ideal for:
-
-- Connection details (ansible_user, ansible_ssh_private_key_file)
-- Application-specific settings (caddy_domain, rathole_role)
-- Host-specific secrets (API tokens, passwords)
-
-### Role Variables (`roles/*/vars/main.yml`)
-
-Each role's `vars/main.yml` contains default variables that can be overridden by `group_vars/` or `host_vars/`:
-
-- **`rathole/vars/main.yml`**: Rathole version, paths, user/group, target-triple mapping
-- **`go_lang/vars/main.yml`**: Go version and installation details
-- **`xcaddy/vars/main.yml`**: xcaddy version, installation path, architecture mapping
-- **`caddy/vars/main.yml`**: Caddy version, paths, user/group, `caddy_plugins` list
-- **`crowdsec/vars/main.yml`**: CrowdSec version, API/AppSec configuration, bouncer settings
-
-### Templates (`roles/*/templates/`)
-
-Jinja2 templates dynamically generate configuration files using variables from `group_vars/` and `host_vars/`:
-
-- **`caddy/templates/Caddyfile.j2`**: Primary Caddy configuration
-- **`caddy/templates/caddy.service.j2`**: Systemd unit file for Caddy
-- **`rathole/templates/rathole.toml.j2`**: Rathole configuration
-
-### Feature Flags
-
-- `enable_cloudflare` (default: false): Adds Cloudflare DNS plugin to Caddy. Requires `cloudflare_api_token` in Vault.
-- `enable_crowdsec` (default: true): Installs CrowdSec with Caddy bouncer modules.
-- `enable_coraza_waf` (default: false): Adds Coraza WAF plugin to Caddy builds.
-- `coraza_mode_default` (default: `minimal`): Default Coraza WAF mode for all sites. Can be overridden per site with `site.coraza_mode`.
-  - `minimal` (**recommended default**): Optimized for compatibility and low overhead (DetectionOnly). Enables:
-    - ✅ WebSockets (Jellyfin, seer, etc.)
-    - ✅ Large/chunked uploads (Nextcloud >50 MB, 512 MB allowed)
-    - **Dropped rules**: `920350`, `920460`, `930100`, `932100`, `930110` (WebSocket), plus `920270–78`, `920400–402`, `920240–41`, `920170` (multipart/chunk).
-    - Adds `SecRequestBodyNoFilesLimit 10485760`, `SecRequestBodyAccess On`.
-  - `moderate`: Balanced security (includes REQUEST rules, relaxes WebSocket/upload restrictions).
-    - **Same limit as `minimal`** but **no explicit rule removals** — suitable when you want CRS protection without deep customization.
-    - Drops `920350`, `920460`, etc. (WebSocket), but _not_ chunk-upload rules (92027x/92040x) unless needed.
-  - `strict`: Full OWASP CRS enforcement (high CPU/RAM). May break WebSockets/uploads. Not recommended unless resource-rich (≥4 GB RAM).
-  - `off`: Disables Coraza WAF entirely for the site.
-- `cleanup_temp` (default: false): Cleanup temporary files after deployment.
-
-### Caddy Plugin Management
-
-- Caddy is compiled with plugins from `caddy_plugins` plus conditional flags (`enable_cloudflare`, `enable_crowdsec`, `enable_coraza_waf`).
-- Plugin list hash is persisted. Caddy rebuilds when version or plugin list changes.
-
-### Rathole Downloads
-
-- Rathole release assets are downloaded based on `ansible_system` and `ansible_architecture`.
-- Optional checksum verification: define `rathole_checksums` map with SHA-256 sums.
+Edit `host_vars/server.yml` — the essentials:
 
 ```yaml
-rathole_checksums:
-  "rathole-x86_64-unknown-linux-gnu.zip": "9f6b4b333e4a8577aaddc297b0c00feffd4c1cdc6f92c03622734defb84c5868"
+rathole_role: "server"
+
+# Wildcard domains this server handles (see server.example.yml for full options)
+wildcard_sites:
+  - domain: "*.example.com"
+    sites:
+      - name: jellyfin
+        subdomain: "watch"
+        port: 8096
 ```
 
-### Rolling Updates
+### 3. Configure your client (optional)
 
-For sequential deployments, set `serial` in the play:
+```bash
+cp host_vars/client.example.yml host_vars/client.yml
+```
+
+Edit `host_vars/client.yml`:
 
 ```yaml
-- hosts: webservers
-  roles:
-    - caddy
-    - crowdsec
-    - rathole
+rathole_role: "client"
+rathole_client_config:
+  remote_addr: "203.0.113.10:62917"
+  services:
+    - name: "jellyfin"
+      local_addr: "192.168.1.10:8096"
 ```
 
-### Ansible Vault
+### 4. Deploy
 
-Store sensitive data in Vault (API tokens, API keys, passphrases):
+```bash
+# With Ansible Vault (recommended for secrets)
+ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+
+# Without Vault
+ansible-playbook -i inventory.ini site.yml
+```
+
+> 💡 **Tip:** Use the helper script: `./scripts/run-playbook.sh`
+
+---
+
+## What's Included
+
+### Core (enabled by default)
+
+| Component    | What it does                                                     |
+| ------------ | ---------------------------------------------------------------- |
+| **Rathole**  | Secure reverse tunnel — exposes local services through a server  |
+| **Caddy**    | Auto-HTTPS web server with CrowdSec bouncer and rate limiting    |
+| **CrowdSec** | Intrusion detection, IP banning, AppSec attack surface reduction |
+
+### Extensions (opt-in via feature flags)
+
+| Extension            | What it adds                          | Enable with                 |
+| -------------------- | ------------------------------------- | --------------------------- |
+| **Cloudflare**       | DNS-01 ACME challenges via Cloudflare | `enable_cloudflare`         |
+| **Blocklist Import** | 28+ threat feeds auto-imported        | `enable_crowdsec_import`    |
+| **Coraza WAF**       | Web Application Firewall (CRS rules)  | `enable_coraza_waf`         |
+| **Ntfy**             | Push notifications on blocked IPs     | `ntfy_enabled`              |
+| **DDNS Whitelist**   | Auto-whitelist dynamic DNS hosts      | `dynamic_whitelist_enabled` |
+
+---
+
+## Architecture
+
+```
+                      Internet
+                         │
+                    ┌────▼────┐
+                    │  Caddy  │  (TLS termination, CrowdSec bouncer, WAF)
+                    │ :443    │
+                    └────┬────┘
+                         │ proxy_pass localhost:N
+              ┌──────────┼──────────┐
+              │          │          │
+         ┌────▼────┐ ┌──▼───┐ ┌───▼───┐
+         │ Jellyfin│ │Nextcl│ │...    │  (local services)
+         │ :8096   │ │:11000│ │       │
+         └─────────┘ └──────┘ └───────┘
+
+  Rathole server ◄──── Rathole tunnel ──── Rathole client
+  (VPS / public)                           (home LAN)
+```
+
+---
+
+## Configuration
+
+### Feature flags (in `group_vars/all.yml`)
+
+| Variable                 | Default   | Description                                   |
+| ------------------------ | --------- | --------------------------------------------- |
+| `enable_crowdsec`        | `true`    | CrowdSec IPS/IDS with Caddy bouncer           |
+| `enable_cloudflare`      | `false`   | Cloudflare DNS-01 ACME plugin                 |
+| `enable_wildcard`        | `false`   | Wildcard domain support                       |
+| `enable_crowdsec_import` | `false`   | Auto-import 28+ threat blocklists             |
+| `enable_coraza_waf`      | `false`   | Coraza Web Application Firewall               |
+| `enable_rate_limit`      | `true`    | Per-service rate limiting                     |
+| `coraza_mode_default`    | `minimal` | Default WAF mode: minimal/moderate/strict/off |
+| `cleanup_temp`           | `false`   | Remove temp files after deployment            |
+
+### Host variables (`host_vars/`)
+
+Per-server settings. Start from the example files:
+
+- **Server**: `cp host_vars/server.example.yml host_vars/server.yml`
+- **Client**: `cp host_vars/client.example.yml host_vars/client.yml`
+
+#### Server essentials
+
+```yaml
+rathole_role: "server"
+
+# CrowdSec API key (generate with: head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
+crowdsec_api_key: "{{ vault_crowdsec_api_key }}"
+
+# Cloudflare API token (optional)
+cloudflare_api_token: "{{ vault_cloudflare_api_token }}"
+
+# Rathole tunnel definition
+rathole_server_config:
+  listen_addr: "0.0.0.0:62917"
+  transport:
+    type: "noise"
+    noise:
+      local_private_key: "your_base64_private_key"
+
+# Caddy site definitions
+wildcard_sites:
+  - domain: "*.example.com"
+    sites:
+      - name: jellyfin
+        subdomain: "watch"
+        port: 8096
+```
+
+#### Client essentials
+
+```yaml
+rathole_role: "client"
+rathole_client_config:
+  remote_addr: "203.0.113.10:62917"
+  transport:
+    type: "noise"
+    noise:
+      remote_public_key: "server_public_key_base64"
+  services:
+    - name: "jellyfin"
+      local_addr: "192.168.1.10:8096"
+```
+
+### Security: Ansible Vault
+
+Store secrets (API keys, passwords) outside your config files:
 
 ```bash
 ansible-vault create group_vars/all/vault.yml
 ```
 
-Example vault file:
-
 ```yaml
-vault_crowdsec_api_key: "YOUR_KEY"
-vault_crowdsec_enrollment_key: "YOUR_KEY"
-vault_cloudflare_api_token_server: "YOUR_TOKEN"
-
-# Map vault variables to role variables
-cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
+vault_crowdsec_api_key: "your-api-key"
+vault_cloudflare_api_token_server: "your-token"
+vault_crowdsec_machine_password: "your-password"
 ```
 
 ---
 
-## 6. Deployment
+## Advanced Configuration
 
-Run the main playbook from the repository root:
+### Coraza WAF Modes
 
-```bash
-ansible-playbook -i inventory.ini site.yml --ask-vault-pass
-```
+| Mode       | Security      | WebSockets   | Chunked uploads | Use case                   |
+| ---------- | ------------- | ------------ | --------------- | -------------------------- |
+| `minimal`  | DetectionOnly | ✅ yes       | ✅ 512 MB       | Recommended default        |
+| `moderate` | CRS rules     | ✅ relaxed   | ⚠️ limited      | General purpose            |
+| `strict`   | Full CRS      | ❌ may break | ❌ may break    | High security, ≥4 GB RAM   |
+| `off`      | Disabled      | ✅           | ✅              | Testing / non-web services |
 
-Omit `--ask-vault-pass` if not using Vault.
+Set globally: `coraza_mode_default: minimal`
+Override per site: `coraza_mode: "moderate"` in a site definition.
 
-**Helper script:**
+### CrowdSec Blocklist Sources (28+ feeds)
 
-```bash
-chmod +x scripts/run-playbook.sh
-./scripts/run-playbook.sh                    # with vault prompt
-./scripts/run-playbook.sh --no-vault         # without vault
-./scripts/run-playbook.sh --vault-file FILE  # with vault file
-```
+Automatically imported when `enable_crowdsec_import: true`:
+
+| Source                 | Description                       |
+| ---------------------- | --------------------------------- |
+| IPsum                  | IPs seen on 3+ blocklists         |
+| Spamhaus DROP          | Known hijacked netblocks          |
+| Blocklist.de           | SSH/Apache/Mail attack sources    |
+| Firehol level1/2       | Aggregated threat intelligence    |
+| Abuse.ch Feodo/URLhaus | Botnet C2 and malware URLs        |
+| Emerging Threats       | Compromised IPs                   |
+| Binary Defense         | Known attacker IPs                |
+| DShield                | Top attackers                     |
+| CI Army                | Bad reputation networks           |
+| Tor exit nodes         | (may cause false positives)       |
+| +18 more...            | Scanner IPs, C2 trackers, botnets |
+
+### Caddy Plugin System
+
+Caddy is compiled with xcaddy to include only the plugins you need:
+
+- **Always**: CrowdSec bouncer (HTTP + layer4 + AppSec), rate limiting
+- **Conditional**: Cloudflare DNS, Coraza WAF — based on feature flags
+- Plugin changes trigger an automatic rebuild (hash-tracked)
+
+### Rathole Transport Options
+
+| Transport   | Security             | Performance | Use case                    |
+| ----------- | -------------------- | ----------- | --------------------------- |
+| `noise`     | ✅ Strong encryption | ⚡ Fast     | **Recommended default**     |
+| `tls`       | ✅ Certificate-based | 🐢 Slower   | When PKI is required        |
+| `tcp`       | ❌ Plaintext         | ⚡ Fastest  | Internal/untrusted networks |
+| `websocket` | ✅ TLS-wrapped       | 🐢 Slower   | Through strict firewalls    |
 
 ---
 
-## 7. Maintenance
+## Deployment
 
-### Updating Software Versions
-
-Edit the version in the role's `vars/main.yml`:
+### First time
 
 ```bash
-# Example: Update Caddy version
-vi roles/caddy/vars/main.yml  # change caddy_version
+./scripts/run-playbook.sh
 ```
 
-Then re-run the playbook. Ansible will rebuild and restart only affected services.
-
-### Modifying Configurations
-
-Edit templates in `roles/*/templates/` and re-run the playbook. Ansible detects changes and restarts affected services:
+### Updating
 
 ```bash
-ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+# Update a software version in vars/main.yml, then:
+ansible-playbook -i inventory.ini site.yml
 ```
 
-### Adding/Removing Hosts
-
-- **Add**: Add hostname to `inventory.ini`, create `host_vars/<hostname>.yml`, then run the playbook.
-- **Remove**: Remove hostname from `inventory.ini` (or create a separate de-provisioning playbook).
-
-### Service Status
-
-Check service status via SSH:
+### Maintenance commands
 
 ```bash
-sudo systemctl status rathole
-sudo systemctl status crowdsec
-sudo systemctl status caddy
-sudo cscli metrics
-sudo cscli bouncers list
-sudo journalctl -u caddy -f
-caddy version
+# Service status
+ssh user@server sudo systemctl status rathole caddy crowdsec
+
+# CrowdSec decisions
+ssh user@server sudo cscli decisions list
+ssh user@server sudo cscli decisions list --origin blocklist-import
+
+# Logs
+ssh user@server sudo journalctl -u caddy -f
+ssh user@server sudo journalctl -u crowdsec-blocklist-import.service
+
+# Check CrowdSec metrics
+ssh user@server sudo cscli metrics
 ```
 
 ### Troubleshooting
 
-- **Playbook Failures**: Check SSH access (`ansible_user`, `ansible_ssh_private_key_file`), variable values, and template syntax.
-- **Service Errors**: Check logs with `sudo journalctl -u <service>`.
-- **Permissions**: Verify user/group ownership of directories (caddy, rathole users).
-- **Firewall**: Ensure ports are open (80, 443 for Caddy, Rathole's configured ports).
+| Problem                     | Check                                                      |
+| --------------------------- | ---------------------------------------------------------- |
+| Playbook fails              | `ansible_user`, SSH key path, variable values in host_vars |
+| Service won't start         | `sudo journalctl -u <service> -n 50`                       |
+| Caddy can't get certificate | DNS records point to server? Port 80/443 reachable?        |
+| CrowdSec not banning        | `sudo cscli metrics`, `sudo cscli decisions list`          |
+| Rathole tunnel down         | Client can reach server:port? Tokens match?                |
+| Permission errors           | Systemd unit user/group ownership                          |
 
 ---
 
-## 8. Contribution
+## Directory Structure
 
-Issues and pull requests welcome.
+```
+ansible-rathole-webguard/
+├── ansible.cfg                 # Ansible configuration
+├── inventory.example.ini       # Example inventory
+├── site.yml                    # Main playbook
+├── group_vars/all.yml          # Global feature flags
+├── host_vars/
+│   ├── server.example.yml      # Server configuration template
+│   ├── client.example.yml      # Client configuration template
+│   └── .gitignore              # Ignores *.yml, keeps *.example.yml
+├── roles/
+│   ├── caddy/                  # Auto-HTTPS web server
+│   ├── crowdsec/               # IPS/IDS + AppSec
+│   ├── crowdsec_import/        # Threat feed importer
+│   ├── go_lang/                # Go toolchain (for Caddy builds)
+│   ├── python/                 # Python + pipx (for blocklist import)
+│   ├── rathole/                # Reverse tunnel
+│   └── xcaddy/                 # Caddy builder
+└── scripts/
+    └── run-playbook.sh         # Helper with vault support
+```
 
 ---
 
-## 9. License
+## License
 
-MIT License
+MIT — see [LICENSE](LICENSE)
