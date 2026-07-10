@@ -1,5 +1,7 @@
 # Ansible-Rathole-WebGuard
 
+[![Lint Ansible](https://github.com/chrisvgt/ansible-rathole-webguard/actions/workflows/lint.yml/badge.svg)](https://github.com/chrisvgt/ansible-rathole-webguard/actions/workflows/lint.yml)
+
 Deploy a complete, hardened web infrastructure with one command. This Ansible playbook sets up **Caddy** (auto-HTTPS), **CrowdSec** (IPS/IDS), **Rathole** (reverse tunnel), and optional **Coraza WAF** + **Cloudflare** on Debian/Ubuntu servers.
 
 ```
