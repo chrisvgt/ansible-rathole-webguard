@@ -61,6 +61,19 @@
       when: rathole_role == "server" and enable_crowdsec
       tags: crowdsec
 
+    # Python role for pipx installation (required for crowdsec-blocklist-import)
+    # Only included if host is a Rathole 'server' AND crowdsec_import is enabled
+    - role: python
+      when: rathole_role == "server" and enable_crowdsec_import
+      tags: python
+
+    # CrowdSec blocklist import role
+    # Only included if host is a Rathole 'server' AND crowdsec_import is enabled
+    # AND crowdsec is also enabled (dependency)
+    - role: crowdsec_import
+      when: rathole_role == "server" and enable_crowdsec_import and enable_crowdsec
+      tags: crowdsec_import
+
     # The 'rathole' role is always applied. Its internal tasks will
     # conditionally configure it as a 'server' or 'client' based on the
     # 'rathole_role' variable defined for the host.

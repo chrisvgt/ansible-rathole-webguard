@@ -1,0 +1,19 @@
+[Unit]
+Description=CrowdSec Blocklist Importer
+After=network.target
+Documentation=https://github.com/wolffcatskyy/crowdsec-blocklist-import
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/crowdsec/blocklist-import.env
+ExecStart={{ crowdsec_import_home_dir | default('/root') }}/.local/bin/crowdsec-blocklist-import
+WorkingDirectory={{ crowdsec_import_home_dir | default('/root') }}
+User={{ ansible_user | default('root') }}
+Group={{ ansible_user | default('root') }}
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crowdsec-blocklist-import
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:{{ crowdsec_import_home_dir | default('/root') }}/.local/bin"
+
+[Install]
+WantedBy=multi-user.target

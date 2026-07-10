@@ -1,0 +1,79 @@
+---
+- name: Determine user home directory
+  ansible.builtin.set_fact:
+    crowdsec_import_home_dir: "{{ ansible_facts['env']['HOME'] | default('/root') }}"
+
+- name: Ensure user home directory exists
+  ansible.builtin.file:
+    path: "{{ crowdsec_import_home_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Check if crowdsec-blocklist-import is already installed
+  ansible.builtin.command: which crowdsec-blocklist-import
+  register: crowdsec_import_installed
+  failed_when: false
+  changed_when: false
+
+- name: Install crowdsec-blocklist-import via pipx
+  ansible.builtin.command: pipx install git+https://github.com/wolffcatskyy/crowdsec-blocklist-import.git@v1.0.0
+  become: true
+  become_user: "{{ ansible_user }}"
+  when: crowdsec_import_installed.rc != 0
+  register: crowdsec_import_install_result
+  changed_when: "'installed' in crowdsec_import_install_result.stdout"
+
+# Create config and blocklist directories
+- name: Create config and output directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  loop:
+    - /etc/crowdsec
+    - /var/lib/crowdsec/blocklists
+
+# Deploy .env configuration
+- name: Create .env configuration for blocklist import
+  ansible.builtin.template:
+    src: crowdsec-blocklist-import.env.j2
+    dest: /etc/crowdsec/blocklist-import.env
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart and enable crowdsec-blocklist-import timer
+
+# Deploy systemd unit files (optional but recommended)
+- name: Install systemd service for crowdsec-blocklist-import
+  ansible.builtin.template:
+    src: crowdsec-blocklist-import.service.j2
+    dest: /etc/systemd/system/crowdsec-blocklist-import.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart and enable crowdsec-blocklist-import timer
+
+- name: Install systemd timer for crowdsec-blocklist-import
+  ansible.builtin.template:
+    src: crowdsec-blocklist-import.timer.j2
+    dest: /etc/systemd/system/crowdsec-blocklist-import.timer
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart and enable crowdsec-blocklist-import timer
+
+# Enable & start systemd timer
+- name: Reload systemd and enable timer
+  ansible.builtin.systemd:
+    daemon_reload: true
+    enabled: true
+    name: crowdsec-blocklist-import.timer
+    state: started
+  become: true

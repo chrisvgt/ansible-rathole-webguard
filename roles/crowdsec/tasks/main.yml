@@ -74,12 +74,18 @@
   failed_when: crowdsec_cscli_hub_update_output.rc != 0
 
 # Includes base-http-scenarios collection, caddy-logs parser
+- name: Check installed CrowdSec collections
+  ansible.builtin.command: cscli collections list -o json
+  register: crowdsec_cscli_collections_list
+  changed_when: false
+  failed_when: false
+
 - name: Install CrowdSecurity Caddy collection
   ansible.builtin.command: cscli collections install crowdsecurity/caddy
   register: crowdsec_cscli_caddy_collection_output
   changed_when: "'Successfully installed' in crowdsec_cscli_caddy_collection_output.stdout or 'Upgraded' in crowdsec_cscli_caddy_collection_output.stdout"
   failed_when: "(crowdsec_cscli_caddy_collection_output.rc != 0 and 'already installed' not in crowdsec_cscli_caddy_collection_output.stderr and 'already enabled' not in crowdsec_cscli_caddy_collection_output.stdout)"
-  when: "'crowdsecurity/caddy' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
+  when: "'crowdsecurity/caddy' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 ## CrowdSec AppSec Setup
 
@@ -88,21 +94,21 @@
   register: crowdsec_cscli_appsec_virtual_patching_output
   changed_when: "'Successfully installed' in crowdsec_cscli_appsec_virtual_patching_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_virtual_patching_output.stdout"
   failed_when: "(crowdsec_cscli_appsec_virtual_patching_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_virtual_patching_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_virtual_patching_output.stdout)"
-  when: "'crowdsecurity/appsec-virtual-patching' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
+  when: "'crowdsecurity/appsec-virtual-patching' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 - name: Install CrowdSec AppSec generic rules collection
   ansible.builtin.command: cscli collections install crowdsecurity/appsec-generic-rules
   register: crowdsec_cscli_appsec_generic_rules_output
   changed_when: "'Successfully installed' in crowdsec_cscli_appsec_generic_rules_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_generic_rules_output.stdout"
   failed_when: "(crowdsec_cscli_appsec_generic_rules_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_generic_rules_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_generic_rules_output.stdout)"
-  when: "'crowdsecurity/appsec-generic-rules' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
+  when: "'crowdsecurity/appsec-generic-rules' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 - name: Install CrowdSec AppSec HTTP CVE collection
   ansible.builtin.command: cscli collections install crowdsecurity/http-cve
   register: crowdsec_cscli_appsec_http_cve_output
   changed_when: "'Successfully installed' in crowdsec_cscli_appsec_http_cve_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_http_cve_output.stdout"
   failed_when: "(crowdsec_cscli_appsec_http_cve_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_http_cve_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_http_cve_output.stdout)"
-  when: "'crowdsecurity/http-cve' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
+  when: "'crowdsecurity/http-cve' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 - name: Configure CrowdSec to listen for AppSec requests
   ansible.builtin.template:
@@ -159,6 +165,55 @@
     group: root
     mode: "0644"
   notify: Restart Crowdsec Service
+
+## CrowdSec Blocklist Import Machine Setup
+
+- name: Create CrowdSec machine for blocklist-import (idempotent)
+  ansible.builtin.command: "cscli machines add {{ crowdsec_machine_id | default('blocklist-import') }} --password '{{ crowdsec_machine_password }}' --force"
+  register: crowdsec_machine_creation
+  changed_when: "'Machine created successfully' in crowdsec_machine_creation.stdout or 'Machine updated successfully' in crowdsec_machine_creation.stdout"
+  failed_when: false
+  notify: Restart Crowdsec Service
+  when: enable_crowdsec_import | default(false)
+
+- name: Check if blocklist-import bouncer already exists
+  ansible.builtin.command: "cscli bouncers list -o json"
+  register: crowdsec_cscli_bouncers_list
+  changed_when: false
+  failed_when: false
+  when: enable_crowdsec_import | default(false)
+
+- name: Create CrowdSec bouncer for blocklist-import
+  ansible.builtin.command: "cscli bouncers add {{ crowdsec_machine_id | default('blocklist-import') }} -o raw"
+  register: crowdsec_bouncer_creation
+  changed_when: "'Bouncer created successfully' in crowdsec_bouncer_creation.stdout"
+  failed_when: false
+  notify: Restart Crowdsec Service
+  when:
+    - enable_crowdsec_import | default(false) | bool
+    - crowdsec_cscli_bouncers_list.rc == 0
+    - crowdsec_machine_id | default('blocklist-import') not in crowdsec_cscli_bouncers_list.stdout
+
+- name: Store blocklist-import bouncer API key
+  ansible.builtin.set_fact:
+    crowdsec_blocklist_import_bouncer_key: "{{ crowdsec_bouncer_creation.stdout | default('') | trim }}"
+  when:
+    - enable_crowdsec_import | default(false)
+    - crowdsec_bouncer_creation is defined
+    - crowdsec_bouncer_creation.stdout is defined
+    - crowdsec_bouncer_creation.stdout | length > 0
+
+- name: Persist blocklist-import bouncer API key to file
+  ansible.builtin.copy:
+    content: "{{ crowdsec_blocklist_import_bouncer_key }}\n"
+    dest: /etc/crowdsec/blocklist-import.bouncer.key
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - enable_crowdsec_import | default(false)
+    - crowdsec_blocklist_import_bouncer_key is defined
+    - crowdsec_blocklist_import_bouncer_key | length > 0
 
 ## CrowdSec Ntfy and Profile Configuration
 
@@ -227,6 +282,6 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  with_items:
+  loop:
     - "/tmp/crowdsec_install_script.sh"
     - "/tmp/crowdsec_temp"

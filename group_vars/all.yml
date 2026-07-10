@@ -12,6 +12,9 @@ enable_wildcard: false
 # Global toggle for CrowdSec integration
 enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its Caddy plugin
 
+# Global toggle for CrowdSec blocklist import integration
+enable_crowdsec_import: false # Set to 'false' to disable CrowdSec blocklist import installation
+
 # Global toggle for Coraza WAF
 enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
 

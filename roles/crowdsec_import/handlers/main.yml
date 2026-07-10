@@ -1,0 +1,19 @@
+---
+- name: Restart and enable crowdsec-blocklist-import timer
+  ansible.builtin.systemd:
+    daemon_reload: true
+    enabled: true
+    name: crowdsec-blocklist-import.timer
+    state: restarted
+  notify: Restart crowdsec-blocklist-import service
+
+- name: Restart crowdsec-blocklist-import timer
+  ansible.builtin.systemd:
+    name: crowdsec-blocklist-import.timer
+    state: restarted
+  notify: Restart crowdsec-blocklist-import service
+
+- name: Restart crowdsec-blocklist-import service
+  ansible.builtin.systemd:
+    name: crowdsec-blocklist-import.service
+    state: restarted
