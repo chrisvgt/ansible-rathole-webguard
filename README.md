@@ -13,7 +13,7 @@ ansible-playbook -i inventory.ini site.yml
 ### 1. Clone and configure inventory
 
 ```bash
-git clone https://github.com/yourusername/ansible-rathole-webguard.git
+git clone https://github.com/chrisvgt/ansible-rathole-webguard.git
 cd ansible-rathole-webguard
 cp inventory.example.ini inventory.ini
 ```
