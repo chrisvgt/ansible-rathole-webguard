@@ -134,7 +134,8 @@
     cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
   environment:
     ANSIBLE_REMOTE_TEMP: "/tmp"
-  changed_when: false
+  register: caddy_fmt_result
+  changed_when: caddy_fmt_result.stdout | length > 0
   notify: Restart Caddy Service
 
 - name: Create Caddy Systemd unit file
@@ -163,7 +164,7 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  with_items:
+  loop:
     - "/tmp/caddy_build"
     - "/tmp/caddy_plugins"
   changed_when: false
