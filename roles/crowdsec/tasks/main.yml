@@ -16,7 +16,6 @@
   ansible.builtin.apt:
     name: curl
     state: present
-    update_cache: true
 
 - name: Download CrowdSec APT install script
   ansible.builtin.get_url:

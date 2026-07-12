@@ -2,12 +2,6 @@
 
 # --- Python Role: Python and pipx ---
 
-- name: Update apt cache
-  ansible.builtin.apt:
-    update_cache: true
-  become: true
-  when: ansible_facts["os_family"] == "Debian"
-
 - name: Install pipx via distribution package manager (preferred method)
   ansible.builtin.apt:
     name: pipx
