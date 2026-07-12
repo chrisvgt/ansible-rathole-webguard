@@ -137,7 +137,6 @@ ansible-playbook -i inventory.ini site.yml
 | `enable_coraza_waf`      | `false`   | Coraza Web Application Firewall               |
 | `enable_rate_limit`      | `true`    | Per-service rate limiting                     |
 | `coraza_mode_default`    | `minimal` | Default WAF mode: minimal/moderate/strict/off |
-| `cleanup_temp`           | `false`   | Remove temp files after deployment            |
 
 ### Host variables (`host_vars/`)
 

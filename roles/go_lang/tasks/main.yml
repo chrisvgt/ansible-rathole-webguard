@@ -64,4 +64,4 @@
   ansible.builtin.file:
     path: "/tmp/{{ go_lang_archive_name }}"
     state: absent
-  when: (go_lang_version_check.rc != 0 or not go_lang_version_match | default(false)) and go_lang_archive_name is defined
+  when: go_lang_archive_name is defined

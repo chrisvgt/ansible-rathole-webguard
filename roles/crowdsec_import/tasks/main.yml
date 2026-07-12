@@ -77,3 +77,10 @@
     name: crowdsec-blocklist-import.timer
     state: started
   become: true
+
+- name: Clean up pipx cache to save disk space
+  ansible.builtin.file:
+    path: "{{ ansible_facts['env']['HOME'] | default('/root') }}/.cache/pipx"
+    state: absent
+  become: true
+  become_user: "{{ ansible_user }}"

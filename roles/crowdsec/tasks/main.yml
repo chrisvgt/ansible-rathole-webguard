@@ -134,7 +134,6 @@
   failed_when: "crowdsec_console_enroll_output.rc != 0 and 'already enrolled' not in crowdsec_console_enroll_output.stderr and 'You are already enrolled' not in crowdsec_console_enroll_output.stdout"
   when:
     - enable_crowdsec | default(true)
-    - crowdsec_enable_console_enroll | default(false)
     - crowdsec_enrollment_key is defined and (crowdsec_enrollment_key | length > 0)
     - crowdsec_cscli_console_status.rc == 0
     - (crowdsec_cscli_console_status.stdout | from_json).get('status', '') != 'ENROLLED'
@@ -280,8 +279,5 @@
 
 - name: Clean up temporary CrowdSec files
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "/tmp/install_crowdsec.sh"
     state: absent
-  loop:
-    - "/tmp/crowdsec_install_script.sh"
-    - "/tmp/crowdsec_temp"

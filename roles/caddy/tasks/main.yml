@@ -168,3 +168,20 @@
     - "/tmp/caddy_build"
     - "/tmp/caddy_plugins"
   changed_when: false
+
+- name: Remove Caddy build dependencies (apt packages) to save disk space
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - apt-transport-https
+    state: absent
+    purge: true
+    autoremove: true
+
+- name: Clean up Go module cache used for Caddy build
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/root/go/pkg/mod"
+    - "/root/go/bin"

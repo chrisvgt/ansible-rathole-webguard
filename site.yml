@@ -107,13 +107,22 @@
         - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
       tags: [reboot]
 
-    # Optional cleanup can be enabled by setting cleanup_temp to true
-    - name: Clean up global temporary files
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "/tmp/ansible_temp"
-        - "/tmp/unused_files"
-      when: cleanup_temp | default(false)
+    - name: Clean up APT package cache to save disk space
+      ansible.builtin.apt:
+        clean: true
+      tags: [cleanup]
+
+    - name: Clean up global temporary files from roles
+      ansible.builtin.shell:
+        cmd: |
+          rm -f /tmp/go*.tar.gz
+          rm -f /tmp/xcaddy_temp.tar.gz
+          rm -f /tmp/xcaddy
+          rm -f /tmp/rathole_*.zip
+          rm -rf /tmp/rathole_unpacked
+          rm -f /tmp/install_crowdsec.sh
+          rm -rf /tmp/caddy_build
+          rm -rf /tmp/caddy_plugins
+        executable: /bin/bash
+      changed_when: false
       tags: [cleanup]
