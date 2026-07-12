@@ -13,4 +13,5 @@ galaxy_info:
     - caddy
     - xcaddy
 
-dependencies: []
+dependencies:
+  - role: go_lang

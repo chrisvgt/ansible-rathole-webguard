@@ -17,4 +17,6 @@ galaxy_info:
     - crowdsec
     - cloudflare
 
-dependencies: []
+dependencies:
+  - role: go_lang
+  - role: xcaddy

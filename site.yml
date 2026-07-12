@@ -38,19 +38,9 @@
       tags: [base]
 
   roles:
-    # The 'go_lang' and 'xcaddy' roles are prerequisites for building Caddy.
-    # They are only included if the host is configured as a Rathole 'server'
-    # because server mode typically involves Caddy as a reverse proxy.
-    - role: go_lang
-      when: rathole_role == "server"
-      tags: go
-
-    - role: xcaddy
-      when: rathole_role == "server"
-      tags: xcaddy
-
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
+    # Dependencies (go_lang, xcaddy) are auto-resolved via meta/main.yml.
     - role: caddy
       when: rathole_role == "server"
       tags: caddy
@@ -61,17 +51,11 @@
       when: rathole_role == "server" and enable_crowdsec
       tags: crowdsec
 
-    # Python role for pipx installation (required for crowdsec-blocklist-import)
-    # Only included if host is a Rathole 'server' AND crowdsec_import is enabled
-    - role: python
-      when: rathole_role == "server" and enable_crowdsec_import
-      tags: python
-
     # CrowdSec blocklist import role
-    # Only included if host is a Rathole 'server' AND crowdsec_import is enabled
-    # AND crowdsec is also enabled (dependency)
+    # Only included if host is a Rathole 'server' AND crowdsec_import is enabled.
+    # Dependencies (crowdsec, python) are auto-resolved via meta/main.yml.
     - role: crowdsec_import
-      when: rathole_role == "server" and enable_crowdsec_import and enable_crowdsec
+      when: rathole_role == "server" and enable_crowdsec_import
       tags: crowdsec_import
 
     # The 'rathole' role is always applied. Its internal tasks will
