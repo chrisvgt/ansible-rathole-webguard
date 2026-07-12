@@ -54,7 +54,6 @@ crowdsec_machine_id: "blocklist-import" # Machine ID (default: blocklist-import)
 # crowdsec_enable_scanners: true
 # crowdsec_enable_abuse_ipdb: true
 # crowdsec_enable_cybercrime_tracker: true
-# crowdsec_enable_monty_security_c2: true
 # crowdsec_enable_vxvault: true
 
 # Optional: Output file path

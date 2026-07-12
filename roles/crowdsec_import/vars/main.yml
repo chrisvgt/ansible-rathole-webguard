@@ -146,7 +146,6 @@ crowdsec_import_blocklist_enable_abuse_ipdb: "{{ crowdsec_enable_abuse_ipdb | de
 # crowdsec_import_blocklist_abuseipdb_limit: 10000
 
 crowdsec_import_blocklist_enable_cybercrime_tracker: "{{ crowdsec_enable_cybercrime_tracker | default(true) }}"
-crowdsec_import_blocklist_enable_monty_security_c2: "{{ crowdsec_enable_monty_security_c2 | default(true) }}"
 crowdsec_import_blocklist_enable_vxvault: "{{ crowdsec_enable_vxvault | default(true) }}"
 
 # =============================================================================
