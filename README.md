@@ -128,15 +128,15 @@ ansible-playbook -i inventory.ini site.yml
 
 ### Feature flags (in `group_vars/all.yml`)
 
-| Variable                 | Default   | Description                                   |
-| ------------------------ | --------- | --------------------------------------------- |
-| `enable_crowdsec`        | `true`    | CrowdSec IPS/IDS with Caddy bouncer           |
-| `enable_cloudflare`      | `false`   | Cloudflare DNS-01 ACME plugin                 |
-| `enable_wildcard`        | `false`   | Wildcard domain support                       |
-| `enable_crowdsec_import` | `false`   | Auto-import 28+ threat blocklists             |
-| `enable_coraza_waf`      | `false`   | Coraza Web Application Firewall               |
-| `enable_rate_limit`      | `true`    | Per-service rate limiting                     |
-| `coraza_mode_default`    | `minimal` | Default WAF mode: minimal/moderate/strict/off |
+| Variable                 | Default    | Description                                   |
+| ------------------------ | ---------- | --------------------------------------------- |
+| `enable_crowdsec`        | `true`     | CrowdSec IPS/IDS with Caddy bouncer           |
+| `enable_cloudflare`      | `false`    | Cloudflare DNS-01 ACME plugin                 |
+| `enable_wildcard`        | `false`    | Wildcard domain support                       |
+| `enable_crowdsec_import` | `false`    | Auto-import 28+ threat blocklists             |
+| `enable_coraza_waf`      | `false`    | Coraza Web Application Firewall               |
+| `enable_rate_limit`      | `true`     | Per-service rate limiting                     |
+| `coraza_mode_default`    | `moderate` | Default WAF mode: minimal/moderate/strict/off |
 
 ### Host variables (`host_vars/`)
 
