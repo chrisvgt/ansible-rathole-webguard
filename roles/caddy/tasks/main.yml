@@ -54,13 +54,7 @@
 - name: Determine if Coraza plugin needs to be built
   ansible.builtin.set_fact:
     caddy_coraza_needed: >-
-      {{ (enable_coraza_waf | default(false))
-         and (((coraza_mode_default | default('off')) != 'off')
-              or ((caddy_sites | default([]))
-                  | selectattr('coraza_mode', 'defined')
-                  | selectattr('coraza_mode', 'ne', 'off')
-                  | list
-                  | length > 0)) }}
+      {{ (enable_coraza_waf | default(false)) }}
 
 - name: Build final Caddy plugin list
   ansible.builtin.set_fact:
