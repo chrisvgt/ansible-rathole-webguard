@@ -44,38 +44,33 @@
     }
 
     route {
-        # Global CrowdSec / AppSec (applies to all subdomains)
-        {% if enable_crowdsec %}
-        # 2. CrowdSec: blocks known bad IPs
-        crowdsec
-        {% if not disable_appsec_global | default(false) %}
-        # 3. CrowdSec AppSec: deep behavior/application inspection
-        appsec
-        {% endif %}
-        {% endif %}
-
-        # Global Rate Limit (default, can be overridden per subdomain)
-        {% if enable_rate_limit | default(true) %}
-        rate_limit {
-            zone {{ base_domain | replace('.', '_') }}_global {
-                key "{http.request.remote.ip}"
-                window 1m
-                events 500
-            }
-        }
-        {% endif %}
-
         # === PER-SUBDOMAIN HANDLES ===
         {% for site in sites %}
         # Match exact subdomain for this base domain (e.g., test.example.com)
         @{{ site.name }} host {{ site.subdomain }}.{{ base_domain | replace('*.','') }}
         handle @{{ site.name }} {
             # The 'route' block guarantees the strict execution order of your security pipeline.
-            # Traffic cannot reach the reverse_proxy without surviving Coraza, CrowdSec, and AppSec first.
+            # Traffic cannot reach the reverse_proxy without surviving CrowdSec, Rate Limit, Coraza, and AppSec first.
             route {
+                {% if enable_crowdsec %}
+                # 1. CrowdSec: blocks known bad IPs (cheapest check first)
+                crowdsec
+                {% endif %}
+
+                # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
+                {% if enable_rate_limit | default(true) %}
+                rate_limit {
+                    zone {{ site.name | default(site.subdomain | replace('.', '_')) }} {
+                        key "{http.request.remote.ip}"
+                        window {{ site.rate_limit_window | default('1m') }}
+                        events {{ site.rate_limit_events | default(500) }}
+                    }
+                }
+                {% endif %}
+
                 {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('moderate')) %}
                 {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
-                # 1. Coraza WAF: catches malformed requests, SQLi, XSS
+                # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
                 coraza_waf {
                     load_owasp_crs
                     directives `
@@ -111,23 +106,9 @@
                 }
                 {% endif %}
 
-                {% if enable_crowdsec and site.disable_appsec | default(false) %}
-                # Skip AppSec for this subdomain if configured
-                # 3. CrowdSec AppSec: deep behavior/application inspection
-                {% elif enable_crowdsec %}
-                # 3. CrowdSec AppSec: deep behavior/application inspection
+                {% if enable_crowdsec and not site.disable_appsec | default(false) %}
+                # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
                 appsec
-                {% endif %}
-
-                # Per-service rate limit (overrides global default)
-                {% if enable_rate_limit | default(true) %}
-                rate_limit {
-                    zone {{ site.name | default(site.subdomain | replace('.', '_')) }} {
-                        key "{http.request.remote.ip}"
-                        window {{ site.rate_limit_window | default('1m') }}
-                        events {{ site.rate_limit_events | default(500) }}
-                    }
-                }
                 {% endif %}
 
                 # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
@@ -194,11 +175,27 @@
 {{ site.domain }} {
 
     # The 'route' block guarantees the strict execution order of your security pipeline.
-    # Traffic cannot reach the reverse_proxy without surviving Coraza, CrowdSec, and AppSec first.
+    # Traffic cannot reach the reverse_proxy without surviving CrowdSec, Rate Limit, Coraza, and AppSec first.
     route {
-        {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default) %}
+        {% if enable_crowdsec %}
+        # 1. CrowdSec: blocks known bad IPs (cheapest check first)
+        crowdsec
+        {% endif %}
+
+        # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
+        {% if enable_rate_limit | default(true) %}
+        rate_limit {
+            zone {{ site.name | default(site.domain | replace('.', '_')) }} {
+                key "{http.request.remote.ip}"
+                window {{ site.rate_limit_window | default('1m') }}
+                events {{ site.rate_limit_events | default(500) }}
+            }
+        }
+        {% endif %}
+
+        {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('moderate')) %}
         {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
-        # 1. Coraza WAF: catches malformed requests, SQLi, XSS
+        # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
         coraza_waf {
             load_owasp_crs
             directives `
@@ -234,25 +231,9 @@
         }
         {% endif %}
 
-        {% if enable_crowdsec %}
-        # 2. CrowdSec: blocks known bad IPs
-        crowdsec
-
-        {% if not site.disable_appsec | default(false) %}
-        # 3. CrowdSec AppSec: deep behavior/application inspection
+        {% if enable_crowdsec and not site.disable_appsec | default(false) %}
+        # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
         appsec
-        {% endif %}
-        {% endif %}
-
-        # 4. Rate limiting: Prevent brute force and DDoS
-        {% if enable_rate_limit | default(true) %}
-        rate_limit {
-            zone {{ site.name | default(site.domain | replace('.', '_')) }} {
-                key "{http.request.remote.ip}"
-                window {{ site.rate_limit_window | default('1m') }}
-                events {{ site.rate_limit_events | default(500) }}
-            }
-        }
         {% endif %}
 
         # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
