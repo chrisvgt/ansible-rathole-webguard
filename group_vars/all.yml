@@ -18,5 +18,38 @@ enable_crowdsec_import: false # Set to 'false' to disable CrowdSec blocklist imp
 # Global toggle for Coraza WAF
 enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
 
-# Default Coraza WAF mode for sites (can be overridden per site with site.coraza_mode)
-coraza_mode_default: moderate # Choose 'minimal', 'moderate', 'strict', or 'off' as default
+# Coraza WAF mode: recommended | minimal | moderate | strict | off
+coraza_mode_default: recommended
+
+# File whitelist: skip WAF for static files (GET/HEAD only, improves performance)
+# Set to false to disable, or customize the extensions list
+coraza_file_whitelist_enabled: true
+coraza_file_whitelist_extensions: "css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv"
+# --- WAF advanced tuning (optional - sensible defaults apply) ---
+# coraza_audit_log_enabled: true
+# coraza_audit_log_dir: "/var/log/caddy"
+# coraza_block_uploads: false
+# coraza_upload_blocklist: ['php','phtml','phar','exe','jar','war','dmg','msi','vbs','ps1','sh','bat','com','scr','pif','aspx','cer','cfm','cgi','pl','py','rb','jsp']
+
+# Mode-specific tuning (uncomment to override defaults)
+# coraza_minimal_engine: "On"
+# coraza_minimal_paranoia_level: 1
+# coraza_minimal_anomaly_threshold: 25
+# coraza_minimal_body_limit: 536870912
+# coraza_minimal_body_inmemory_limit: 134217728
+# coraza_minimal_nofiles_body_limit: 10485760
+# coraza_recommended_paranoia_level: 1
+# coraza_recommended_anomaly_threshold: 10
+# coraza_recommended_body_limit: 104857600
+# coraza_recommended_body_inmemory_limit: 1048576
+# coraza_recommended_nofiles_body_limit: 1048576
+# coraza_moderate_paranoia_level: 1
+# coraza_moderate_anomaly_threshold: 5
+# coraza_moderate_body_limit: 104857600
+# coraza_moderate_body_inmemory_limit: 1048576
+# coraza_moderate_nofiles_body_limit: 1048576
+# coraza_strict_paranoia_level: 2
+# coraza_strict_anomaly_threshold: 5
+# coraza_strict_body_limit: 20971520
+# coraza_strict_body_inmemory_limit: 5242880
+# coraza_strict_nofiles_body_limit: 1048576

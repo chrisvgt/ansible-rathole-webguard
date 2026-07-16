@@ -3,6 +3,23 @@
 
 # === GLOBAL CONFIGURATION ===
 {
+    # --- Directive ordering (required for third-party HTTP handlers) ---
+    # These plugins have no built-in order, so they must be declared here to be
+    # usable inside `handle` blocks. Order reflects the security pipeline:
+    # crowdsec (IP rep) -> rate_limit -> coraza_waf -> appsec -> reverse_proxy
+    {% if enable_crowdsec %}
+    order crowdsec first
+    {% endif %}
+    {% if enable_rate_limit | default(true) %}
+    order rate_limit before basicauth
+    {% endif %}
+    {% if enable_coraza_waf | default(false) %}
+    order coraza_waf before reverse_proxy
+    {% endif %}
+    {% if enable_crowdsec %}
+    order appsec before reverse_proxy
+    {% endif %}
+
     {% if enable_crowdsec %}
     crowdsec {
         api_url http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}
@@ -22,6 +39,114 @@
         level INFO
     }
 }
+
+{#
+Coraza WAF shared macro — rendered identically for Wildcard and Traditional modes.
+Modes: minimal (WebSocket/WebDAV/large uploads), recommended (default, balanced),
+       moderate (CRS defaults), strict (max security), off (disabled).
+
+WebSocket upgrades are split OUT of this pipeline at the route level (see
+@websocket handle) so they never hit rate_limit/Coraza/AppSec. These phase:1
+bypasses remain as defense-in-depth plus SSE/Socket.IO polling coverage.
+#}
+{% macro coraza_directives(effective_mode, site_name) %}
+coraza_waf {
+    load_owasp_crs
+    directives `
+        Include @coraza.conf-recommended
+        Include @crs-setup.conf.example
+
+        # === EARLY STREAMING BYPASSES (all modes) ===
+        # WebSocket upgrade bypass (case-insensitive via t:lowercase)
+        SecRule REQUEST_HEADERS:Upgrade "@streq websocket" \
+            "id:900010,phase:1,nolog,pass,t:none,t:lowercase,ctl:ruleEngine=Off"
+        # SSE / event-stream bypass (ntfy subscribe, live logs, progress streams)
+        SecRule REQUEST_HEADERS:Accept "@rx text/event-stream" \
+            "id:900011,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
+        # Socket.IO long-polling handshake bypass (Audiobookshelf transport=polling)
+        SecRule REQUEST_URI "@beginsWith /socket.io/" \
+            "id:900012,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
+
+        {% if effective_mode == 'minimal' %}
+        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_minimal_paranoia_level | default(1) }}"
+        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_minimal_anomaly_threshold | default(25) }}"
+        SecAction "id:900003,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT PATCH DELETE OPTIONS PROPFIND MKCOL COPY MOVE LOCK UNLOCK'"
+        {% elif effective_mode == 'recommended' %}
+        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_recommended_paranoia_level | default(1) }}"
+        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_recommended_anomaly_threshold | default(10) }}"
+        SecAction "id:900003,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT PATCH DELETE OPTIONS'"
+        {% elif effective_mode == 'moderate' %}
+        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_moderate_paranoia_level | default(1) }}"
+        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_moderate_anomaly_threshold | default(5) }}"
+        SecAction "id:900003,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT PATCH DELETE OPTIONS'"
+        {% elif effective_mode == 'strict' %}
+        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_strict_paranoia_level | default(2) }}"
+        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_strict_anomaly_threshold | default(5) }}"
+        {% endif %}
+
+        Include @owasp_crs/REQUEST-*.conf
+
+        SecRuleEngine On
+        SecRequestBodyAccess On
+        SecResponseBodyAccess Off
+
+        {% if effective_mode == 'minimal' %}
+        SecRequestBodyLimit {{ coraza_minimal_body_limit | default(536870912) }}
+        SecRequestBodyInMemoryLimit {{ coraza_minimal_body_inmemory_limit | default(134217728) }}
+        SecRequestBodyNoFilesLimit {{ coraza_minimal_nofiles_body_limit | default(10485760) }}
+        # File whitelist: skip WAF for static files (GET/HEAD only, improves performance)
+        {% if coraza_file_whitelist_enabled | default(true) %}
+        SecRule REQUEST_METHOD "@streq GET" "id:900020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
+            SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|mp4|webm|ogg|mp3|m3u8|ts|wasm|pdf|txt|csv') }})$" "t:none"
+        {% endif %}
+        {% if coraza_block_uploads | default(false) %}
+        {% set upload_blocklist = coraza_upload_blocklist | default(['php','phtml','phar','exe','jar','war','dmg','msi','vbs','ps1','sh','bat','com','scr','pif','aspx','cer','cfm','cgi','pl','py','rb','jsp']) %}
+        SecRule FILES_NAMES|FILES "@rx \.({{ upload_blocklist | join('|') }})$" \
+            "id:900021,phase:2,deny,t:none,t:lowercase,msg:'Blocked dangerous file upload',severity:CRITICAL"
+        {% endif %}
+        SecRuleRemoveById 920170 920240 920241 920270 920271 920272 920273 920274 920275 920276 920277 920278 920400 920401 920402
+        {% elif effective_mode == 'moderate' %}
+        SecRequestBodyLimit {{ coraza_moderate_body_limit | default(104857600) }}
+        SecRequestBodyInMemoryLimit {{ coraza_moderate_body_inmemory_limit | default(1048576) }}
+        SecRequestBodyNoFilesLimit {{ coraza_moderate_nofiles_body_limit | default(1048576) }}
+        {% elif effective_mode == 'recommended' %}
+        SecRequestBodyLimit {{ coraza_recommended_body_limit | default(104857600) }}
+        SecRequestBodyInMemoryLimit {{ coraza_recommended_body_inmemory_limit | default(1048576) }}
+        SecRequestBodyNoFilesLimit {{ coraza_recommended_nofiles_body_limit | default(1048576) }}
+        # File whitelist: skip WAF for static files (GET/HEAD only, improves performance)
+        {% if coraza_file_whitelist_enabled | default(true) %}
+        SecRule REQUEST_METHOD "@streq GET" "id:900020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
+            SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
+        {% endif %}
+        SecRule ARGS_NAMES|ARGS "@rx \x00" \
+            "id:900030,phase:2,deny,t:none,log,msg:'Blocked null byte in ARGS (recommended mode)',severity:CRITICAL"
+        SecRule ARGS_NAMES|ARGS "@rx [\x00-\x08\x0b\x0c\x0e-\x1f\x7f]" \
+            "id:900031,phase:2,deny,t:none,log,msg:'Blocked control character in ARGS (recommended mode)',severity:CRITICAL"
+        {% elif effective_mode == 'strict' %}
+        SecRequestBodyLimit {{ coraza_strict_body_limit | default(20971520) }}
+        SecRequestBodyInMemoryLimit {{ coraza_strict_body_inmemory_limit | default(5242880) }}
+        SecRequestBodyNoFilesLimit {{ coraza_strict_nofiles_body_limit | default(1048576) }}
+        # Full ARGS hardening: control chars, null bytes, SSTI, length limit
+        SecRule ARGS_NAMES|ARGS "@rx [\x00-\x08\x0b\x0c\x0e-\x1f\x7f]" \
+            "id:900030,phase:2,deny,t:none,log,msg:'Blocked control character in ARGS (strict mode)',severity:CRITICAL"
+        SecRule ARGS_NAMES|ARGS "@rx \x00" \
+            "id:900031,phase:2,deny,t:none,log,msg:'Blocked null byte in ARGS (strict mode)',severity:CRITICAL"
+        SecRule ARGS_NAMES|ARGS "@rx (\$\{|<\%|\{\{|%\{)" \
+            "id:900032,phase:2,deny,t:none,log,msg:'Blocked template injection marker in ARGS (strict mode)',severity:CRITICAL"
+        SecRule ARGS_NAMES "@rx .{256,}" \
+            "id:900033,phase:2,deny,t:none,log,msg:'Argument name exceeds max length (strict mode)',severity:CRITICAL"
+        {% endif %}
+
+        {% if coraza_audit_log_enabled | default(true) %}
+        SecAuditEngine RelevantOnly
+        SecAuditLogParts ABIJDEFHZ
+        SecAuditLog {{ coraza_audit_log_dir | default('/var/log/caddy') }}/modsec_{{ site_name }}.log
+        {% else %}
+        SecAuditEngine Off
+        {% endif %}
+    `
+}
+{%- endmacro %}
 
 # === WILDCARD MODE (supporting multiple base domains) ===
 {% if enable_wildcard | default(false) %}
@@ -49,16 +174,29 @@
         # Match exact subdomain for this base domain (e.g., test.example.com)
         @{{ site.name }} host {{ site.subdomain }}.{{ base_domain | replace('*.','') }}
         handle @{{ site.name }} {
-            # The 'route' block guarantees the strict execution order of your security pipeline.
-            # Traffic cannot reach the reverse_proxy without surviving CrowdSec, Rate Limit, Coraza, and AppSec first.
-            route {
+            # === WebSocket detection (must be evaluated first) ===
+            # WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
+            # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
+            @{{ site.name }}_ws header Upgrade websocket
+            handle @{{ site.name }}_ws {
+                {% if enable_crowdsec %}
+                crowdsec
+                {% endif %}
+                reverse_proxy localhost:{{ site.port }} {
+                    header_up X-Request-ID {http.request.uuid}
+                    {% if site.stream | default(false) %}
+                    flush_interval -1
+                    {% endif %}
+                }
+            }
+            # === Standard traffic: full security pipeline ===
+            handle {
                 {% if enable_crowdsec %}
                 # 1. CrowdSec: blocks known bad IPs (cheapest check first)
                 crowdsec
                 {% endif %}
-
-                # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
                 {% if enable_rate_limit | default(true) %}
+                # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
                 rate_limit {
                     zone {{ site.name | default(site.subdomain | replace('.', '_')) }} {
                         key "{http.request.remote.ip}"
@@ -68,42 +206,10 @@
                 }
                 {% endif %}
 
-                {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('moderate')) %}
+                {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('recommended')) %}
                 {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
                 # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
-                coraza_waf {
-                    load_owasp_crs
-                    directives `
-                        Include @coraza.conf-recommended
-                        Include @crs-setup.conf.example
-                        {%- if effective_coraza_mode == 'minimal' %}
-                        # Minimal mode: Optimized for WebSockets & large/chunked uploads
-                        SecRuleEngine DetectionOnly
-                        SecRequestBodyLimit 536870912
-                        SecRequestBodyInMemoryLimit 134217728
-                        SecRequestBodyNoFilesLimit 10485760
-                        SecRequestBodyAccess On
-                        # Relax WebSocket rules
-                        SecRuleRemoveById 920350 920460 930100 932100 930110
-                        # Relax chunked upload / multipart rules
-                        SecRuleRemoveById 920170 920240 920241 920270 920271 920272 920273 920274 920275 920276 920277 920278 920400 920401 920402
-                        {%- elif effective_coraza_mode == 'moderate' %}
-                        # Moderate mode: CRS with relaxed WebSocket/upload rules
-                        Include @owasp_crs/REQUEST-*.conf
-                        SecRequestBodyLimit 536870912
-                        SecRequestBodyInMemoryLimit 134217728
-                        # Relax WebSocket rules only (chunk rules may still apply)
-                        SecRuleRemoveById 920350 920460 930100 932100 930110
-                        {%- elif effective_coraza_mode == 'strict' %}
-                        # Strict mode: Full CRS, but may break WebSockets/uploads
-                        Include @owasp_crs/REQUEST-*.conf
-                        SecRequestBodyLimit 20971520
-                        SecRequestBodyInMemoryLimit 5242880
-                        {%- endif %}
-                        SecResponseBodyAccess Off
-                        SecAuditEngine Off
-                    `
-                }
+                {{ coraza_directives(effective_coraza_mode, site.name) }}
                 {% endif %}
 
                 {% if enable_crowdsec and not site.disable_appsec | default(false) %}
@@ -117,6 +223,9 @@
                 @forward_path path {{ site.forward_path }}*
                 reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.port) }} {
                     header_up X-Forwarded-For {{ site.forward_ip }}
+                    {% if site.stream | default(false) %}
+                    flush_interval -1
+                    {% endif %}
                     {% if site.proxy_timeout is defined %}
                     transport http {
                         response_header_timeout {{ site.proxy_timeout }}
@@ -129,6 +238,9 @@
                 # Default proxy for all other paths
                 reverse_proxy localhost:{{ site.port }} {
                     header_up X-Request-ID {http.request.uuid}
+                    {% if site.stream | default(false) %}
+                    flush_interval -1
+                    {% endif %}
                     {% if site.proxy_timeout is defined %}
                     transport http {
                         response_header_timeout {{ site.proxy_timeout }}
@@ -137,18 +249,12 @@
                     {% endif %}
                 }
             }
-
-            # Security headers (applies only to this subdomain)
+            # Security headers (applies to this subdomain)
             header {
-                # Prevent clickjacking
                 X-Frame-Options "SAMEORIGIN"
-                # Prevent MIME sniffing
                 X-Content-Type-Options "nosniff"
-                # Enable XSS protection in older browsers
                 X-XSS-Protection "1; mode=block"
-                # Referrer policy
                 Referrer-Policy "strict-origin-when-cross-origin"
-                # Feature policy / Permissions policy
                 Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
             }
 
@@ -173,107 +279,83 @@
 
 {% for site in caddy_sites %}
 {{ site.domain }} {
-
-    # The 'route' block guarantees the strict execution order of your security pipeline.
-    # Traffic cannot reach the reverse_proxy without surviving CrowdSec, Rate Limit, Coraza, and AppSec first.
     route {
-        {% if enable_crowdsec %}
-        # 1. CrowdSec: blocks known bad IPs (cheapest check first)
-        crowdsec
-        {% endif %}
-
-        # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
-        {% if enable_rate_limit | default(true) %}
-        rate_limit {
-            zone {{ site.name | default(site.domain | replace('.', '_')) }} {
-                key "{http.request.remote.ip}"
-                window {{ site.rate_limit_window | default('1m') }}
-                events {{ site.rate_limit_events | default(500) }}
+        # === WebSocket detection (must be evaluated first) ===
+        # WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
+        # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
+        @websocket header Upgrade websocket
+        handle @websocket {
+            {% if enable_crowdsec %}
+            crowdsec
+            {% endif %}
+            reverse_proxy localhost:{{ site.local_port }} {
+                header_up X-Request-ID {http.request.uuid}
+                {% if site.stream | default(false) %}
+                flush_interval -1
+                {% endif %}
             }
         }
-        {% endif %}
-
-        {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('moderate')) %}
-        {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
-        # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
-        coraza_waf {
-            load_owasp_crs
-            directives `
-                Include @coraza.conf-recommended
-                Include @crs-setup.conf.example
-                {%- if effective_coraza_mode == 'minimal' %}
-                # Minimal mode: Optimized for WebSockets & large/chunked uploads
-                SecRuleEngine DetectionOnly
-                SecRequestBodyLimit 536870912
-                SecRequestBodyInMemoryLimit 134217728
-                SecRequestBodyNoFilesLimit 10485760
-                SecRequestBodyAccess On
-                # Relax WebSocket rules
-                SecRuleRemoveById 920350 920460 930100 932100 930110
-                # Relax chunked upload / multipart rules
-                SecRuleRemoveById 920170 920240 920241 920270 920271 920272 920273 920274 920275 920276 920277 920278 920400 920401 920402
-                {%- elif effective_coraza_mode == 'moderate' %}
-                # Moderate mode: CRS with relaxed WebSocket/upload rules
-                Include @owasp_crs/REQUEST-*.conf
-                SecRequestBodyLimit 536870912
-                SecRequestBodyInMemoryLimit 134217728
-                # Relax WebSocket rules only (chunk rules may still apply)
-                SecRuleRemoveById 920350 920460 930100 932100 930110
-                {%- elif effective_coraza_mode == 'strict' %}
-                # Strict mode: Full CRS, but may break WebSockets/uploads
-                Include @owasp_crs/REQUEST-*.conf
-                SecRequestBodyLimit 20971520
-                SecRequestBodyInMemoryLimit 5242880
-                {%- endif %}
-                SecResponseBodyAccess Off
-                SecAuditEngine Off
-            `
-        }
-        {% endif %}
-
-        {% if enable_crowdsec and not site.disable_appsec | default(false) %}
-        # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
-        appsec
-        {% endif %}
-
-        # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
-        {% if site.enable_forward is defined and site.enable_forward %}
-        # Route specific paths to different backends when configured
-        @forward_path path {{ site.forward_path }}*
-        reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
-            header_up X-Forwarded-For {{ site.forward_ip }}
-            {% if site.proxy_timeout is defined %}
-            transport http {
-                response_header_timeout {{ site.proxy_timeout }}
-                dial_timeout {{ site.proxy_timeout }}
+        # === Standard traffic: full security pipeline ===
+        handle {
+            {% if enable_crowdsec %}
+            # 1. CrowdSec: blocks known bad IPs (cheapest check first)
+            crowdsec
+            {% endif %}
+            {% if enable_rate_limit | default(true) %}
+            # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
+            rate_limit {
+                zone {{ site.name | default(site.domain | replace('.', '_')) }} {
+                    key "{http.request.remote.ip}"
+                    window {{ site.rate_limit_window | default('1m') }}
+                    events {{ site.rate_limit_events | default(500) }}
+                }
             }
             {% endif %}
-        }
-        {% endif %}
-
-        # Default proxy for all other paths
-        reverse_proxy localhost:{{ site.local_port }} {
-            header_up X-Request-ID {http.request.uuid}
-            {% if site.proxy_timeout is defined %}
-            transport http {
-                response_header_timeout {{ site.proxy_timeout }}
-                dial_timeout {{ site.proxy_timeout }}
+            {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('recommended')) %}
+            {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
+            # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
+            {{ coraza_directives(effective_coraza_mode, site.name) }}
+            {% endif %}
+            {% if enable_crowdsec and not site.disable_appsec | default(false) %}
+            # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
+            appsec
+            {% endif %}
+            # 5. Reverse Proxy
+            {% if site.enable_forward is defined and site.enable_forward %}
+            @forward_path path {{ site.forward_path }}*
+            reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
+                header_up X-Forwarded-For {{ site.forward_ip }}
+                {% if site.stream | default(false) %}
+                flush_interval -1
+                {% endif %}
+                {% if site.proxy_timeout is defined %}
+                transport http {
+                    response_header_timeout {{ site.proxy_timeout }}
+                    dial_timeout {{ site.proxy_timeout }}
+                }
+                {% endif %}
             }
             {% endif %}
+            reverse_proxy localhost:{{ site.local_port }} {
+                header_up X-Request-ID {http.request.uuid}
+                {% if site.stream | default(false) %}
+                flush_interval -1
+                {% endif %}
+                {% if site.proxy_timeout is defined %}
+                transport http {
+                    response_header_timeout {{ site.proxy_timeout }}
+                    dial_timeout {{ site.proxy_timeout }}
+                }
+                {% endif %}
+            }
         }
     }
-
     # Security headers
     header {
-        # Prevent clickjacking
         X-Frame-Options "SAMEORIGIN"
-        # Prevent MIME sniffing
         X-Content-Type-Options "nosniff"
-        # Enable XSS protection in older browsers
         X-XSS-Protection "1; mode=block"
-        # Referrer policy
         Referrer-Policy "strict-origin-when-cross-origin"
-        # Feature policy / Permissions policy
         Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
     }
 

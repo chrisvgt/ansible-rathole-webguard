@@ -96,6 +96,10 @@ caddy_sites:
   - name: stream
     domain: "stream.yourdomain.com"
     local_port: 8096
+    # Enable streaming mode for this site: adds flush_interval -1 to both
+    # HTTP and WebSocket reverse proxies. Required for Jellyfin SyncPlay
+    # real-time synchronization messages to work without buffering.
+    # stream: true
     # Optional: Enable forwarding for specific paths
     # enable_forward: true
     # forward_ip: 192.168.0.1
