@@ -128,15 +128,15 @@ ansible-playbook -i inventory.ini site.yml
 
 ### Feature flags (in `group_vars/all.yml`)
 
-| Variable                 | Default    | Description                                   |
-| ------------------------ | ---------- | --------------------------------------------- |
-| `enable_crowdsec`        | `true`     | CrowdSec IPS/IDS with Caddy bouncer           |
-| `enable_cloudflare`      | `false`    | Cloudflare DNS-01 ACME plugin                 |
-| `enable_wildcard`        | `false`    | Wildcard domain support                       |
-| `enable_crowdsec_import` | `false`    | Auto-import 28+ threat blocklists             |
-| `enable_coraza_waf`      | `false`    | Coraza Web Application Firewall               |
-| `enable_rate_limit`      | `true`     | Per-service rate limiting                     |
-| `coraza_mode_default`    | `moderate` | Default WAF mode: minimal/moderate/strict/off |
+| Variable                 | Default       | Description                                               |
+| ------------------------ | ------------- | --------------------------------------------------------- |
+| `enable_crowdsec`        | `true`        | CrowdSec IPS/IDS with Caddy bouncer                       |
+| `enable_cloudflare`      | `false`       | Cloudflare DNS-01 ACME plugin                             |
+| `enable_wildcard`        | `false`       | Wildcard domain support                                   |
+| `enable_crowdsec_import` | `false`       | Auto-import 28+ threat blocklists                         |
+| `enable_coraza_waf`      | `false`       | Coraza Web Application Firewall                           |
+| `enable_rate_limit`      | `true`        | Per-service rate limiting                                 |
+| `coraza_mode_default`    | `recommended` | Default WAF mode: recommended/minimal/moderate/strict/off |
 
 ### Host variables (`host_vars/`)
 
@@ -208,15 +208,27 @@ vault_crowdsec_machine_password: "your-password"
 
 ### Coraza WAF Modes
 
-| Mode       | Security      | WebSockets   | Chunked uploads | Use case                   |
-| ---------- | ------------- | ------------ | --------------- | -------------------------- |
-| `minimal`  | DetectionOnly | ✅ yes       | ✅ 512 MB       | Recommended default        |
-| `moderate` | CRS rules     | ✅ relaxed   | ⚠️ limited      | General purpose            |
-| `strict`   | Full CRS      | ❌ may break | ❌ may break    | High security, ≥4 GB RAM   |
-| `off`      | Disabled      | ✅           | ✅              | Testing / non-web services |
+All modes **actively block** by default. WebSocket compatibility uses **surgical** header-based exclusions (not blanket rule removals).
 
-Set globally: `coraza_mode_default: minimal`
-Override per site: `coraza_mode: "moderate"` in a site definition.
+| Mode          | Paranoia/Anomaly | WebSockets  | Large uploads/WebDAV     | Static bypass       | Extra hardening                    |
+| ------------- | ---------------- | ----------- | ------------------------ | ------------------- | ---------------------------------- |
+| `minimal`     | PL1 / 25         | ✅ surgical | ✅ 512 MB + WebDAV       | ✅ CSS/JS/media     | Optional upload blocking           |
+| `recommended` | PL1 / 10         | ✅ surgical | ⚠️ 100 MB, no WebDAV     | ✅ CSS/JS/fonts/PDF | ✅ Null byte + control char ARGS   |
+| `moderate`    | PL1 / 5          | ✅ surgical | ⚠️ 100 MB, no WebDAV     | ❌                  | —                                  |
+| `strict`      | PL2 / 5          | ✅ standard | ⚠️ 20 MB, no relaxations | ❌                  | ✅ ARGS + SSTI + length validation |
+| `off`         | —                | ✅          | ✅                       | —                   | —                                  |
+
+**Use cases:**
+
+- **`minimal`**: Nextcloud, ntfy, Jellyfin — WebSocket/WebDAV/large-upload compat
+- **`recommended`** _(default)_: Most web services — best security/compatibility balance
+- **`moderate`**: General services — stricter anomaly, no static bypass
+- **`strict`**: Vaultwarden, admin panels — max security, ARGS/SSTI hardening
+
+All thresholds and paranoia levels are tunable via `coraza_*_paranoia_level` and `coraza_*_anomaly_threshold` in `group_vars/all.yml`.
+
+Set globally: `coraza_mode_default: recommended`
+Override per site: `coraza_mode: "strict"` in a site definition.
 
 ### CrowdSec Blocklist Sources (28+ feeds)
 
