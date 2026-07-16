@@ -35,10 +35,13 @@
         {% endfor %}
     {% endif %}
     {% if _has_any_waf %}
-    order coraza_waf before reverse_proxy
+    order coraza_waf before appsec
     {% endif %}
     {% if enable_crowdsec %}
     order appsec before reverse_proxy
+    {% endif %}
+    {% if enable_rate_limit | default(true) and _has_any_waf %}
+    order rate_limit before coraza_waf
     {% endif %}
 
     {% if enable_crowdsec %}
@@ -54,6 +57,10 @@
     {% if enable_cloudflare %}
     acme_dns cloudflare {{ cloudflare_api_token }}
     {% endif %}
+
+    # Enable request ID generation for all requests (used in X-Request-ID header)
+    # Required for {http.request.id} placeholders to work correctly
+    request_id
 
     log {
         output stderr
@@ -79,7 +86,7 @@ coraza_waf {
         SecRuleEngine On
         SecRequestBodyAccess On
         SecResponseBodyAccess Off
-        SecDefaultAction "phase:2,deny,log,status:403"
+        SecDefaultAction "deny,log,status:403"
 
         # === EARLY STREAMING BYPASSES (all modes) ===
         # WebSocket upgrade bypass
@@ -310,7 +317,7 @@ coraza_waf {
                 crowdsec
                 {% endif %}
                 reverse_proxy localhost:{{ site.port }} {
-                    header_up X-Request-ID {http.request.uuid}
+                    header_up X-Request-ID {http.request.id}
                     {% if site.stream | default(false) %}
                     flush_interval -1
                     {% endif %}
@@ -356,7 +363,7 @@ coraza_waf {
                 {% endif %}
 
                 # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
-                {% if site.enable_forward is defined and site.enable_forward %}
+                {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
                 # Route specific paths to different backends when configured
                 @forward_path path {{ site.forward_path }}*
                 reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.port) }} {
@@ -375,7 +382,7 @@ coraza_waf {
 
                 # Default proxy for all other paths
                 reverse_proxy localhost:{{ site.port }} {
-                    header_up X-Request-ID {http.request.uuid}
+                    header_up X-Request-ID {http.request.id}
                     {% if site.stream | default(false) %}
                     flush_interval -1
                     {% endif %}
@@ -397,7 +404,9 @@ coraza_waf {
             }
 
             # Caching headers for static media/metadata to reduce requests
-            @static_assets path /Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif
+            # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
+            {% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
+            @static_assets path {{ cache_paths }}
             header @static_assets Cache-Control "public, max-age=86400"
             header @static_assets ETag {http.response.header.ETag}
         }
@@ -427,7 +436,7 @@ coraza_waf {
             crowdsec
             {% endif %}
             reverse_proxy localhost:{{ site.local_port }} {
-                header_up X-Request-ID {http.request.uuid}
+                header_up X-Request-ID {http.request.id}
                 {% if site.stream | default(false) %}
                 flush_interval -1
                 {% endif %}
@@ -471,7 +480,7 @@ coraza_waf {
             appsec
             {% endif %}
             # 5. Reverse Proxy
-            {% if site.enable_forward is defined and site.enable_forward %}
+            {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
             @forward_path path {{ site.forward_path }}*
             reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
                 header_up X-Forwarded-For {{ site.forward_ip }}
@@ -487,7 +496,7 @@ coraza_waf {
             }
             {% endif %}
             reverse_proxy localhost:{{ site.local_port }} {
-                header_up X-Request-ID {http.request.uuid}
+                header_up X-Request-ID {http.request.id}
                 {% if site.stream | default(false) %}
                 flush_interval -1
                 {% endif %}
@@ -510,7 +519,9 @@ coraza_waf {
     }
 
     # Caching headers for static media/metadata to reduce requests
-    @static_assets path /Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif
+    # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
+    {% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
+    @static_assets path {{ cache_paths }}
     header @static_assets Cache-Control "public, max-age=86400"
     header @static_assets ETag {http.response.header.ETag}
 
