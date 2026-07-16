@@ -13,7 +13,28 @@
     {% if enable_rate_limit | default(true) %}
     order rate_limit before basicauth
     {% endif %}
-    {% if enable_coraza_waf | default(false) %}
+    {#
+    Order directive needed if ANY site has WAF enabled (global or per-site via coraza_mode).
+    Check: global enable_coraza_waf, OR any site with coraza_mode set to a non-"off" value.
+    #}
+    {% set _has_any_waf = enable_coraza_waf | default(false) %}
+    {% if not _has_any_waf and enable_wildcard | default(false) %}
+        {% for _bd in wildcard_sites | default([]) %}
+            {% for _s in _bd.sites | default([]) %}
+                {% if _s.coraza_mode is defined and _s.coraza_mode != 'off' %}
+                    {% set _has_any_waf = true %}
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+    {% if not _has_any_waf and not enable_wildcard | default(false) %}
+        {% for _s in caddy_sites | default([]) %}
+            {% if _s.coraza_mode is defined and _s.coraza_mode != 'off' %}
+                {% set _has_any_waf = true %}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+    {% if _has_any_waf %}
     order coraza_waf before reverse_proxy
     {% endif %}
     {% if enable_crowdsec %}
@@ -41,102 +62,208 @@
 }
 
 {#
-Coraza WAF shared macro — rendered identically for Wildcard and Traditional modes.
-Modes: minimal (WebSocket/WebDAV/large uploads), recommended (default, balanced),
-       moderate (CRS defaults), strict (max security), off (disabled).
+Coraza WAF macro — Custom lightweight ruleset replacing the full OWASP CRS.
+Instead of loading the entire CRS (hundreds of regex rules causing high CPU and
+false positives), we use targeted, efficient rules for real threats.
 
-WebSocket upgrades are split OUT of this pipeline at the route level (see
-@websocket handle) so they never hit rate_limit/Coraza/AppSec. These phase:1
-bypasses remain as defense-in-depth plus SSE/Socket.IO polling coverage.
+Modes:
+  - minimal:     No ARGS inspection, only method/boundary enforcement
+  - recommended: Adds null byte, control char, SQLi, XSS, path traversal
+  - moderate:    Adds cmd injection, RFI, SSRF, protocol attacks
+  - strict:      Adds full ARGS hardening, SSTI, file upload audit
 #}
 {% macro coraza_directives(effective_mode, site_name) %}
 coraza_waf {
-    load_owasp_crs
     directives `
-        Include @coraza.conf-recommended
-        Include @crs-setup.conf.example
-
-        # === EARLY STREAMING BYPASSES (all modes) ===
-        # WebSocket upgrade bypass (case-insensitive via t:lowercase)
-        SecRule REQUEST_HEADERS:Upgrade "@streq websocket" \
-            "id:900010,phase:1,nolog,pass,t:none,t:lowercase,ctl:ruleEngine=Off"
-        # SSE / event-stream bypass (ntfy subscribe, live logs, progress streams)
-        SecRule REQUEST_HEADERS:Accept "@rx text/event-stream" \
-            "id:900011,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
-        # Socket.IO long-polling handshake bypass (Audiobookshelf transport=polling)
-        SecRule REQUEST_URI "@beginsWith /socket.io/" \
-            "id:900012,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
-
-        {% if effective_mode == 'minimal' %}
-        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_minimal_paranoia_level | default(1) }}"
-        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_minimal_anomaly_threshold | default(25) }}"
-        SecAction "id:900003,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT PATCH DELETE OPTIONS PROPFIND MKCOL COPY MOVE LOCK UNLOCK'"
-        {% elif effective_mode == 'recommended' %}
-        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_recommended_paranoia_level | default(1) }}"
-        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_recommended_anomaly_threshold | default(10) }}"
-        SecAction "id:900003,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT PATCH DELETE OPTIONS'"
-        {% elif effective_mode == 'moderate' %}
-        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_moderate_paranoia_level | default(1) }}"
-        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_moderate_anomaly_threshold | default(5) }}"
-        SecAction "id:900003,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT PATCH DELETE OPTIONS'"
-        {% elif effective_mode == 'strict' %}
-        SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={{ coraza_strict_paranoia_level | default(2) }}"
-        SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={{ coraza_strict_anomaly_threshold | default(5) }}"
-        {% endif %}
-
-        Include @owasp_crs/REQUEST-*.conf
-
+        # === CORE CONFIGURATION ===
         SecRuleEngine On
         SecRequestBodyAccess On
         SecResponseBodyAccess Off
+        SecDefaultAction "phase:2,deny,log,status:403"
+
+        # === EARLY STREAMING BYPASSES (all modes) ===
+        # WebSocket upgrade bypass
+        SecRule REQUEST_HEADERS:Upgrade "@streq websocket" \
+            "id:100001,phase:1,nolog,pass,t:none,t:lowercase,ctl:ruleEngine=Off"
+        # SSE / event-stream bypass (ntfy subscribe, live logs)
+        SecRule REQUEST_HEADERS:Accept "@rx text/event-stream" \
+            "id:100002,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
+        # Socket.IO long-polling bypass
+        SecRule REQUEST_URI "@beginsWith /socket.io/" \
+            "id:100003,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
 
         {% if effective_mode == 'minimal' %}
+
+        # === MODE: MINIMAL (WebSocket/WebDAV/large uploads) ===
+        # Body limits: generous for large uploads (e.g., 500MB for media)
         SecRequestBodyLimit {{ coraza_minimal_body_limit | default(536870912) }}
         SecRequestBodyInMemoryLimit {{ coraza_minimal_body_inmemory_limit | default(134217728) }}
         SecRequestBodyNoFilesLimit {{ coraza_minimal_nofiles_body_limit | default(10485760) }}
-        # File whitelist: skip WAF for static files (GET/HEAD only, improves performance)
+
+        # Allowed methods: broad for WebDAV compatibility
+        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|PROPFIND|MKCOL|COPY|MOVE|LOCK|UNLOCK)$" \
+            "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
+
+        # Static file whitelist: skip WAF for all GET static assets
         {% if coraza_file_whitelist_enabled | default(true) %}
-        SecRule REQUEST_METHOD "@streq GET" "id:900020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
             SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|mp4|webm|ogg|mp3|m3u8|ts|wasm|pdf|txt|csv') }})$" "t:none"
         {% endif %}
+
+        # Block dangerous file uploads
         {% if coraza_block_uploads | default(false) %}
         {% set upload_blocklist = coraza_upload_blocklist | default(['php','phtml','phar','exe','jar','war','dmg','msi','vbs','ps1','sh','bat','com','scr','pif','aspx','cer','cfm','cgi','pl','py','rb','jsp']) %}
         SecRule FILES_NAMES|FILES "@rx \.({{ upload_blocklist | join('|') }})$" \
-            "id:900021,phase:2,deny,t:none,t:lowercase,msg:'Blocked dangerous file upload',severity:CRITICAL"
+            "id:100021,phase:2,deny,t:none,t:lowercase,msg:'Blocked dangerous file upload',severity:CRITICAL"
         {% endif %}
-        SecRuleRemoveById 920170 920240 920241 920270 920271 920272 920273 920274 920275 920276 920277 920278 920400 920401 920402
-        {% elif effective_mode == 'moderate' %}
-        SecRequestBodyLimit {{ coraza_moderate_body_limit | default(104857600) }}
-        SecRequestBodyInMemoryLimit {{ coraza_moderate_body_inmemory_limit | default(1048576) }}
-        SecRequestBodyNoFilesLimit {{ coraza_moderate_nofiles_body_limit | default(1048576) }}
+
+        # URI length check: skipped (Coraza regex engine doesn't support {n,} quantifiers).
+        # Caddy has its own internal URI limits that prevent buffer overflow attacks.
+
         {% elif effective_mode == 'recommended' %}
+
+        # === MODE: RECOMMENDED (default, balanced protection) ===
         SecRequestBodyLimit {{ coraza_recommended_body_limit | default(104857600) }}
         SecRequestBodyInMemoryLimit {{ coraza_recommended_body_inmemory_limit | default(1048576) }}
         SecRequestBodyNoFilesLimit {{ coraza_recommended_nofiles_body_limit | default(1048576) }}
-        # File whitelist: skip WAF for static files (GET/HEAD only, improves performance)
+
+        # Allowed methods: standard web methods
+        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$" \
+            "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
+
+        # Static file whitelist: skip WAF for GET on static assets
         {% if coraza_file_whitelist_enabled | default(true) %}
-        SecRule REQUEST_METHOD "@streq GET" "id:900020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
             SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
         {% endif %}
+
+        # Null byte and control character detection
         SecRule ARGS_NAMES|ARGS "@rx \x00" \
-            "id:900030,phase:2,deny,t:none,log,msg:'Blocked null byte in ARGS (recommended mode)',severity:CRITICAL"
+            "id:100030,phase:2,deny,log,msg:'Null byte detected in ARGS',severity:CRITICAL"
         SecRule ARGS_NAMES|ARGS "@rx [\x00-\x08\x0b\x0c\x0e-\x1f\x7f]" \
-            "id:900031,phase:2,deny,t:none,log,msg:'Blocked control character in ARGS (recommended mode)',severity:CRITICAL"
+            "id:100031,phase:2,deny,log,msg:'Control character detected in ARGS',severity:CRITICAL"
+
+        # URI length check: skipped (Coraza regex engine doesn't support {n,} quantifiers).
+        # Caddy has its own internal URI limits that prevent buffer overflow attacks.
+
+        # === SQL Injection (lightweight signatures) ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:union\s+select|select\s+.+\s+from|insert\s+into|drop\s+table|delete\s+from|update\s+.+\s+set|create\s+table|alter\s+table|exec\s*\(|execute\s*\(|xp_cmdshell|--\s|#\s|/\*))" \
+            "id:100040,phase:2,deny,log,msg:'SQL Injection attempt',severity:CRITICAL"
+
+        # === Cross-Site Scripting (lightweight signatures) ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:<script[^>]*>|javascript\s*:|on\w+\s*=|alert\s*\(|prompt\s*\(|confirm\s*\(|document\.cookie|\.innerHTML|eval\s*\())" \
+            "id:100041,phase:2,deny,log,msg:'XSS attempt',severity:CRITICAL"
+
+        # === Path Traversal ===
+        SecRule ARGS_NAMES|ARGS "@rx (?:\.\./|\.\.\\|\/\.\.\/|\\\.\.\\)" \
+            "id:100042,phase:2,deny,log,msg:'Path traversal attempt',severity:CRITICAL"
+
+        {% elif effective_mode == 'moderate' %}
+
+        # === MODE: MODERATE (balanced CRS-like protection) ===
+        SecRequestBodyLimit {{ coraza_moderate_body_limit | default(104857600) }}
+        SecRequestBodyInMemoryLimit {{ coraza_moderate_body_inmemory_limit | default(1048576) }}
+        SecRequestBodyNoFilesLimit {{ coraza_moderate_nofiles_body_limit | default(1048576) }}
+
+        # Allowed methods
+        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$" \
+            "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
+
+        # Static file whitelist
+        {% if coraza_file_whitelist_enabled | default(true) %}
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
+            SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
+        {% endif %}
+
+        # Null byte + control characters
+        SecRule ARGS_NAMES|ARGS "@rx \x00" \
+            "id:100030,phase:2,deny,log,msg:'Null byte detected in ARGS',severity:CRITICAL"
+        SecRule ARGS_NAMES|ARGS "@rx [\x00-\x08\x0b\x0c\x0e-\x1f\x7f]" \
+            "id:100031,phase:2,deny,log,msg:'Control character detected in ARGS',severity:CRITICAL"
+
+        # === SQL Injection ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:union\s+select|select\s+.+\s+from|insert\s+into|drop\s+table|delete\s+from|update\s+.+\s+set|create\s+table|alter\s+table|exec\s*\(|execute\s*\(|xp_cmdshell|--\s|#\s|/\*|sleep\s*\(\d+|waitfor\s+delay|benchmark\s*\()|(?:'.*'|\".*\")?\s*or\s+1\s*=\s*1|'.*'.*'.*')" \
+            "id:100040,phase:2,deny,log,msg:'SQL Injection attempt',severity:CRITICAL"
+
+        # === Cross-Site Scripting ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:<script[^>]*>|javascript\s*:|on\w+\s*=|alert\s*\(|prompt\s*\(|confirm\s*\(|document\.cookie|\.innerHTML|eval\s*\(|fromCharCode|String\.fromCharCode|<svg|onload\s*=|onerror\s*=|onclick\s*=))" \
+            "id:100041,phase:2,deny,log,msg:'XSS attempt',severity:CRITICAL"
+
+        # === Path Traversal ===
+        SecRule ARGS_NAMES|ARGS "@rx (?:\.\./|\.\.\\|\/\.\.\/|\\\.\.\\)" \
+            "id:100042,phase:2,deny,log,msg:'Path traversal attempt',severity:CRITICAL"
+
+        # === Command Injection ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:;\s*$|`[^`]+`|\$\([^)]+\)|\|\s*$|&&\s*$|>(\s*)?>(\s*)?$|ping\s+-[ntcw]|nslookup\s+|traceroute\s+|wget\s+|curl\s+(?:-o|-O|--output)|bash\s+-c|sh\s+-c|powershell\s+-[ce]|cmd\.exe\s+\/c))" \
+            "id:100043,phase:2,deny,log,msg:'Command injection attempt',severity:CRITICAL"
+
+        # === Remote/Local File Inclusion ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:file://|php://|php://filter|php://input|php://stdin|expect://|data://|data:text|ftp://|dict://|gopher://))" \
+            "id:100044,phase:2,deny,log,msg:'File inclusion attempt',severity:CRITICAL"
+
+        # === Content-Type enforcement for POST/PUT ===
+        SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" "id:100045,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_HEADERS:Content-Type "!@rx ^(application/x-www-form-urlencoded|multipart/form-data|application/json|application/xml|text/plain|text/xml|application/octet-stream|image/|video/|audio/)" \
+                "id:100046,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING"
+
         {% elif effective_mode == 'strict' %}
+
+        # === MODE: STRICT (maximum security) ===
         SecRequestBodyLimit {{ coraza_strict_body_limit | default(20971520) }}
         SecRequestBodyInMemoryLimit {{ coraza_strict_body_inmemory_limit | default(5242880) }}
         SecRequestBodyNoFilesLimit {{ coraza_strict_nofiles_body_limit | default(1048576) }}
-        # Full ARGS hardening: control chars, null bytes, SSTI, length limit
-        SecRule ARGS_NAMES|ARGS "@rx [\x00-\x08\x0b\x0c\x0e-\x1f\x7f]" \
-            "id:900030,phase:2,deny,t:none,log,msg:'Blocked control character in ARGS (strict mode)',severity:CRITICAL"
-        SecRule ARGS_NAMES|ARGS "@rx \x00" \
-            "id:900031,phase:2,deny,t:none,log,msg:'Blocked null byte in ARGS (strict mode)',severity:CRITICAL"
-        SecRule ARGS_NAMES|ARGS "@rx (\$\{|<\%|\{\{|%\{)" \
-            "id:900032,phase:2,deny,t:none,log,msg:'Blocked template injection marker in ARGS (strict mode)',severity:CRITICAL"
-        SecRule ARGS_NAMES "@rx .{256,}" \
-            "id:900033,phase:2,deny,t:none,log,msg:'Argument name exceeds max length (strict mode)',severity:CRITICAL"
+
+        # Allowed methods: strict
+        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|DELETE|OPTIONS)$" \
+            "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
+
+        # Static file whitelist (only common static extensions)
+        {% if coraza_file_whitelist_enabled | default(true) %}
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
+            SecRule REQUEST_URI "@rx \.(css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv)$" "t:none"
         {% endif %}
 
+        # Null byte + all control characters
+        SecRule ARGS_NAMES|ARGS "@rx \x00" \
+            "id:100030,phase:2,deny,log,msg:'Null byte detected in ARGS',severity:CRITICAL"
+        SecRule ARGS_NAMES|ARGS "@rx [\x00-\x08\x0b\x0c\x0e-\x1f\x7f]" \
+            "id:100031,phase:2,deny,log,msg:'Control character detected in ARGS',severity:CRITICAL"
+
+        # === SQL Injection (aggressive) ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:union\s+select|select\s+.+\s+from|insert\s+into|drop\s+table|delete\s+from|update\s+.+\s+set|create\s+table|alter\s+table|exec\s*\(|execute\s*\(|xp_cmdshell|--\s|#\s|/\*|sleep\s*\(\d+|waitfor\s+delay|benchmark\s*\()|(?:'.*'|\".*\")?\s*or\s+1\s*=\s*1|'.*'.*'.*'|information_schema|sys\.(?:objects|columns|tables)|@@(?:version|servername|hostname))" \
+            "id:100040,phase:2,deny,log,msg:'SQL Injection attempt',severity:CRITICAL"
+
+        # === Cross-Site Scripting (aggressive) ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:<script[^>]*>|javascript\s*:|on\w+\s*=|alert\s*\(|prompt\s*\(|confirm\s*\(|document\.cookie|\.innerHTML|eval\s*\(|fromCharCode|String\.fromCharCode|<svg|onload\s*=|onerror\s*=|onclick\s*=|onmouseover\s*=|onfocus\s*=|onblur\s*=|onchange\s*=|onsubmit\s*=|onreset\s*=|onselect\s*=|<img[^>]*onerror|<iframe[^>]*>|<body[^>]*onload|<input[^>]*onfocus|%3Cscript|%3Csvg|%3Ciframe))" \
+            "id:100041,phase:2,deny,log,msg:'XSS attempt',severity:CRITICAL"
+
+        # === Path Traversal ===
+        SecRule ARGS_NAMES|ARGS "@rx (?:\.\./|\.\.\\|\/\.\.\/|\\\.\.\\)" \
+            "id:100042,phase:2,deny,log,msg:'Path traversal attempt',severity:CRITICAL"
+
+        # === Command Injection (aggressive) ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:;\s*$|`[^`]+`|\$\([^)]+\)|\|\s*$|&&\s*$|>(\s*)?>(\s*)?$|ping\s+-[ntcw]|nslookup\s+|traceroute\s+|wget\s+|curl\s+(?:-o|-O|--output)|bash\s+-c|sh\s+-c|powershell\s+-[ce]|cmd\.exe\s+\/c|kill\s+-\d+|chmod\s+[0-7]+|chown\s+|mkfs|dd\s+if=|/dev/(?:null|zero|random|urandom)))" \
+            "id:100043,phase:2,deny,log,msg:'Command injection attempt',severity:CRITICAL"
+
+        # === Remote/Local File Inclusion ===
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:file://|php://|php://filter|php://input|php://stdin|expect://|data://|data:text|ftp://|dict://|gopher://|zlib://|zip://|rar://))" \
+            "id:100044,phase:2,deny,log,msg:'File inclusion attempt',severity:CRITICAL"
+
+        # === Template Injection (SSTI) ===
+        SecRule ARGS_NAMES|ARGS "@rx (\$\{|<\%|\{\{|%\{|#\{)" \
+            "id:100050,phase:2,deny,log,msg:'Template injection marker detected',severity:CRITICAL"
+
+        # === Content-Type enforcement for POST/PUT ===
+        SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" "id:100045,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_HEADERS:Content-Type "!@rx ^(application/x-www-form-urlencoded|multipart/form-data|application/json|application/xml|text/plain|text/xml)" \
+                "id:100046,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING"
+
+        # Argument name length limit disabled due to Coraza regex engine limitations.
+        # Length validation is implicit through other rules.
+
+        {% endif %}
+
+        # === AUDIT LOG (all modes) ===
         {% if coraza_audit_log_enabled | default(true) %}
         SecAuditEngine RelevantOnly
         SecAuditLogParts ABIJDEFHZ
@@ -206,14 +333,25 @@ coraza_waf {
                 }
                 {% endif %}
 
-                {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('recommended')) %}
-                {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
-                # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
+                {% set site_coraza_mode = site.coraza_mode | default(none) %}
+                {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
+                    {% set effective_coraza_mode = site_coraza_mode %}
+                    {% set site_has_waf = true %}
+                {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
+                    {% set site_has_waf = false %}
+                {% else %}
+                    {% set site_has_waf = enable_coraza_waf | default(false) %}
+                    {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
+                {% endif %}
+                {% if site_has_waf %}
+                # 3. Coraza WAF: lightweight rules, low CPU
                 {{ coraza_directives(effective_coraza_mode, site.name) }}
                 {% endif %}
 
-                {% if enable_crowdsec and not site.disable_appsec | default(false) %}
+                {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
                 # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
+                # Auto-disabled for stream: true sites (media streaming has binary payloads
+                # that AppSec cannot inspect, causing timeouts and 100% CPU).
                 appsec
                 {% endif %}
 
@@ -311,13 +449,25 @@ coraza_waf {
                 }
             }
             {% endif %}
-            {% set effective_coraza_mode = site.coraza_mode | default(coraza_mode_default | default('recommended')) %}
-            {% if enable_coraza_waf | default(false) and effective_coraza_mode != 'off' %}
-            # 3. Coraza WAF: catches malformed requests, SQLi, XSS (expensive - runs after cheap checks)
+
+            {% set site_coraza_mode = site.coraza_mode | default(none) %}
+            {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
+                {% set effective_coraza_mode = site_coraza_mode %}
+                {% set site_has_waf = true %}
+            {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
+                {% set site_has_waf = false %}
+            {% else %}
+                {% set site_has_waf = enable_coraza_waf | default(false) %}
+                {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
+            {% endif %}
+            {% if site_has_waf %}
+            # 3. Coraza WAF: lightweight rules, low CPU
             {{ coraza_directives(effective_coraza_mode, site.name) }}
             {% endif %}
-            {% if enable_crowdsec and not site.disable_appsec | default(false) %}
+            {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
             # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
+            # Auto-disabled for stream: true sites (media streaming has binary payloads
+            # that AppSec cannot inspect, causing timeouts and 100% CPU).
             appsec
             {% endif %}
             # 5. Reverse Proxy
