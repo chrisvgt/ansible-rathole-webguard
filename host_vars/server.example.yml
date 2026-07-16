@@ -96,18 +96,22 @@ caddy_sites:
   - name: stream
     domain: "stream.yourdomain.com"
     local_port: 8096
-    # Enable streaming mode for this site: adds flush_interval -1 to both
-    # HTTP and WebSocket reverse proxies. Required for Jellyfin SyncPlay
-    # real-time synchronization messages to work without buffering.
+    # Enable streaming mode: adds flush_interval -1 to both HTTP and WebSocket
+    # reverse proxies for immediate response flushing. Required for Jellyfin
+    # SyncPlay real-time synchronization and smooth media streaming.
     # stream: true
+    # Disable CrowdSec AppSec for this site: AppSec deep-inspects request bodies
+    # and can cause severe latency/timeouts for media streaming (every HLS segment,
+    # image, and API call hits it). Must be disabled for streaming to perform well.
+    # disable_appsec: true
+    # Optional: Override global coraza_mode per site (e.g., 'minimal' for Jellyfin)
+    # coraza_mode: "minimal"
     # Optional: Enable forwarding for specific paths
     # enable_forward: true
     # forward_ip: 192.168.0.1
     # forward_path: "/path/to/"
     # rate_limit_window: "1m"     # Optional: 1 minute window
     # rate_limit_events: 500      # Optional: 500 requests allowed
-    # Optional: Override global coraza_mode per site (e.g., 'minimal' for Jellyfin)
-    # coraza_mode: "minimal"
 
 # --- Example Dynamic Wildcard Configuration for Multiple Domains ---
 wildcard_sites:
