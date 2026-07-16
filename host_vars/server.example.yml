@@ -73,45 +73,46 @@ ntfy_auth_token: "" # Optional: Your ntfy authentication token
 cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}" # Global API token for Cloudflare, useful for multiple domains on this server
 
 # --- Caddy Configuration Examples (for multiple domains on this server) ---
+# Per-Site WAF control via coraza_mode:
+#   "off"           → WAF disabled for this site
+#   "minimal"       → WAF enabled: method + file upload protection only
+#   "recommended"   → WAF enabled: null bytes, SQLi, XSS, path traversal
+#   "moderate"      → WAF enabled: + command injection, RFI, Content-Type check
+#   "strict"        → WAF enabled: + SSTI, aggressive SQLi/XSS/CMD rules
+#   not set         → Falls back to global enable_coraza_waf / coraza_mode_default
+#
+# Per-Site cache_paths: customize caching paths (default: Jellyfin paths)
+# Per-Site enable_forward: requires forward_path to be set (otherwise skipped)
 caddy_sites:
   - name: blog # Used for default log file name
     domain: "blog.yourdomain.com"
     local_port: 2368
+    # Enable WAF with minimal protection for blog
+    coraza_mode: "minimal"
+    # Optional: Custom cache paths for this site
+    # cache_paths: "*.js *.css *.jpg *.png *.gif *.svg *.woff2 *.ttf"
     # Optional: Customize log settings per site
     # log_file: "/var/log/caddy/blog.access.log"
     # log_roll_size: "20mb"
     # log_roll_keep: 15
     # log_roll_keep_for: "48h"
-    # Optional: Override global coraza_mode per site (e.g., 'minimal' for WebSocket apps)
-    # coraza_mode: "moderate"
-
-  - name: notify
-    domain: "notify.yourdomain.com"
-    local_port: 8004
-    # Disable WAF for this site.
-    # coraza_mode: "off"
-    # Optional: Override global coraza_mode per site instead
-    # coraza_mode: "minimal"
 
   - name: stream
     domain: "stream.yourdomain.com"
     local_port: 8096
-    # Enable streaming mode: adds flush_interval -1 to both HTTP and WebSocket
-    # reverse proxies for immediate response flushing. Required for Jellyfin
-    # SyncPlay real-time synchronization and smooth media streaming.
-    # stream: true
-    # Disable CrowdSec AppSec for this site: AppSec deep-inspects request bodies
-    # and can cause severe latency/timeouts for media streaming (every HLS segment,
-    # image, and API call hits it). Must be disabled for streaming to perform well.
-    # disable_appsec: true
-    # Optional: Override global coraza_mode per site (e.g., 'minimal' for Jellyfin)
-    # coraza_mode: "minimal"
-    # Optional: Enable forwarding for specific paths
-    # enable_forward: true
-    # forward_ip: 192.168.0.1
-    # forward_path: "/path/to/"
-    # rate_limit_window: "1m"     # Optional: 1 minute window
-    # rate_limit_events: 500      # Optional: 500 requests allowed
+    # coraza_mode: "off" → WAF completely disabled for media streaming
+    # Enable streaming mode (flush_interval -1 for smooth playback)
+    stream: true
+    # Disable AppSec (binary payloads cause timeouts)
+    disable_appsec: true
+    # Cache paths for Jellyfin (default, can be omitted)
+    # cache_paths: "/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif"
+
+  - name: notify
+    domain: "notify.yourdomain.com"
+    local_port: 8004
+    # Minimal WAF protection for notification service
+    coraza_mode: "minimal"
 
 # --- Example Dynamic Wildcard Configuration for Multiple Domains ---
 wildcard_sites:
@@ -121,6 +122,9 @@ wildcard_sites:
       - name: blog
         subdomain: "blog"
         port: 2368
+        # Per-Site WAF in wildcard mode
+        # coraza_mode: "minimal"
+        # cache_paths: "*.js *.css *.jpg *.png *.gif"
   # --- example.com domain group -
   - domain: "*.example.com"
     sites:

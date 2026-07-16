@@ -2,7 +2,7 @@
 
 [![Lint Ansible](https://github.com/chrisvgt/ansible-rathole-webguard/actions/workflows/lint.yml/badge.svg)](https://github.com/chrisvgt/ansible-rathole-webguard/actions/workflows/lint.yml)
 
-Deploy a complete, hardened web infrastructure with one command. This Ansible playbook sets up **Caddy** (auto-HTTPS), **CrowdSec** (IPS/IDS), **Rathole** (reverse tunnel), and optional **Coraza WAF** + **Cloudflare** on Debian/Ubuntu servers.
+Deploy a complete, hardened web infrastructure with one command. This Ansible playbook sets up **Caddy** (auto-HTTPS), **CrowdSec** (IPS/IDS), **Rathole** (reverse tunnel), and optional **Coraza WAF** (lightweight ruleset) + **Cloudflare** on Debian/Ubuntu servers.
 
 ```
 ansible-playbook -i inventory.ini site.yml
@@ -91,13 +91,13 @@ ansible-playbook -i inventory.ini site.yml
 
 ### Extensions (opt-in via feature flags)
 
-| Extension            | What it adds                          | Enable with                 |
-| -------------------- | ------------------------------------- | --------------------------- |
-| **Cloudflare**       | DNS-01 ACME challenges via Cloudflare | `enable_cloudflare`         |
-| **Blocklist Import** | 28+ threat feeds auto-imported        | `enable_crowdsec_import`    |
-| **Coraza WAF**       | Web Application Firewall (CRS rules)  | `enable_coraza_waf`         |
-| **Ntfy**             | Push notifications on blocked IPs     | `ntfy_enabled`              |
-| **DDNS Whitelist**   | Auto-whitelist dynamic DNS hosts      | `dynamic_whitelist_enabled` |
+| Extension            | What it adds                           | Enable with                 |
+| -------------------- | -------------------------------------- | --------------------------- |
+| **Cloudflare**       | DNS-01 ACME challenges via Cloudflare  | `enable_cloudflare`         |
+| **Blocklist Import** | 28+ threat feeds auto-imported         | `enable_crowdsec_import`    |
+| **Coraza WAF**       | Web Application Firewall (lightweight) | `enable_coraza_waf`         |
+| **Ntfy**             | Push notifications on blocked IPs      | `ntfy_enabled`              |
+| **DDNS Whitelist**   | Auto-whitelist dynamic DNS hosts       | `dynamic_whitelist_enabled` |
 
 ---
 
@@ -128,15 +128,15 @@ ansible-playbook -i inventory.ini site.yml
 
 ### Feature flags (in `group_vars/all.yml`)
 
-| Variable                 | Default       | Description                                               |
-| ------------------------ | ------------- | --------------------------------------------------------- |
-| `enable_crowdsec`        | `true`        | CrowdSec IPS/IDS with Caddy bouncer                       |
-| `enable_cloudflare`      | `false`       | Cloudflare DNS-01 ACME plugin                             |
-| `enable_wildcard`        | `false`       | Wildcard domain support                                   |
-| `enable_crowdsec_import` | `false`       | Auto-import 28+ threat blocklists                         |
-| `enable_coraza_waf`      | `false`       | Coraza Web Application Firewall                           |
-| `enable_rate_limit`      | `true`        | Per-service rate limiting                                 |
-| `coraza_mode_default`    | `recommended` | Default WAF mode: recommended/minimal/moderate/strict/off |
+| Variable                 | Default       | Description                                        |
+| ------------------------ | ------------- | -------------------------------------------------- |
+| `enable_crowdsec`        | `true`        | CrowdSec IPS/IDS with Caddy bouncer                |
+| `enable_cloudflare`      | `false`       | Cloudflare DNS-01 ACME plugin                      |
+| `enable_wildcard`        | `false`       | Wildcard domain support                            |
+| `enable_crowdsec_import` | `false`       | Auto-import 28+ threat blocklists                  |
+| `enable_coraza_waf`      | `false`       | Coraza WAF global toggle                           |
+| `enable_rate_limit`      | `true`        | Per-service rate limiting                          |
+| `coraza_mode_default`    | `recommended` | Default WAF mode when site doesn't specify its own |
 
 ### Host variables (`host_vars/`)
 
@@ -164,12 +164,12 @@ rathole_server_config:
     noise:
       local_private_key: "your_base64_private_key"
 
-# Caddy site definitions
+# Wildcard site definitions
 wildcard_sites:
   - domain: "*.example.com"
     sites:
       - name: jellyfin
-        subdomain: "watch"
+        subdomain: "jellyfin" # jellyfin.example.com
         port: 8096
 ```
 
@@ -204,33 +204,59 @@ vault_crowdsec_machine_password: "your-password"
 
 ---
 
-## Advanced Configuration
+## Coraza WAF: Per-Site Control
 
-### Coraza WAF Modes
+The WAF is a **custom lightweight ruleset** (not the full OWASP CRS) for efficient CPU usage. Each site can independently choose its protection level:
 
-All modes **actively block** by default. WebSocket compatibility uses **surgical** header-based exclusions (not blanket rule removals).
+| Variable                     | Effect                                                           |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `coraza_mode: "off"`         | WAF **disabled** for this site                                   |
+| `coraza_mode: "minimal"`     | WAF enabled — method enforcement, file upload blocking           |
+| `coraza_mode: "recommended"` | WAF enabled — null bytes, SQLi, XSS, path traversal              |
+| `coraza_mode: "moderate"`    | WAF enabled — + command injection, RFI, Content-Type check       |
+| `coraza_mode: "strict"`      | WAF enabled — + SSTI, aggressive SQLi/XSS/CMD rules              |
+| _not set_                    | Falls back to global `enable_coraza_waf` + `coraza_mode_default` |
 
-| Mode          | Paranoia/Anomaly | WebSockets  | Large uploads/WebDAV     | Static bypass       | Extra hardening                    |
-| ------------- | ---------------- | ----------- | ------------------------ | ------------------- | ---------------------------------- |
-| `minimal`     | PL1 / 25         | ✅ surgical | ✅ 512 MB + WebDAV       | ✅ CSS/JS/media     | Optional upload blocking           |
-| `recommended` | PL1 / 10         | ✅ surgical | ⚠️ 100 MB, no WebDAV     | ✅ CSS/JS/fonts/PDF | ✅ Null byte + control char ARGS   |
-| `moderate`    | PL1 / 5          | ✅ surgical | ⚠️ 100 MB, no WebDAV     | ❌                  | —                                  |
-| `strict`      | PL2 / 5          | ✅ standard | ⚠️ 20 MB, no relaxations | ❌                  | ✅ ARGS + SSTI + length validation |
-| `off`         | —                | ✅          | ✅                       | —                   | —                                  |
+Set globally in `group_vars/all.yml`:
 
-**Use cases:**
+```yaml
+enable_coraza_waf: false # Global default: WAF off for all sites
+coraza_mode_default: "recommended"
+```
 
-- **`minimal`**: Nextcloud, ntfy, Jellyfin — WebSocket/WebDAV/large-upload compat
-- **`recommended`** _(default)_: Most web services — best security/compatibility balance
-- **`moderate`**: General services — stricter anomaly, no static bypass
-- **`strict`**: Vaultwarden, admin panels — max security, ARGS/SSTI hardening
+### WAF Rule Coverage by Mode
 
-All thresholds and paranoia levels are tunable via `coraza_*_paranoia_level` and `coraza_*_anomaly_threshold` in `group_vars/all.yml`.
+| Threat                      | `minimal` | `recommended` | `moderate` | `strict`      |
+| --------------------------- | --------- | ------------- | ---------- | ------------- |
+| HTTP Method enforcement     | ✅        | ✅            | ✅         | ✅            |
+| File upload blocking        | ✅ opt    | —             | —          | —             |
+| Null bytes / control chars  | —         | ✅            | ✅         | ✅            |
+| SQL Injection               | —         | ✅ basic      | ✅         | ✅ aggressive |
+| XSS                         | —         | ✅ basic      | ✅         | ✅ aggressive |
+| Path Traversal              | —         | ✅            | ✅         | ✅            |
+| Command Injection           | —         | —             | ✅         | ✅ aggressive |
+| Remote/Local File Inclusion | —         | —             | ✅         | ✅            |
+| Content-Type enforcement    | —         | —             | ✅         | ✅            |
+| Template Injection (SSTI)   | —         | —             | —          | ✅            |
 
-Set globally: `coraza_mode_default: recommended`
-Override per site: `coraza_mode: "strict"` in a site definition.
+> **Note:** The lightweight ruleset does NOT load the full OWASP CRS. This significantly reduces CPU and memory usage (measured: ~224MB RAM instead of ~1.4GB with CRS) while still blocking real attacks.
 
-### CrowdSec Blocklist Sources (28+ feeds)
+### Design Fixes
+
+The Caddyfile template includes these security corrections:
+
+| #   | Issue                                                         | Fix                                                        |
+| --- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | `{http.request.uuid}` is not a valid Caddy placeholder        | → `{http.request.id}` + global `request_id` directive      |
+| 2   | Missing explicit order between rate_limit, coraza_waf, appsec | → `rate_limit → coraza_waf → appsec → reverse_proxy` chain |
+| 3   | Forward path could match all routes if not configured         | → `site.forward_path is defined` guard added               |
+| 4   | Static assets cache paths hardcoded for Jellyfin              | → `site.cache_paths` configurable per site                 |
+| 5   | `SecDefaultAction` with wrong phase for phase:1 rules         | → Removed explicit phase from SecDefaultAction             |
+| 6   | Request-ID header generator missing                           | → Global `request_id` directive enabled                    |
+
+---
+
+## CrowdSec Blocklist Sources (28+ feeds)
 
 Automatically imported when `enable_crowdsec_import: true`:
 
@@ -248,7 +274,7 @@ Automatically imported when `enable_crowdsec_import: true`:
 | Tor exit nodes         | (may cause false positives)       |
 | +18 more...            | Scanner IPs, C2 trackers, botnets |
 
-### Caddy Plugin System
+## Caddy Plugin System
 
 Caddy is compiled with xcaddy to include only the plugins you need:
 
@@ -256,7 +282,7 @@ Caddy is compiled with xcaddy to include only the plugins you need:
 - **Conditional**: Cloudflare DNS, Coraza WAF — based on feature flags
 - Plugin changes trigger an automatic rebuild (hash-tracked)
 
-### Rathole Transport Options
+## Rathole Transport Options
 
 | Transport   | Security             | Performance | Use case                    |
 | ----------- | -------------------- | ----------- | --------------------------- |
