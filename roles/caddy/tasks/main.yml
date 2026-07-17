@@ -22,7 +22,7 @@
     group: "{{ caddy_group }}"
     system: true
     shell: "/usr/sbin/nologin"
-    create_home: false # Caddy's HOME is set via systemd environment variable
+    create_home: false
     state: present
 
 - name: Ensure Caddy directories exist with correct ownership and permissions
@@ -32,15 +32,15 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: "{{ item.mode }}"
-    recurse: "{{ item.recurse | default(false) }}" # Apply recursively for data directory
+    recurse: "{{ item.recurse | default(false) }}"
   loop:
     - path: "{{ caddy_config_dir }}"
       mode: "0755"
     - path: "{{ caddy_data_dir }}"
       mode: "0775"
-      recurse: true # Writable for autosave.json
+      recurse: true
     - path: "{{ caddy_data_dir }}/caddy"
-      mode: "0775" # Subdirectory for autosave etc.
+      mode: "0775"
     - path: "{{ caddy_log_dir }}"
       mode: "0755"
 
@@ -48,7 +48,7 @@
   ansible.builtin.command:
     cmd: "{{ caddy_install_path }} version"
   register: caddy_version_check
-  failed_when: false # Don't fail if the binary doesn't exist
+  failed_when: false
   changed_when: false
 
 - name: Determine if Coraza plugin needs to be built
@@ -87,9 +87,11 @@
       --output {{ caddy_install_path }}
       {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
   environment:
-    # Use Go binary path from go_lang role if available, otherwise default to /usr/local/go/bin
     PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_facts['env'].PATH }}"
     GOPATH: "/root/go"
+    # Speed up Go build with parallel compilation
+    GOMAXPROCS: "{{ ansible_facts['processor_cores'] | default(4) }}"
+    GOFLAGS: "-mod=mod -v"
   notify: Restart Caddy Service
   changed_when: true
   when: >-

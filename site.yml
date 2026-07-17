@@ -2,6 +2,8 @@
   hosts: webservers
   become: true # All tasks in this play will run with root privileges
   gather_facts: true
+  serial: 1 # Process one host at a time (prevents overload on slow machines)
+  any_errors_fatal: true # Stop on first error to avoid partial deployments
 
   pre_tasks:
     - name: Ensure this playbook is only executed on Debian-based systems
@@ -22,7 +24,6 @@
     - name: Install common system utilities (Debian-based systems)
       ansible.builtin.apt:
         name:
-          - build-essential # For compiling software (e.g., Go/Caddy)
           - curl # For downloading files
           - unzip # For extracting archives
           - git # For version control and cloning repositories
@@ -34,13 +35,26 @@
       ansible.builtin.file:
         path: /usr/local/bin
         state: directory
-        mode: "0755" # Standard permissions for executable binaries
+        mode: "0755"
       tags: [base]
+
+    # Pre-install Go + xcaddy in parallel before Caddy role
+    - name: Pre-install Go toolchain (runs before Caddy build)
+      ansible.builtin.include_role:
+        name: go_lang
+      when: rathole_role == "server"
+      tags: [caddy, go]
+
+    - name: Pre-install xcaddy (runs before Caddy build)
+      ansible.builtin.include_role:
+        name: xcaddy
+      when: rathole_role == "server"
+      tags: [caddy, xcaddy]
 
   roles:
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
-    # Dependencies (go_lang, xcaddy) are auto-resolved via meta/main.yml.
+    # Dependencies (go_lang, xcaddy) are already resolved via pre_tasks.
     - role: caddy
       when: rathole_role == "server"
       tags: caddy
