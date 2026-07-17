@@ -34,11 +34,11 @@
             {% endif %}
         {% endfor %}
     {% endif %}
-    {% if _has_any_waf %}
-    order coraza_waf before appsec
-    {% endif %}
     {% if enable_crowdsec %}
     order appsec before reverse_proxy
+    {% endif %}
+    {% if _has_any_waf %}
+    order coraza_waf before appsec
     {% endif %}
     {% if enable_rate_limit | default(true) and _has_any_waf %}
     order rate_limit before coraza_waf
