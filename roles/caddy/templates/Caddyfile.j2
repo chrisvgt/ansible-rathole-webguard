@@ -82,7 +82,7 @@ coraza_waf {
         SecRuleEngine On
         SecRequestBodyAccess On
         SecResponseBodyAccess Off
-        SecDefaultAction "deny,log,status:403"
+        SecDefaultAction "phase:2,deny,log,status:403"
 
         # === EARLY STREAMING BYPASSES (all modes) ===
         # WebSocket upgrade bypass
