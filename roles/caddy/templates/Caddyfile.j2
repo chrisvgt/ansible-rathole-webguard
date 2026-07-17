@@ -58,10 +58,6 @@
     acme_dns cloudflare {{ cloudflare_api_token }}
     {% endif %}
 
-    # Enable request ID generation for all requests (used in X-Request-ID header)
-    # Required for {http.request.id} placeholders to work correctly
-    request_id
-
     log {
         output stderr
         level INFO
