@@ -104,7 +104,7 @@ coraza_waf {
         SecRequestBodyNoFilesLimit {{ coraza_minimal_nofiles_body_limit | default(10485760) }}
 
         # Allowed methods: broad for WebDAV compatibility
-        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|PROPFIND|MKCOL|COPY|MOVE|LOCK|UNLOCK|REPORT)$" \
+        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|PROPFIND|MKCOL|COPY|MOVE|LOCK|UNLOCK|REPORT|SEARCH)$" \
             "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
 
         # Static file whitelist: skip WAF for all GET static assets
