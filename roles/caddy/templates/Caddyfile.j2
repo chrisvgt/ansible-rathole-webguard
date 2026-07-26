@@ -104,7 +104,7 @@ coraza_waf {
         SecRequestBodyNoFilesLimit {{ coraza_minimal_nofiles_body_limit | default(10485760) }}
 
         # Allowed methods: broad for WebDAV compatibility
-        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|PROPFIND|MKCOL|COPY|MOVE|LOCK|UNLOCK)$" \
+        SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|PROPFIND|MKCOL|COPY|MOVE|LOCK|UNLOCK|REPORT)$" \
             "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
 
         # Static file whitelist: skip WAF for all GET static assets
@@ -314,6 +314,9 @@ coraza_waf {
                 {% endif %}
                 reverse_proxy localhost:{{ site.port }} {
                     header_up X-Request-ID {http.request.id}
+                    header_up X-Forwarded-For {http.request.remote.host}
+                    header_up X-Forwarded-Proto {http.request.scheme}
+                    header_up X-Forwarded-Host {http.request.host}
                     {% if site.stream | default(false) %}
                     flush_interval -1
                     {% endif %}
@@ -379,6 +382,9 @@ coraza_waf {
                 # Default proxy for all other paths
                 reverse_proxy localhost:{{ site.port }} {
                     header_up X-Request-ID {http.request.id}
+                    header_up X-Forwarded-For {http.request.remote.host}
+                    header_up X-Forwarded-Proto {http.request.scheme}
+                    header_up X-Forwarded-Host {http.request.host}
                     {% if site.stream | default(false) %}
                     flush_interval -1
                     {% endif %}
@@ -433,6 +439,9 @@ coraza_waf {
             {% endif %}
             reverse_proxy localhost:{{ site.local_port }} {
                 header_up X-Request-ID {http.request.id}
+                header_up X-Forwarded-For {http.request.remote.host}
+                header_up X-Forwarded-Proto {http.request.scheme}
+                header_up X-Forwarded-Host {http.request.host}
                 {% if site.stream | default(false) %}
                 flush_interval -1
                 {% endif %}
@@ -493,6 +502,9 @@ coraza_waf {
             {% endif %}
             reverse_proxy localhost:{{ site.local_port }} {
                 header_up X-Request-ID {http.request.id}
+                header_up X-Forwarded-For {http.request.remote.host}
+                header_up X-Forwarded-Proto {http.request.scheme}
+                header_up X-Forwarded-Host {http.request.host}
                 {% if site.stream | default(false) %}
                 flush_interval -1
                 {% endif %}
