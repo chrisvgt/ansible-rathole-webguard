@@ -17,30 +17,30 @@
     Order directive needed if ANY site has WAF enabled (global or per-site via coraza_mode).
     Check: global enable_coraza_waf, OR any site with coraza_mode set to a non-"off" value.
     #}
-    {% set _has_any_waf = enable_coraza_waf | default(false) %}
-    {% if not _has_any_waf and enable_wildcard | default(false) %}
+    {% set _waf = namespace(any=enable_coraza_waf | default(false)) %}
+    {% if not _waf.any and enable_wildcard | default(false) %}
         {% for _bd in wildcard_sites | default([]) %}
             {% for _s in _bd.sites | default([]) %}
                 {% if _s.coraza_mode is defined and _s.coraza_mode != 'off' %}
-                    {% set _has_any_waf = true %}
+                    {% set _waf.any = true %}
                 {% endif %}
             {% endfor %}
         {% endfor %}
     {% endif %}
-    {% if not _has_any_waf and not enable_wildcard | default(false) %}
+    {% if not _waf.any and not enable_wildcard | default(false) %}
         {% for _s in caddy_sites | default([]) %}
             {% if _s.coraza_mode is defined and _s.coraza_mode != 'off' %}
-                {% set _has_any_waf = true %}
+                {% set _waf.any = true %}
             {% endif %}
         {% endfor %}
     {% endif %}
     {% if enable_crowdsec %}
     order appsec before reverse_proxy
     {% endif %}
-    {% if _has_any_waf %}
+    {% if _waf.any %}
     order coraza_waf before appsec
     {% endif %}
-    {% if enable_rate_limit | default(true) and _has_any_waf %}
+    {% if enable_rate_limit | default(true) and _waf.any %}
     order rate_limit before coraza_waf
     {% endif %}
 
