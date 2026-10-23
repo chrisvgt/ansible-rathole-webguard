@@ -38,23 +38,10 @@
         mode: "0755"
       tags: [base]
 
-    # Pre-install Go + xcaddy in parallel before Caddy role
-    - name: Pre-install Go toolchain (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: go_lang
-      when: rathole_role == "server"
-      tags: [caddy, go]
-
-    - name: Pre-install xcaddy (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: xcaddy
-      when: rathole_role == "server"
-      tags: [caddy, xcaddy]
-
   roles:
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
-    # Dependencies (go_lang, xcaddy) are already resolved via pre_tasks.
+    # Dependencies (go_lang, xcaddy) run first, once, via the caddy role's meta/main.yml.
     - role: caddy
       when: rathole_role == "server"
       tags: caddy
@@ -106,22 +93,8 @@
         - reboot_required_file.stat.exists
       tags: [reboot]
 
+    # Temporary download/build files are cleaned up by each role itself
     - name: Clean up APT package cache to save disk space
       ansible.builtin.apt:
         clean: true
-      tags: [cleanup]
-
-    - name: Clean up global temporary files from roles
-      ansible.builtin.shell:
-        cmd: |
-          rm -f /tmp/go*.tar.gz
-          rm -f /tmp/xcaddy_temp.tar.gz
-          rm -f /tmp/xcaddy
-          rm -f /tmp/rathole_*.zip
-          rm -rf /tmp/rathole_unpacked
-          rm -f /tmp/install_crowdsec.sh
-          rm -rf /tmp/caddy_build
-          rm -rf /tmp/caddy_plugins
-        executable: /bin/bash
-      changed_when: false
       tags: [cleanup]
