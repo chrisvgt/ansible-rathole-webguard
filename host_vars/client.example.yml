@@ -1,23 +1,25 @@
+# Copy to host_vars/client.yml (gitignored). The file name must match the host
+# name in inventory.ini.
+
 # --- Rathole Client Configuration Example ---
 rathole_role: "client" # Designates this as a Rathole client configuration
 rathole_client_config: # Top-level client settings
-  remote_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # **Required:** The address of the Rathole server.
+  # Required: address of the Rathole server. hostvars['server'] refers to the
+  # host named "server" in inventory.ini; the port must match listen_addr there.
+  remote_addr: "{{ hostvars['server']['ansible_host'] }}:2333"
   default_token: "default_token_if_not_specify" # Optional: Default token for all services.
   heartbeat_timeout: 40 # Optional: Heartbeat timeout in seconds.
   retry_interval: 1 # Optional: Retry interval in seconds.
 
-  # --- Transport Configuration (Choose ONLY ONE type) ---
+  # --- Transport Configuration (only the block matching "type" is used) ---
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
-    # Noise Transport Configuration
-    # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
-    # are usually required for key exchange. Uncomment and provide actual keys.
+    # Noise Transport Configuration (pattern and remote_public_key are required)
     noise:
-      # Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
       pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
-      # Base64 encoded public key of the server.
-      remote_public_key: "your_server_public_key_base64" # Optional: Base64 encoded public key of the server.
+      # Public key matching the server's local_private_key (from `rathole --genkey`)
+      remote_public_key: "your_server_public_key_base64"
 
     # TCP Transport
     tcp:
@@ -26,7 +28,7 @@ rathole_client_config: # Top-level client settings
       keepalive_secs: 20
       keepalive_interval: 8
 
-    # TLS Transport
+    # TLS Transport (the file must not be under /home: the service runs with ProtectHome)
     tls:
       trusted_root: "/etc/ssl/certs/your_ca_certificate.pem"
       hostname: "server1.example.com"
@@ -37,14 +39,12 @@ rathole_client_config: # Top-level client settings
 
   # --- Service Definitions ---
   services:
-    - name: "service1" # Unique service name (must match server-side configuration).
+    - name: "blog" # Unique service name (must match server-side configuration).
       type: "tcp" # Optional: Can be "tcp" or "udp".
-      token: "specific_token_for_service1" # Optional: Overrides `default_token`.
-      local_addr: "127.0.0.1:1081" # **Required:** The local service address to be forwarded.
+      token: "specific_token_for_blog" # Optional: Overrides `default_token`.
+      local_addr: "127.0.0.1:2368" # Required: The local service address to be forwarded.
       nodelay: true # Optional: Overrides `client.transport.nodelay`.
       retry_interval: 1 # Optional: Overrides `client.retry_interval`.
 
-    - name: "service2"
-      local_addr: "127.0.0.1:1082"
-
-      # Add any other service-specific options here.
+    - name: "stream"
+      local_addr: "192.168.1.10:8096" # Can also be another host in your LAN

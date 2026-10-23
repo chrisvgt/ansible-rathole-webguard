@@ -1,16 +1,23 @@
 ---
+# Copy to host_vars/server.yml (gitignored). The file name must match the host
+# name in inventory.ini.
+#
+# Secrets: either replace each "{{ vault_* }}" below with the plain value and
+# run with --no-vault, or keep the references and define the vault_* variables
+# in an Ansible Vault file (see README, "Secrets").
+
 # --- Crowdsec Setup ---
-crowdsec_api_key: "{{ vault_crowdsec_api_key }}" # Generate with: `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
-crowdsec_enrollment_key: "{{ vault_crowdsec_enrollment_key }}" # Connect Crowdsec Security Engine to console
+crowdsec_api_key: "{{ vault_crowdsec_api_key }}" # Caddy bouncer key. Generate with: `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
+crowdsec_enrollment_key: "{{ vault_crowdsec_enrollment_key }}" # Optional: enroll the engine in the CrowdSec Console (skipped if undefined or empty)
 duration_expr: true # Enable dynamic increase of blocking time
 
 # --- Crowdsec Blocklist Import Setup ---
 # Required: CrowdSec LAPI credentials
 #
-# The machine and bouncer are automatically created by the crowdsec role
-# when enable_crowdsec_import is true. You only need to provide the password.
+# The machine and bouncer are created by the crowdsec_import role when
+# enable_crowdsec_import is true. You only need to provide the password.
 #
-# Generate a secure password and store it in your vault:
+# Generate a password with:
 # head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
 #
 crowdsec_machine_password: "{{ vault_crowdsec_machine_password }}" # Password for the blocklist-import machine
@@ -69,10 +76,23 @@ ntfy_server: "ntfy.example.com"
 ntfy_topic: "crowdsec_alerts"
 ntfy_auth_token: "" # Optional: Your ntfy authentication token
 
-# --- Cloudflare Setup ---
-cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}" # Global API token for Cloudflare, useful for multiple domains on this server
+# --- Cloudflare Setup (only used with enable_cloudflare: true) ---
+# API token with Zone:DNS:Edit for your zones. Ansible writes it to
+# /etc/caddy/caddy.env (root, 0600) on the server; no manual env file needed.
+cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
 
-# --- Caddy Configuration Examples (for multiple domains on this server) ---
+# --- Small host tuning (system role, optional) ---
+# system_swap_enabled: true # Recommended on 2 GB RAM hosts (Caddy build)
+# system_swap_size: "1G"
+# system_swappiness: 10
+# system_journald_max_use: "200M"
+
+# --- Caddy sites ---
+# enable_wildcard: false -> caddy_sites is used (one certificate per domain)
+# enable_wildcard: true  -> wildcard_sites is used (one wildcard certificate per
+#                           base domain, requires enable_cloudflare: true)
+# Each port is a local port on this server, usually a Rathole service bind_addr.
+#
 # Per-Site WAF control via coraza_mode:
 #   "off"           → WAF disabled for this site
 #   "minimal"       → WAF enabled: method + file upload protection only
@@ -114,7 +134,7 @@ caddy_sites:
     # Minimal WAF protection for notification service
     coraza_mode: "minimal"
 
-# --- Example Dynamic Wildcard Configuration for Multiple Domains ---
+# --- Wildcard sites (only used with enable_wildcard: true) ---
 wildcard_sites:
   # --- yourdomain.com domain group -
   - domain: "*.yourdomain.com"
@@ -135,22 +155,19 @@ wildcard_sites:
 # --- Rathole Server Configuration Example ---
 rathole_role: "server" # Identifies this as a Rathole server configuration
 rathole_server_config: # Top-level server settings
-  listen_addr: "{{ hostvars['server.example']['ansible_host'] }}:2333" # Address Rathole server listens on for clients
+  listen_addr: "0.0.0.0:2333" # Address the Rathole server listens on for clients (open this port in your firewall)
   default_token: "default_token_for_all_services_if_not_specified" # Optional: Default token for all services
   heartbeat_interval: 30 # Optional: Heartbeat interval in seconds (0 to disable)
 
-  # --- Transport Configuration (Choose ONE type) ---
+  # --- Transport Configuration (only the block matching "type" is used) ---
   transport:
     type: "noise" # Selected transport type: Noise for secure, lightweight encryption.
 
-    # Noise Transport Configuration
-    # IMPORTANT: For Noise to work, 'local_private_key' and 'remote_public_key'
-    # are usually required for key exchange. Uncomment and provide actual keys.
+    # Noise Transport Configuration (pattern and local_private_key are required)
     noise:
-      # Default is "Noise_NK_25519_ChaChaPoly_BLAKE2s".
       pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
-      # Base64 encoded private key for the server, generate with: `rathole --genkey x25519`
-      local_private_key: "your_server_private_key_base64" # Optional: Base64 encoded private key for server
+      # Generate a key pair with `rathole --genkey`; the public key goes into the client config
+      local_private_key: "your_server_private_key_base64"
 
     # TCP Transport
     tcp:
@@ -158,9 +175,9 @@ rathole_server_config: # Top-level server settings
       keepalive_secs: 20
       keepalive_interval: 8
 
-    # TLS Transport
+    # TLS Transport (the file must not be under /home: the service runs with ProtectHome)
     tls:
-      pkcs12: "/path/to/identify.pfx"
+      pkcs12: "/etc/rathole/identity.pfx"
       pkcs12_password: "your_pkcs12_password"
 
     # WebSocket Transport
@@ -168,14 +185,14 @@ rathole_server_config: # Top-level server settings
       tls: true # If true, uses settings from `server.transport.tls`
 
   # --- Service Definitions ---
+  # Bind to 127.0.0.1 so services are only reachable through Caddy.
+  # Binding to 0.0.0.0 would expose them directly, bypassing CrowdSec and the WAF.
   services:
-    - name: "service1" # Unique service name (must match client side)
-      type: "tcp" # Optional: Default is tcp. Can be "tcp", "udp", "socks5".
-      token: "specific_token_for_service1" # Optional: Overrides `default_token`.
-      bind_addr: "0.0.0.0:8081" # Address this service is exposed at.
+    - name: "blog" # Unique service name (must match client side)
+      type: "tcp" # Optional: Default is tcp. Can be "tcp" or "udp".
+      token: "specific_token_for_blog" # Optional: Overrides `default_token`.
+      bind_addr: "127.0.0.1:2368" # Local port Caddy proxies to (caddy_sites local_port)
       nodelay: true # Optional
 
-    - name: "service2"
-      bind_addr: "0.0.0.1:8082"
-
-      # Add other service-specific options here
+    - name: "stream"
+      bind_addr: "127.0.0.1:8096"
