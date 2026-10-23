@@ -42,23 +42,22 @@ tunnel_services:
     local_addr: 127.0.0.1:2368
     coraza_mode: minimal
 
-  - name: stream
+  - name: shop
     domain: # Same service under two domains
-      - stream.example.com
-      - stream.example.org
-    local_addr: 192.168.1.10:8096 # Can be another host in the client's LAN
+      - shop.example.com
+      - shop.example.org
+    local_addr: 192.168.1.10:3000 # Can be another host in the client's LAN
+
+  - name: media
+    domain: media.example.com
+    local_addr: 127.0.0.1:8200
     stream: true
     disable_appsec: true # Binary payloads cause AppSec timeouts
 
-  - name: notify
-    domain: notify.example.com
-    local_addr: 127.0.0.1:8004
-    coraza_mode: minimal
-
-  - name: wireguard # Tunnel-only: no domain, reachable directly on the server
+  - name: game # Tunnel-only: no domain, reachable directly on the server
     type: udp
-    local_addr: 127.0.0.1:51820
-    bind_addr: 0.0.0.0:51820
+    local_addr: 127.0.0.1:27015
+    bind_addr: 0.0.0.0:27015
 
 # --- Server settings (only used by the server of this tuple) ---
 
