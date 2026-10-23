@@ -22,6 +22,7 @@
   register: go_lang_version_check
   failed_when: false
   changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Set installed Go version fact
   ansible.builtin.set_fact:
@@ -53,7 +54,9 @@
     remote_src: true
     creates: "{{ go_lang_install_path }}/go/bin/go"
     mode: "0755"
-  when: go_lang_version_check.rc != 0 or not go_lang_version_match | default(false)
+  when:
+    - go_lang_version_check.rc != 0 or not go_lang_version_match | default(false)
+    - not ansible_check_mode # Tarball is only downloaded in a real run
 
 - name: Configure Go environment variables for all users
   ansible.builtin.blockinfile:
