@@ -9,7 +9,7 @@
     - name: Ensure this playbook is only executed on Debian-based systems
       ansible.builtin.assert:
         that:
-          - ansible_facts["os_family"] == "Debian"
+          - ansible_facts['os_family'] == "Debian"
         fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
         success_msg: "System is Debian-based. Proceeding with the playbook."
 
@@ -61,7 +61,7 @@
         cache_valid_time: 3600
         upgrade: "{{ apt_upgrade_mode | default('safe') }}"
         autoremove: true
-      when: ansible_facts["os_family"] == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Install common system utilities (Debian-based systems)
       ansible.builtin.apt:
@@ -70,7 +70,7 @@
           - unzip # For extracting archives
           - git # For version control and cloning repositories
         state: present
-      when: ansible_facts["os_family"] == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
       tags: [base]
 
     - name: Ensure /usr/local/bin exists
@@ -130,7 +130,7 @@
         post_reboot_delay: 10
         connect_timeout: 300
       when:
-        - ansible_facts["os_family"] == "Debian"
+        - ansible_facts['os_family'] == "Debian"
         - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
         - reboot_required_file.stat.exists
       tags: [reboot]
