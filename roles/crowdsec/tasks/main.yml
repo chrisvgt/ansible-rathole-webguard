@@ -45,6 +45,35 @@
     state: present
   notify: Restart Crowdsec Service
 
+## Resource Limits (small hosts)
+
+# Merged by CrowdSec over the packaged config.yaml, so package upgrades keep working
+- name: Configure CrowdSec database flushing
+  ansible.builtin.template:
+    src: config.yaml.local.j2
+    dest: /etc/crowdsec/config.yaml.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Crowdsec Service
+
+- name: Ensure CrowdSec systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/crowdsec.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Limit CrowdSec memory usage
+  ansible.builtin.template:
+    src: crowdsec-memory.conf.j2
+    dest: /etc/systemd/system/crowdsec.service.d/memory.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Crowdsec Service
+
 ## Post-Installation and Service Management
 
 - name: Ensure CrowdSec service is enabled and started
