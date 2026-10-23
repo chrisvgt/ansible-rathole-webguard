@@ -192,7 +192,7 @@
     mode: "0640"
     lstrip_blocks: true
     validate: "{{ caddy_install_path }} validate --adapter caddyfile --envfile {{ caddy_env_file }} --config %s"
-  no_log: "{{ caddy_no_log | default(true) }}"
+  no_log: "{{ caddy_no_log | bool }}"
   notify: Reload Caddy Service
 
 # `caddy validate` runs as root and creates missing log files owned by root,

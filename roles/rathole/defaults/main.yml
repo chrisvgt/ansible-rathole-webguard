@@ -1,0 +1,11 @@
+---
+# roles/rathole/defaults/main.yml
+
+rathole_version: "0.6.0" # Version of Rathole to install
+rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}" # Base URL for downloading Rathole releases
+rathole_install_path: "/usr/local/bin" # Directory where the Rathole binary will be placed
+rathole_config_path: "/etc/rathole" # Directory for Rathole configuration files
+rathole_config_file: "rathole.toml" # Name of the main Rathole configuration file
+rathole_user: "rathole" # System user for the Rathole service
+rathole_group: "rathole" # System group for the Rathole service
+rathole_memory_max: "256M" # systemd MemoryMax for the Rathole service (hard memory limit)

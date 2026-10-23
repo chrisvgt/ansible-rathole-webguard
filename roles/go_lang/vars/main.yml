@@ -1,6 +1,6 @@
+---
 # roles/go_lang/vars/main.yml
 
-go_lang_version: "1.27.3" # Specify the desired Go version
 # Map ansible_facts['architecture'] to Go release arch identifiers
 go_lang_arch_map:
   x86_64: amd64
@@ -9,6 +9,4 @@ go_lang_arch_map:
   armv7l: armv6l
   armv6l: armv6l
 go_lang_archive_name: "go{{ go_lang_version }}.linux-{{ go_lang_arch_map[ansible_facts['architecture']] }}.tar.gz" # Constructs the archive filename based on OS architecture
-go_lang_download_url: "https://go.dev/dl/{{ go_lang_archive_name }}" # Full URL for downloading the Go tarball
-go_lang_install_path_default: "/usr/local" # Base directory where Go will be installed (e.g., /usr/local/go)
 go_lang_binary_path: "{{ go_lang_install_path }}/go/bin" # Path to the Go binaries (e.g., /usr/local/go/bin)

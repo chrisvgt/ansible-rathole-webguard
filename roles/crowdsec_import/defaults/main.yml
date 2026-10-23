@@ -1,4 +1,5 @@
-# roles/crowdsec_import/vars/main.yml
+---
+# roles/crowdsec_import/defaults/main.yml
 
 # CrowdSec Blocklist Import Variables
 # These variables can be overridden in host_vars or group_vars

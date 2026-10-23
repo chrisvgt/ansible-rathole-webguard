@@ -7,7 +7,7 @@
 
 - name: Normalize Go installation path
   ansible.builtin.set_fact:
-    go_lang_install_path: "{{ (go_lang_install_path | default(go_lang_install_path_default)) | regex_replace('/+$', '') }}"
+    go_lang_install_path: "{{ go_lang_install_path | regex_replace('/+$', '') }}"
 
 - name: Ensure Go installation path exists
   ansible.builtin.file:
