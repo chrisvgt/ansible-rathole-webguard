@@ -1,6 +1,6 @@
 # roles/rathole/vars/main.yml
 
-rathole_version: "0.5.1" # Version of Rathole to install
+rathole_version: "0.6.0" # Version of Rathole to install
 rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}" # Base URL for downloading Rathole releases
 rathole_binary_name: "rathole" # Name of the Rathole executable
 rathole_install_path: "/usr/local/bin" # Directory where the Rathole binary will be placed

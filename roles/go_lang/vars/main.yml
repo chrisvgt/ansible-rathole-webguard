@@ -1,6 +1,6 @@
 # roles/go_lang/vars/main.yml
 
-go_lang_version: "1.26.5" # Specify the desired Go version
+go_lang_version: "1.27.3" # Specify the desired Go version
 # Map ansible_facts['architecture'] to Go release arch identifiers
 go_lang_arch_map:
   x86_64: amd64

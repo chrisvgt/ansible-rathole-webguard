@@ -1,4 +1,4 @@
-xcaddy_version: "0.4.5" # Specify the desired xcaddy version
+xcaddy_version: "0.4.7" # Specify the desired xcaddy version
 
 # Map ansible_facts['architecture'] to xcaddy release arch identifiers
 xcaddy_arch_map:
@@ -7,7 +7,6 @@ xcaddy_arch_map:
   arm64: arm64
   armv7l: armv7
   armv6l: armv6
-
-xcaddy_arch: "{{ xcaddy_arch_map[ansible_architecture] | default('amd64') }}"
+xcaddy_arch: "{{ xcaddy_arch_map[ansible_facts['architecture']] | default('amd64') }}"
 xcaddy_download_url: "https://github.com/caddyserver/xcaddy/releases/download/v{{ xcaddy_version }}/xcaddy_{{ xcaddy_version }}_linux_{{ xcaddy_arch }}.tar.gz" # Download URL based on architecture
 xcaddy_install_path: "/usr/local/bin" # The directory where the xcaddy binary will be installed
