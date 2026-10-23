@@ -29,13 +29,15 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: "{{ caddy_user }}"
+    owner: "{{ item.owner | default(caddy_user) }}"
     group: "{{ caddy_group }}"
     mode: "{{ item.mode }}"
     recurse: "{{ item.recurse | default(false) }}"
   loop:
+    # Config holds secrets: Caddy may read it but not modify it
     - path: "{{ caddy_config_dir }}"
-      mode: "0755"
+      owner: root
+      mode: "0750"
     - path: "{{ caddy_data_dir }}"
       mode: "0775"
       recurse: true
@@ -125,17 +127,30 @@
     mode: "0644"
   when: caddy_plugins_hash is defined
 
+- name: Create Caddy environment file (secrets)
+  ansible.builtin.template:
+    src: "templates/caddy.env.j2"
+    dest: "{{ caddy_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart Caddy Service
+
 # lstrip_blocks removes the indentation in front of Jinja tags so the rendered
 # Caddyfile stays readable without running `caddy fmt` afterwards.
+# The Caddyfile holds the CrowdSec API key, so it is only readable by root and
+# the Caddy group. Set caddy_no_log: false to see validation errors.
 - name: Create Caddyfile from template
   ansible.builtin.template:
     src: "templates/Caddyfile.j2"
     dest: "{{ caddy_config_file }}"
-    owner: "{{ caddy_user }}"
+    owner: root
     group: "{{ caddy_group }}"
-    mode: "0644"
+    mode: "0640"
     lstrip_blocks: true
-    validate: "{{ caddy_install_path }} validate --adapter caddyfile --config %s"
+    validate: "{{ caddy_install_path }} validate --adapter caddyfile --envfile {{ caddy_env_file }} --config %s"
+  no_log: "{{ caddy_no_log | default(true) }}"
   notify: Reload Caddy Service
 
 # `caddy validate` runs as root and creates missing log files owned by root,

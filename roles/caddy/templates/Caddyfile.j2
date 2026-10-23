@@ -38,7 +38,8 @@
     {% endif %}
 
     {% if enable_cloudflare %}
-    acme_dns cloudflare {{ cloudflare_api_token }}
+    # Token comes from the systemd EnvironmentFile ({{ caddy_env_file }})
+    acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     {% endif %}
 
     log {

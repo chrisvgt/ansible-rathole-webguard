@@ -16,6 +16,7 @@ caddy_config_path: "{{ caddy_config_dir }}" # Full path to Caddy's configuration
 caddy_install_path: "{{ caddy_install_dir }}/caddy" # Full path to the Caddy executable
 caddy_log_path: "{{ caddy_log_dir }}" # Full path to Caddy's primary log directory
 caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Full path to the main Caddyfile
+caddy_env_file: "{{ caddy_config_dir }}/caddy.env" # Root-only environment file for secrets (read by systemd)
 
 # --- Caddy Plugins ---
 # Optional extra plugins can be specified by the user; by default, none are added here.
