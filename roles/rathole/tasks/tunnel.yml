@@ -78,7 +78,7 @@
 - name: Build Rathole server config
   ansible.builtin.set_fact:
     rathole_server_config: >-
-      {{ {'bind_addr': rathole_listen_addr | default('0.0.0.0:' ~ rathole_port), 'transport': rathole_transport,
+      {{ {'listen_addr': rathole_listen_addr | default('0.0.0.0:' ~ rathole_port), 'transport': rathole_transport,
           'services': rathole_tunnel_server_services}
          | combine({'heartbeat_interval': rathole_heartbeat_interval} if rathole_heartbeat_interval is defined else {}) }}
     rathole_auto_secrets: true

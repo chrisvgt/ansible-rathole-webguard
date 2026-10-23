@@ -18,5 +18,5 @@
     - name: Check overridden addresses
       ansible.builtin.assert:
         that: >-
-          (rathole_role == 'server' and rathole_server_config.bind_addr == '203.0.113.10:62917')
+          (rathole_role == 'server' and rathole_server_config.listen_addr == '203.0.113.10:62917')
           or (rathole_role == 'client' and rathole_client_config.remote_addr == 'vpn.example.net:62917')
