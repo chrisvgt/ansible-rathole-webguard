@@ -1,7 +1,7 @@
 ---
 # roles/system/defaults/main.yml
 
-# --- Small-host tuning (journald size limit, optional swap) ---
+# --- Small-host tuning (journald size limit, optional swap, security updates) ---
 # The whole role is toggled in site.yml via 'enable_system_tuning' (default: true)
 
 # Journald
@@ -12,3 +12,8 @@ system_swap_enabled: false # Set to 'true' to create and enable a swap file
 system_swap_file: "/swapfile" # Path of the swap file
 system_swap_size: "1G" # Size of the swap file (fallocate syntax); not resized once created
 system_swappiness: 10 # vm.swappiness: lower values prefer RAM over swap
+
+# Automatic security updates between playbook runs (unattended-upgrades)
+system_unattended_upgrades: true # Install security updates daily; false leaves the host's setting untouched
+system_unattended_reboot: false # Reboot automatically when an update requires it
+system_unattended_reboot_time: "04:00" # Time of that reboot

@@ -135,7 +135,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 | `enable_coraza_waf`      | `false`       | WAF for every site that does not set `coraza_mode` itself                                         |
 | `coraza_mode_default`    | `recommended` | WAF mode used by `enable_coraza_waf`                                                              |
 | `enable_crowdsec_import` | `false`       | Hourly import of public blocklists into CrowdSec. Requires `enable_crowdsec`                      |
-| `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file                                            |
+| `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file, automatic security updates                |
 | `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip                   |
 | `enable_auto_reboot`     | `true`        | Reboot only if `/var/run/reboot-required` exists. `false` only reports a pending reboot           |
 
@@ -191,13 +191,16 @@ Configurations from older versions keep working: `rathole_server_config` / `rath
 
 ### Small host tuning (`system` role)
 
-| Variable                  | Default     | Effect                                         |
-| ------------------------- | ----------- | ---------------------------------------------- |
-| `system_journald_max_use` | `200M`      | Cap for persistent journal logs                |
-| `system_swap_enabled`     | `false`     | Create and enable a swap file                  |
-| `system_swap_file`        | `/swapfile` | Swap file path                                 |
-| `system_swap_size`        | `1G`        | Swap size (not resized once created)           |
-| `system_swappiness`       | `10`        | `vm.swappiness`, set only when swap is enabled |
+| Variable                        | Default     | Effect                                                                                                 |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `system_journald_max_use`       | `200M`      | Cap for persistent journal logs                                                                        |
+| `system_swap_enabled`           | `false`     | Create and enable a swap file                                                                          |
+| `system_swap_file`              | `/swapfile` | Swap file path                                                                                         |
+| `system_swap_size`              | `1G`        | Swap size (not resized once created)                                                                   |
+| `system_swappiness`             | `10`        | `vm.swappiness`, set only when swap is enabled                                                         |
+| `system_unattended_upgrades`    | `true`      | Install security updates daily with `unattended-upgrades`; `false` leaves the host's setting untouched |
+| `system_unattended_reboot`      | `false`     | Reboot automatically when such an update requires it                                                   |
+| `system_unattended_reboot_time` | `04:00`     | Time of that reboot                                                                                    |
 
 The role runs before Caddy, so swap is available for the Caddy build.
 
@@ -337,7 +340,7 @@ sudo journalctl -u crowdsec-blocklist-import.service
 ├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
 ├── tests/                      # Derivation tests (tests/run.sh)
 ├── roles/
-│   ├── system/                 # journald limit, optional swap
+│   ├── system/                 # journald limit, optional swap, security updates
 │   ├── caddy/                  # Caddy build, Caddyfile, service
 │   ├── go_lang/                # Go toolchain for the Caddy build
 │   ├── xcaddy/                 # Caddy builder

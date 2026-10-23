@@ -3,7 +3,7 @@
 
 galaxy_info:
   author: chrisvgt
-  description: Basic tuning for small hosts (journald size limit, optional swap file)
+  description: Basic tuning for small hosts (journald size limit, optional swap file, security updates)
   license: MIT
   min_ansible_version: "2.14"
   platforms:
@@ -15,5 +15,6 @@ galaxy_info:
     - system
     - journald
     - swap
+    - updates
 
 dependencies: []
