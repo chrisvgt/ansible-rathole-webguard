@@ -15,32 +15,15 @@
     {% endif %}
     {#
     Order directive needed if ANY site has WAF enabled (global or per-site via coraza_mode).
-    Check: global enable_coraza_waf, OR any site with coraza_mode set to a non-"off" value.
+    caddy_coraza_needed is computed in tasks/main.yml (same fact decides the plugin build).
     #}
-    {% set _waf = namespace(any=enable_coraza_waf | default(false)) %}
-    {% if not _waf.any and enable_wildcard | default(false) %}
-        {% for _bd in wildcard_sites | default([]) %}
-            {% for _s in _bd.sites | default([]) %}
-                {% if _s.coraza_mode is defined and _s.coraza_mode != 'off' %}
-                    {% set _waf.any = true %}
-                {% endif %}
-            {% endfor %}
-        {% endfor %}
-    {% endif %}
-    {% if not _waf.any and not enable_wildcard | default(false) %}
-        {% for _s in caddy_sites | default([]) %}
-            {% if _s.coraza_mode is defined and _s.coraza_mode != 'off' %}
-                {% set _waf.any = true %}
-            {% endif %}
-        {% endfor %}
-    {% endif %}
     {% if enable_crowdsec %}
     order appsec before reverse_proxy
     {% endif %}
-    {% if _waf.any %}
+    {% if caddy_coraza_needed | bool %}
     order coraza_waf before appsec
     {% endif %}
-    {% if enable_rate_limit | default(true) and _waf.any %}
+    {% if enable_rate_limit | default(true) and caddy_coraza_needed | bool %}
     order rate_limit before coraza_waf
     {% endif %}
 
@@ -55,7 +38,8 @@
     {% endif %}
 
     {% if enable_cloudflare %}
-    acme_dns cloudflare {{ cloudflare_api_token }}
+    # Token comes from the systemd EnvironmentFile ({{ caddy_env_file }})
+    acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     {% endif %}
 
     log {
@@ -269,8 +253,11 @@ coraza_waf {
         # === AUDIT LOG (all modes) ===
         {% if coraza_audit_log_enabled | default(true) %}
         SecAuditEngine RelevantOnly
-        SecAuditLogParts ABIJDEFHZ
-        SecAuditLog {{ coraza_audit_log_dir | default('/var/log/caddy') }}/modsec_{{ site_name }}.log
+        # Header, request headers and trailer only (no bodies) to keep the log small.
+        # Separate dir so CrowdSec's /var/log/caddy/*.log glob does not pick it up;
+        # rotated by /etc/logrotate.d/caddy-coraza.
+        SecAuditLogParts ABHZ
+        SecAuditLog {{ caddy_coraza_audit_log_dir }}/modsec_{{ site_name }}.log
         {% else %}
         SecAuditEngine Off
         {% endif %}
@@ -291,7 +278,7 @@ coraza_waf {
     # Access logging for this domain
     log {
         format json
-        output file {{ wildcard_log_file | default('/var/log/caddy/' + base_domain | replace('.', '_') + '.access.log') }} {
+        output file {{ wildcard_log_file | default(caddy_log_dir ~ '/' ~ (base_domain | replace('*.', 'wildcard_') | replace('.', '_')) ~ '.access.log') }} {
             roll_size {{ wildcard_log_roll_size | default('10mb') }}
             roll_keep {{ wildcard_log_roll_keep | default(10) }}
             roll_keep_for {{ wildcard_log_roll_keep_for | default('36h') }}
@@ -301,6 +288,8 @@ coraza_waf {
     route {
         # === PER-SUBDOMAIN HANDLES ===
         {% for site in sites %}
+        {# Unique per base domain: rate_limit zones and audit logs are global, site names are not #}
+        {% set site_id = (base_domain | replace('*.', '') | replace('.', '_')) ~ '_' ~ site.name %}
         # Match exact subdomain for this base domain (e.g., test.example.com)
         @{{ site.name }} host {{ site.subdomain }}.{{ base_domain | replace('*.','') }}
         handle @{{ site.name }} {
@@ -331,7 +320,7 @@ coraza_waf {
                 {% if enable_rate_limit | default(true) %}
                 # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
                 rate_limit {
-                    zone {{ site.name | default(site.subdomain | replace('.', '_')) }} {
+                    zone {{ site_id }} {
                         key "{http.request.remote.ip}"
                         window {{ site.rate_limit_window | default('1m') }}
                         events {{ site.rate_limit_events | default(500) }}
@@ -351,7 +340,7 @@ coraza_waf {
                 {% endif %}
                 {% if site_has_waf %}
                 # 3. Coraza WAF: lightweight rules, low CPU
-                {{ coraza_directives(effective_coraza_mode, site.name) }}
+                {{ coraza_directives(effective_coraza_mode, site_id) | indent(16) }}
                 {% endif %}
 
                 {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
@@ -366,7 +355,9 @@ coraza_waf {
                 # Route specific paths to different backends when configured
                 @forward_path path {{ site.forward_path }}*
                 reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.port) }} {
+                    {% if site.forward_ip is defined %}
                     header_up X-Forwarded-For {{ site.forward_ip }}
+                    {% endif %}
                     {% if site.stream | default(false) %}
                     flush_interval -1
                     {% endif %}
@@ -476,7 +467,7 @@ coraza_waf {
             {% endif %}
             {% if site_has_waf %}
             # 3. Coraza WAF: lightweight rules, low CPU
-            {{ coraza_directives(effective_coraza_mode, site.name) }}
+            {{ coraza_directives(effective_coraza_mode, site.name) | indent(12) }}
             {% endif %}
             {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
             # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
@@ -488,7 +479,9 @@ coraza_waf {
             {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
             @forward_path path {{ site.forward_path }}*
             reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
+                {% if site.forward_ip is defined %}
                 header_up X-Forwarded-For {{ site.forward_ip }}
+                {% endif %}
                 {% if site.stream | default(false) %}
                 flush_interval -1
                 {% endif %}
@@ -536,7 +529,7 @@ coraza_waf {
     # Access logging for this site
     log {
         format json
-        output file {{ site.log_file | default('/var/log/caddy/' + site.name + '.access.log') }} {
+        output file {{ site.log_file | default(caddy_log_dir ~ '/' ~ site.name ~ '.access.log') }} {
             roll_size {{ site.log_roll_size | default('10mb') }}
             roll_keep {{ site.log_roll_keep | default(10) }}
             roll_keep_for {{ site.log_roll_keep_for | default('36h') }}

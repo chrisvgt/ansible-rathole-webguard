@@ -7,3 +7,9 @@
     name: caddy
     state: restarted
     daemon_reload: true # Ensure systemd reloads Caddy's unit file if it changed
+
+# Graceful config reload (no dropped connections) for Caddyfile changes
+- name: Reload Caddy Service
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded

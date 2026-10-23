@@ -10,7 +10,7 @@ Wants=network-online.target
 [Service]
 User={{ caddy_user }}
 Group={{ caddy_group }}
-ExecStart={{ caddy_install_path }} run --environ --config {{ caddy_config_file }} --adapter caddyfile
+ExecStart={{ caddy_install_path }} run --config {{ caddy_config_file }} --adapter caddyfile
 ExecReload={{ caddy_install_path }} reload --config {{ caddy_config_file }} --force --adapter caddyfile
 TimeoutStopSec=5s
 LimitNOFILE=1048576
@@ -27,9 +27,8 @@ StartLimitIntervalSec=30s
 Environment="HOME={{ caddy_data_dir }}"
 Environment="XDG_CONFIG_HOME={{ caddy_data_dir }}"
 Environment="XDG_DATA_HOME={{ caddy_data_dir }}"
-{% if enable_cloudflare | default(false) and cloudflare_api_token is defined and (cloudflare_api_token | length > 0) %}
-Environment="CLOUDFLARE_API_TOKEN={{ cloudflare_api_token }}"
-{% endif %}
+# Secrets (e.g. CLOUDFLARE_API_TOKEN) live in a root-only file, not in this unit
+EnvironmentFile={{ caddy_env_file }}
 
 [Install]
 WantedBy=multi-user.target
