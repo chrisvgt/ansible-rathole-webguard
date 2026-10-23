@@ -334,7 +334,7 @@ coraza_waf {
                 {% endif %}
                 {% if site_has_waf %}
                 # 3. Coraza WAF: lightweight rules, low CPU
-                {{ coraza_directives(effective_coraza_mode, site.name) }}
+                {{ coraza_directives(effective_coraza_mode, site.name) | indent(16) }}
                 {% endif %}
 
                 {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
@@ -459,7 +459,7 @@ coraza_waf {
             {% endif %}
             {% if site_has_waf %}
             # 3. Coraza WAF: lightweight rules, low CPU
-            {{ coraza_directives(effective_coraza_mode, site.name) }}
+            {{ coraza_directives(effective_coraza_mode, site.name) | indent(12) }}
             {% endif %}
             {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
             # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)

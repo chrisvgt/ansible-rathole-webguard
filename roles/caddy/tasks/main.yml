@@ -125,6 +125,8 @@
     mode: "0644"
   when: caddy_plugins_hash is defined
 
+# lstrip_blocks removes the indentation in front of Jinja tags so the rendered
+# Caddyfile stays readable without running `caddy fmt` afterwards.
 - name: Create Caddyfile from template
   ansible.builtin.template:
     src: "templates/Caddyfile.j2"
@@ -132,16 +134,19 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: "0644"
-  notify: Restart Caddy Service
+    lstrip_blocks: true
+    validate: "{{ caddy_install_path }} validate --adapter caddyfile --config %s"
+  notify: Reload Caddy Service
 
-- name: Format Caddyfile for readability
-  ansible.builtin.command:
-    cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
-  environment:
-    ANSIBLE_REMOTE_TEMP: "/tmp"
-  register: caddy_fmt_result
-  changed_when: caddy_fmt_result.stdout | length > 0
-  notify: Restart Caddy Service
+# `caddy validate` runs as root and creates missing log files owned by root,
+# which the caddy user could not open afterwards.
+- name: Ensure Caddy log files belong to the Caddy user
+  ansible.builtin.file:
+    path: "{{ caddy_log_dir }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    recurse: true
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
