@@ -16,8 +16,8 @@
     - name: Check derived sites
       ansible.builtin.assert:
         that:
-          - caddy_effective_sites | map(attribute='name') | list == ['web', 'stream_watch_example_com', 'stream_watch_example_org', 'apex']
-          - caddy_effective_sites | map(attribute='domain') | list == ['web.example.com', 'watch.example.com', 'watch.example.org', 'example.com']
+          - caddy_effective_sites | map(attribute='name') | list == ['web', 'shop_shop_example_com', 'shop_shop_example_org', 'apex']
+          - caddy_effective_sites | map(attribute='domain') | list == ['web.example.com', 'shop.example.com', 'shop.example.org', 'example.com']
           - caddy_effective_sites[0].local_port | int == 2368
           - caddy_effective_sites[0].coraza_mode == 'minimal'
           - caddy_effective_sites[1].stream

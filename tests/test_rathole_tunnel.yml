@@ -15,10 +15,10 @@
       ansible.builtin.assert:
         that:
           - rathole_server_config.listen_addr == '0.0.0.0:2333'
-          - rathole_server_config.services | map(attribute='name') | list == ['web', 'stream', 'apex', 'rd-tcp', 'rd-udp']
+          - rathole_server_config.services | map(attribute='name') | list == ['web', 'shop', 'apex', 'game-tcp', 'game-udp']
           - (rathole_server_config.services | selectattr('name', 'eq', 'web') | first).bind_addr == '127.0.0.1:2368'
-          - (rathole_server_config.services | selectattr('name', 'eq', 'rd-udp') | first).type == 'udp'
-          - (rathole_server_config.services | selectattr('name', 'eq', 'rd-tcp') | first).bind_addr == '0.0.0.0:21116'
+          - (rathole_server_config.services | selectattr('name', 'eq', 'game-udp') | first).type == 'udp'
+          - (rathole_server_config.services | selectattr('name', 'eq', 'game-tcp') | first).bind_addr == '0.0.0.0:27015'
           - rathole_server_config.services | selectattr('local_addr', 'defined') | list | length == 0
           - rathole_server_config.transport.type == 'noise'
           - rathole_auto_secrets | bool
@@ -28,7 +28,7 @@
       ansible.builtin.assert:
         that:
           - rathole_client_config.remote_addr == '203.0.113.10:2333'
-          - (rathole_client_config.services | selectattr('name', 'eq', 'stream') | first).local_addr == '192.168.1.10:8096'
+          - (rathole_client_config.services | selectattr('name', 'eq', 'shop') | first).local_addr == '192.168.1.10:3000'
           - rathole_client_config.services | selectattr('bind_addr', 'defined') | list | length == 0
           - rathole_client_config.transport.type == 'noise'
           - rathole_tunnel_server == 'srv'
@@ -56,10 +56,10 @@
         that: >-
           (rathole_role == 'server'
            and 'bind_addr = "0.0.0.0:2333"' in lookup('file', rendered.dest)
-           and '[server.services.rd-udp]' in lookup('file', rendered.dest))
+           and '[server.services.game-udp]' in lookup('file', rendered.dest))
           or (rathole_role == 'client'
            and 'remote_addr = "203.0.113.10:2333"' in lookup('file', rendered.dest)
-           and 'local_addr = "192.168.1.10:8096"' in lookup('file', rendered.dest))
+           and 'local_addr = "192.168.1.10:3000"' in lookup('file', rendered.dest))
 
     - name: Remove rendered file
       ansible.builtin.file:

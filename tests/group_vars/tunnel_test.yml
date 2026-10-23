@@ -8,19 +8,19 @@ tunnel_services:
     domain: web.example.com
     local_addr: 127.0.0.1:2368
     coraza_mode: minimal
-  - name: stream
+  - name: shop
     domain:
-      - watch.example.com
-      - watch.example.org
-    local_addr: 192.168.1.10:8096
+      - shop.example.com
+      - shop.example.org
+    local_addr: 192.168.1.10:3000
     stream: true
   - name: apex
     domain: example.com
     local_addr: 127.0.0.1:8080
-  - name: rd-tcp
-    local_addr: 127.0.0.1:21116
-    bind_addr: 0.0.0.0:21116
-  - name: rd-udp
+  - name: game-tcp
+    local_addr: 127.0.0.1:27015
+    bind_addr: 0.0.0.0:27015
+  - name: game-udp
     type: udp
-    local_addr: 127.0.0.1:21116
-    bind_addr: 0.0.0.0:21116
+    local_addr: 127.0.0.1:27015
+    bind_addr: 0.0.0.0:27015
