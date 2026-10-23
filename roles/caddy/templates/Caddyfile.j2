@@ -253,8 +253,11 @@ coraza_waf {
         # === AUDIT LOG (all modes) ===
         {% if coraza_audit_log_enabled | default(true) %}
         SecAuditEngine RelevantOnly
-        SecAuditLogParts ABIJDEFHZ
-        SecAuditLog {{ coraza_audit_log_dir | default('/var/log/caddy') }}/modsec_{{ site_name }}.log
+        # Header, request headers and trailer only (no bodies) to keep the log small.
+        # Separate dir so CrowdSec's /var/log/caddy/*.log glob does not pick it up;
+        # rotated by /etc/logrotate.d/caddy-coraza.
+        SecAuditLogParts ABHZ
+        SecAuditLog {{ caddy_coraza_audit_log_dir }}/modsec_{{ site_name }}.log
         {% else %}
         SecAuditEngine Off
         {% endif %}
@@ -275,7 +278,7 @@ coraza_waf {
     # Access logging for this domain
     log {
         format json
-        output file {{ wildcard_log_file | default('/var/log/caddy/' + base_domain | replace('.', '_') + '.access.log') }} {
+        output file {{ wildcard_log_file | default(caddy_log_dir ~ '/' ~ (base_domain | replace('*.', 'wildcard_') | replace('.', '_')) ~ '.access.log') }} {
             roll_size {{ wildcard_log_roll_size | default('10mb') }}
             roll_keep {{ wildcard_log_roll_keep | default(10) }}
             roll_keep_for {{ wildcard_log_roll_keep_for | default('36h') }}
@@ -520,7 +523,7 @@ coraza_waf {
     # Access logging for this site
     log {
         format json
-        output file {{ site.log_file | default('/var/log/caddy/' + site.name + '.access.log') }} {
+        output file {{ site.log_file | default(caddy_log_dir ~ '/' ~ site.name ~ '.access.log') }} {
             roll_size {{ site.log_roll_size | default('10mb') }}
             roll_keep {{ site.log_roll_keep | default(10) }}
             roll_keep_for {{ site.log_roll_keep_for | default('36h') }}

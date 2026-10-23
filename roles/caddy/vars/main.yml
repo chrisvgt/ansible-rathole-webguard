@@ -23,6 +23,10 @@ caddy_env_file: "{{ caddy_config_dir }}/caddy.env" # Root-only environment file 
 # Core plugins based on enable flags are resolved at runtime in tasks.
 caddy_plugins: []
 
+# --- Coraza Audit Log Rotation (logrotate, checked daily) ---
+caddy_coraza_audit_log_max_size: 10M # Rotate once a file exceeds this size
+caddy_coraza_audit_log_rotate: 3 # Number of compressed rotations to keep
+
 # --- Caddy Build (xcaddy) ---
 # Temporary build dir, removed after each build. /var/tmp instead of /tmp
 # because /tmp is often a RAM-backed tmpfs on small hosts.

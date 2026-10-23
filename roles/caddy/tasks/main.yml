@@ -6,6 +6,7 @@
     name:
       - git
       - curl
+      - logrotate
     state: present
     update_cache: true
 
@@ -64,6 +65,28 @@
              | selectattr('coraza_mode', 'defined')
              | rejectattr('coraza_mode', 'equalto', 'off')
              | list | length > 0) }}
+
+# Own subdirectory so CrowdSec's /var/log/caddy/*.log acquisition glob does
+# not parse the multi-line audit log format.
+- name: Determine Coraza audit log directory
+  ansible.builtin.set_fact:
+    caddy_coraza_audit_log_dir: "{{ coraza_audit_log_dir | default(caddy_log_dir ~ '/coraza') }}"
+
+- name: Ensure Coraza audit log directory exists
+  ansible.builtin.file:
+    path: "{{ caddy_coraza_audit_log_dir }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: "0750"
+
+- name: Configure logrotate for Coraza audit logs
+  ansible.builtin.template:
+    src: "templates/logrotate-coraza.j2"
+    dest: "/etc/logrotate.d/caddy-coraza"
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Build final Caddy plugin list
   ansible.builtin.set_fact:
@@ -176,11 +199,12 @@
 # which the caddy user could not open afterwards.
 - name: Ensure Caddy log files belong to the Caddy user
   ansible.builtin.file:
-    path: "{{ caddy_log_dir }}"
+    path: "{{ item }}"
     state: directory
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     recurse: true
+  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir] | unique }}"
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
