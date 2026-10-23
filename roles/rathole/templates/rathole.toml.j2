@@ -139,12 +139,4 @@ retry_interval = {{ service.retry_interval }}
 {% endfor %}
 {% endif %}
 
-{% else %}
-# This block runs if rathole_role is not 'server' or 'client'
-# Consider adding an assertion task in your playbook if this is an invalid state
-# - name: Fail if rathole_role is not defined or is invalid
-#   ansible.builtin.assert:
-#     that:
-#       - rathole_role == "server" or rathole_role == "client"
-#     fail_msg: "rathole_role must be 'server' or 'client'"
 {% endif %}

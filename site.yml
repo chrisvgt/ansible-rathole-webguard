@@ -13,6 +13,48 @@
         fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
         success_msg: "System is Debian-based. Proceeding with the playbook."
 
+    # --- Preflight validation: fail early, before anything is changed ---
+    - name: Validate rathole_role
+      ansible.builtin.assert:
+        that:
+          - rathole_role is defined
+          - rathole_role in ['server', 'client']
+        fail_msg: "rathole_role must be defined in host_vars and set to 'server' or 'client'."
+        quiet: true
+      tags: [always]
+
+    - name: Validate that wildcard support has Cloudflare enabled
+      ansible.builtin.assert:
+        that: enable_cloudflare | default(false) | bool
+        fail_msg: "enable_wildcard requires enable_cloudflare: true (wildcard certificates use the Cloudflare DNS challenge)."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_wildcard | default(false) | bool
+      tags: [always]
+
+    - name: Validate Cloudflare API token
+      ansible.builtin.assert:
+        that:
+          - cloudflare_api_token is defined
+          - cloudflare_api_token | string | length > 0
+        fail_msg: "enable_cloudflare is true, but cloudflare_api_token is undefined or empty."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_cloudflare | default(false) | bool
+      tags: [always]
+
+    - name: Validate that CrowdSec import has CrowdSec enabled
+      ansible.builtin.assert:
+        that: enable_crowdsec | default(false) | bool
+        fail_msg: "enable_crowdsec_import requires enable_crowdsec: true."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_crowdsec_import | default(false) | bool
+      tags: [always]
+
     - name: Ensure APT cache is updated and perform a system upgrade (Debian-based systems)
       ansible.builtin.apt:
         update_cache: true
@@ -38,23 +80,17 @@
         mode: "0755"
       tags: [base]
 
-    # Pre-install Go + xcaddy in parallel before Caddy role
-    - name: Pre-install Go toolchain (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: go_lang
-      when: rathole_role == "server"
-      tags: [caddy, go]
-
-    - name: Pre-install xcaddy (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: xcaddy
-      when: rathole_role == "server"
-      tags: [caddy, xcaddy]
-
   roles:
+    # Small-host tuning (journald size limit, optional swap file).
+    # Runs first so swap is available before the memory-hungry Caddy build.
+    # Set 'enable_system_tuning: false' to skip it (default: true).
+    - role: system
+      when: enable_system_tuning | default(true) | bool
+      tags: system
+
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
-    # Dependencies (go_lang, xcaddy) are already resolved via pre_tasks.
+    # Dependencies (go_lang, xcaddy) run first, once, via the caddy role's meta/main.yml.
     - role: caddy
       when: rathole_role == "server"
       tags: caddy
@@ -85,6 +121,7 @@
       register: reboot_required_file
       tags: [reboot]
 
+    # ansible.builtin.reboot already waits until the host is reachable again
     - name: Reboot host if required
       ansible.builtin.reboot:
         msg: "System rebooting due to package upgrades."
@@ -93,34 +130,20 @@
         connect_timeout: 300
       when:
         - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
+        - reboot_required_file.stat.exists
       tags: [reboot]
 
-    - name: Wait for host to reboot
-      ansible.builtin.wait_for_connection:
-        delay: 10
-        timeout: 300
+    - name: Report pending reboot
+      ansible.builtin.debug:
+        msg: "A reboot is required (/var/run/reboot-required exists) but enable_auto_reboot is false."
       when:
-        - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - not (enable_auto_reboot | default(true) | bool)
+        - reboot_required_file.stat.exists
       tags: [reboot]
 
+    # Temporary download/build files are cleaned up by each role itself
     - name: Clean up APT package cache to save disk space
       ansible.builtin.apt:
         clean: true
-      tags: [cleanup]
-
-    - name: Clean up global temporary files from roles
-      ansible.builtin.shell:
-        cmd: |
-          rm -f /tmp/go*.tar.gz
-          rm -f /tmp/xcaddy_temp.tar.gz
-          rm -f /tmp/xcaddy
-          rm -f /tmp/rathole_*.zip
-          rm -rf /tmp/rathole_unpacked
-          rm -f /tmp/install_crowdsec.sh
-          rm -rf /tmp/caddy_build
-          rm -rf /tmp/caddy_plugins
-        executable: /bin/bash
-      changed_when: false
       tags: [cleanup]

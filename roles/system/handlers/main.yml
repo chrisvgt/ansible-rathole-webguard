@@ -1,0 +1,12 @@
+# roles/system/handlers/main.yml
+
+# --- Handlers for System Tuning ---
+
+- name: Restart journald
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
+
+- name: Apply swap sysctl settings
+  ansible.builtin.command: sysctl -p /etc/sysctl.d/60-swap.conf
+  changed_when: true

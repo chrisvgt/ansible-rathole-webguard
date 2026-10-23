@@ -8,6 +8,7 @@ rathole_config_path: "/etc/rathole" # Directory for Rathole configuration files
 rathole_config_file: "rathole.toml" # Name of the main Rathole configuration file
 rathole_user: "rathole" # System user for the Rathole service
 rathole_group: "rathole" # System group for the Rathole service
+rathole_memory_max: "256M" # systemd MemoryMax for the Rathole service (hard memory limit)
 
 # Map Ansible architecture to Rathole release target triples (Linux)
 # Based on available assets like:
