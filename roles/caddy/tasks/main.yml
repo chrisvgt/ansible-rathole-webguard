@@ -31,17 +31,16 @@
     owner: "{{ item.owner | default(caddy_user) }}"
     group: "{{ caddy_group }}"
     mode: "{{ item.mode }}"
-    recurse: "{{ item.recurse | default(false) }}"
   loop:
     # Config holds secrets: Caddy may read it but not modify it
     - path: "{{ caddy_config_dir }}"
       owner: root
       mode: "0750"
+    # Not recursive: Caddy manages permissions of its TLS keys/certs itself
     - path: "{{ caddy_data_dir }}"
-      mode: "0775"
-      recurse: true
+      mode: "0750"
     - path: "{{ caddy_data_dir }}/caddy"
-      mode: "0775"
+      mode: "0750"
     - path: "{{ caddy_log_dir }}"
       mode: "0755"
 
