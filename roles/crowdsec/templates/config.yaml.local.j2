@@ -1,0 +1,9 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/config.yaml.local.j2
+# Merged over /etc/crowdsec/config.yaml
+
+db_config:
+  use_wal: {{ crowdsec_db_use_wal | bool | lower }}
+  flush:
+    max_items: {{ crowdsec_db_flush_max_items }}
+    max_age: {{ crowdsec_db_flush_max_age }}
