@@ -13,6 +13,48 @@
         fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
         success_msg: "System is Debian-based. Proceeding with the playbook."
 
+    # --- Preflight validation: fail early, before anything is changed ---
+    - name: Validate rathole_role
+      ansible.builtin.assert:
+        that:
+          - rathole_role is defined
+          - rathole_role in ['server', 'client']
+        fail_msg: "rathole_role must be defined in host_vars and set to 'server' or 'client'."
+        quiet: true
+      tags: [always]
+
+    - name: Validate that wildcard support has Cloudflare enabled
+      ansible.builtin.assert:
+        that: enable_cloudflare | default(false) | bool
+        fail_msg: "enable_wildcard requires enable_cloudflare: true (wildcard certificates use the Cloudflare DNS challenge)."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_wildcard | default(false) | bool
+      tags: [always]
+
+    - name: Validate Cloudflare API token
+      ansible.builtin.assert:
+        that:
+          - cloudflare_api_token is defined
+          - cloudflare_api_token | string | length > 0
+        fail_msg: "enable_cloudflare is true, but cloudflare_api_token is undefined or empty."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_cloudflare | default(false) | bool
+      tags: [always]
+
+    - name: Validate that CrowdSec import has CrowdSec enabled
+      ansible.builtin.assert:
+        that: enable_crowdsec | default(false) | bool
+        fail_msg: "enable_crowdsec_import requires enable_crowdsec: true."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_crowdsec_import | default(false) | bool
+      tags: [always]
+
     - name: Ensure APT cache is updated and perform a system upgrade (Debian-based systems)
       ansible.builtin.apt:
         update_cache: true
