@@ -108,6 +108,7 @@
   register: crowdsec_cscli_collections_list
   changed_when: false
   failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Install CrowdSecurity Caddy collection
   ansible.builtin.command: cscli collections install crowdsecurity/caddy
@@ -155,6 +156,7 @@
   register: crowdsec_cscli_console_status
   changed_when: false
   failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Enroll CrowdSec engine with the Console
   ansible.builtin.command: "cscli console enroll --enable context {{ crowdsec_enrollment_key }}"
@@ -172,6 +174,7 @@
   register: crowdsec_cscli_bouncers_list
   changed_when: false
   failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Register Caddy bouncer with CrowdSec Local API
   ansible.builtin.command:

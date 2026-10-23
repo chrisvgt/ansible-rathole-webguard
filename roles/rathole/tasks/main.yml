@@ -34,6 +34,7 @@
   failed_when: false
   changed_when: false
   ignore_errors: true
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Extract Rathole version from output
   ansible.builtin.set_fact:
@@ -86,6 +87,7 @@
         src: "{{ rathole_tmp_dir.path }}/{{ rathole_asset_name }}"
         dest: "{{ rathole_tmp_dir.path }}"
         remote_src: true
+      when: not ansible_check_mode # Asset is only downloaded in a real run
 
     - name: Move Rathole binary to /usr/local/bin
       ansible.builtin.copy:
@@ -96,6 +98,7 @@
         mode: "0755"
         remote_src: true # Source is on the remote host (temporary download directory)
       notify: Restart Rathole
+      when: not ansible_check_mode
 
   always:
     - name: Clean up temporary Rathole files

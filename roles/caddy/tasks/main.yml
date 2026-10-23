@@ -52,6 +52,7 @@
   register: caddy_version_check
   failed_when: false
   changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 # Coraza is needed if it is enabled globally or if any active site sets a
 # coraza_mode other than 'off'. Caddyfile.j2 uses this fact as well, so the

@@ -18,6 +18,7 @@
   register: xcaddy_version_check
   ignore_errors: true
   changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Set xcaddy version changed flag
   ansible.builtin.set_fact:
@@ -50,7 +51,9 @@
     dest: "/tmp/"
     remote_src: true
     creates: "/tmp/xcaddy" # Idempotent: only extract if binary doesn't exist
-  when: xcaddy_version_changed | bool
+  when:
+    - xcaddy_version_changed | bool
+    - not ansible_check_mode # Tarball is only downloaded in a real run
 
 - name: Move xcaddy to installation directory
   ansible.builtin.copy:
@@ -60,7 +63,9 @@
     group: root
     mode: "0755" # Make executable
     remote_src: true # Source is on the remote host (downloaded to /tmp)
-  when: xcaddy_version_changed | bool
+  when:
+    - xcaddy_version_changed | bool
+    - not ansible_check_mode # Tarball is only downloaded in a real run
 
 - name: Clean up xcaddy temporary files
   ansible.builtin.file:
