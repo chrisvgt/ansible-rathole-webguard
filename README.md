@@ -160,7 +160,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 | `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip         |
 | `enable_auto_reboot`     | `true`        | Reboot only if `/var/run/reboot-required` exists. `false` only reports a pending reboot |
 
-Flags can be overridden per host in `host_vars/<host>.yml`.
+Flags can be overridden per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
 
 Server options in `host_vars/server.yml`: `ntfy_enabled` (CrowdSec alerts via ntfy), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `host_vars/server.example.yml`.
 
@@ -290,7 +290,7 @@ The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `Prot
 
 ## Updating
 
-Pinned versions are role defaults and can be overridden in `group_vars/all.yml` or `host_vars/<host>.yml`, without editing role code:
+Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be overridden in `group_vars/all.yml` or `host_vars/<host>.yml`, without editing role code:
 
 | Variable                  | Component                 |
 | ------------------------- | ------------------------- |
