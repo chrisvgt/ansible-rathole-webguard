@@ -28,7 +28,12 @@
 
 - name: Determine Rathole target triple
   ansible.builtin.set_fact:
-    rathole_target_triple: "{{ (rathole_target_map[ansible_facts['system']] | default({}))[ansible_facts['architecture']] | default('x86_64-unknown-linux-gnu') }}"
+    rathole_target_triple: "{{ (rathole_target_map[ansible_facts['system']] | default({}))[ansible_facts['architecture']] | default('') }}"
+
+- name: Ensure Rathole target triple is supported
+  ansible.builtin.assert:
+    that: rathole_target_triple | length > 0
+    fail_msg: "Unsupported platform for Rathole: {{ ansible_facts['system'] }}/{{ ansible_facts['architecture'] }}"
 
 - name: Determine Rathole asset name and download URL
   ansible.builtin.set_fact:
