@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Helper to run the main ansible playbook with sensible defaults.
 # Usage:
-#   ./scripts/run-playbook.sh            # will prompt for vault password if needed
-#   ./scripts/run-playbook.sh --no-vault # run without vault
+#   ./scripts/run-playbook.sh            # prompts for the vault password (--ask-vault-pass)
+#   ./scripts/run-playbook.sh --no-vault # no vault, secrets in plaintext host_vars
 #   ./scripts/run-playbook.sh --vault-file /path/to/vault_pass.txt
 #   ./scripts/run-playbook.sh --inventory custom_inventory.ini
 
@@ -12,7 +12,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 PLAYBOOK="${PLAYBOOK:-site.yml}"
 INVENTORY="${INVENTORY:-inventory.ini}"
-VAULT_OPT=""
+NO_VAULT=false
 
 print_usage() {
   cat <<EOF
@@ -37,17 +37,15 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-vault)
-      VAULT_OPT=""
       NO_VAULT=true
       shift
       ;;
     --vault-file)
-      VAULT_FILE="$2"
+      VAULT_FILE="${2:-}"
       if [[ -z "$VAULT_FILE" ]]; then
         echo "--vault-file requires a file path"
         exit 2
       fi
-      VAULT_OPT=("--vault-password-file" "$VAULT_FILE")
       shift 2
       ;;
     --inventory)
@@ -73,7 +71,7 @@ done
 cd "$REPO_ROOT"
 
 CMD=(ansible-playbook -i "$INVENTORY" "$PLAYBOOK")
-if [[ ${NO_VAULT:-false} == true ]]; then
+if [[ $NO_VAULT == true ]]; then
   echo "Running without Ansible Vault options"
 else
   if [[ -n "${VAULT_FILE:-}" ]]; then
