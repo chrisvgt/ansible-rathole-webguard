@@ -24,7 +24,7 @@ repos:
   - repo: local
     hooks:
       - id: ansible-lint
-        name: ansible-lint (comprehensive)
-        entry: ansible-lint -v site.yml
+        name: ansible-lint (whole repository)
+        entry: ansible-lint
         language: system
         pass_filenames: false

@@ -17,5 +17,13 @@ rules:
   comments:
     min-spaces-from-content: 1
 
+  # Required by ansible-lint for a compatible yamllint configuration
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+
   # Disable YAML doc start marker (---) requirement
   document-start: disable
