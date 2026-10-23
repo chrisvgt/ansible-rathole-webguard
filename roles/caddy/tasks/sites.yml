@@ -15,13 +15,14 @@
   when: (tunnel_services | default(none)) is not none
   block:
     # One entry per domain. Rathole-only keys are dropped, all other keys
-    # (coraza_mode, stream, cache_paths, ...) are passed to the site.
+    # (coraza_mode, stream, cache_paths, ...) are passed to the site. Empty
+    # domains mean tunnel-only.
     - name: Build one site per service domain
       ansible.builtin.set_fact:
         caddy_tunnel_sites: >-
           {%- set ns = namespace(out=[]) -%}
-          {%- for s in tunnel_services if s.domain is defined -%}
-            {%- set domains = [s.domain] if s.domain is string else s.domain -%}
+          {%- for s in tunnel_services if s.domain | default(none) -%}
+            {%- set domains = ([s.domain] if s.domain is string else s.domain) | select | map('lower') | list -%}
             {%- set options = s | dict2items | rejectattr('key', 'in', caddy_tunnel_service_keys) | items2dict -%}
             {%- set port = (s.bind_addr | default(s.local_addr)) | regex_replace('^.*:', '') | int -%}
             {%- for d in domains -%}

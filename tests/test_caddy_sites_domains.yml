@@ -1,0 +1,39 @@
+---
+# tests/test_caddy_sites_domains.yml
+# Empty domains mean tunnel-only, domains are matched case-insensitively
+
+- name: Derive Caddy sites from unusual domain values
+  hosts: srv
+  gather_facts: false
+  vars:
+    tunnel_services:
+      - { name: docs, domain: Docs.Example.COM, local_addr: "127.0.0.1:3000" }
+      - { name: multi, domain: [web.example.com, ""], local_addr: "127.0.0.1:3001" }
+      - { name: nulldomain, domain: null, local_addr: "127.0.0.1:3002" }
+      - { name: emptydomain, domain: "", local_addr: "127.0.0.1:3003" }
+  tasks:
+    - name: Load Caddy role constants
+      ansible.builtin.include_vars: ../roles/caddy/vars/main.yml
+
+    - name: Run site derivation in traditional mode
+      ansible.builtin.include_tasks: ../roles/caddy/tasks/sites.yml
+      vars:
+        enable_wildcard: false
+
+    - name: Check traditional sites
+      ansible.builtin.assert:
+        that:
+          - caddy_effective_sites | map(attribute='domain') | list == ['docs.example.com', 'web.example.com']
+          - caddy_effective_sites | map(attribute='name') | list == ['docs', 'multi']
+
+    - name: Run site derivation in wildcard mode
+      ansible.builtin.include_tasks: ../roles/caddy/tasks/sites.yml
+      vars:
+        enable_wildcard: true
+
+    - name: Check wildcard sites
+      ansible.builtin.assert:
+        that:
+          - caddy_effective_wildcard_sites | map(attribute='domain') | list == ['*.example.com']
+          - caddy_effective_wildcard_sites[0].sites | map(attribute='subdomain') | list == ['docs', 'web']
+          - caddy_effective_extra_sites == []

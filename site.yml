@@ -55,7 +55,7 @@
       ansible.builtin.assert:
         that: >-
           (caddy_sites | default([]) | length > 0)
-          or (tunnel_services | default([], true) | selectattr('domain', 'defined') | list | length > 0)
+          or (tunnel_services | default([], true) | map(attribute='domain', default='') | select | list | length > 0)
         fail_msg: "enable_wildcard is false, so caddy_sites or a tunnel_services entry with a domain is required."
         quiet: true
       when:
