@@ -164,54 +164,7 @@
     mode: "0644"
   notify: Restart Crowdsec Service
 
-## CrowdSec Blocklist Import Machine Setup
-
-- name: Create CrowdSec machine for blocklist-import (idempotent)
-  ansible.builtin.command: "cscli machines add {{ crowdsec_machine_id | default('blocklist-import') }} --password '{{ crowdsec_machine_password }}' --force"
-  register: crowdsec_machine_creation
-  changed_when: "'Machine created successfully' in crowdsec_machine_creation.stdout or 'Machine updated successfully' in crowdsec_machine_creation.stdout"
-  failed_when: false
-  notify: Restart Crowdsec Service
-  when: enable_crowdsec_import | default(false)
-
-- name: Check if blocklist-import bouncer already exists
-  ansible.builtin.command: "cscli bouncers list -o json"
-  register: crowdsec_cscli_bouncers_list
-  changed_when: false
-  failed_when: false
-  when: enable_crowdsec_import | default(false)
-
-- name: Create CrowdSec bouncer for blocklist-import
-  ansible.builtin.command: "cscli bouncers add {{ crowdsec_machine_id | default('blocklist-import') }} -o raw"
-  register: crowdsec_bouncer_creation
-  changed_when: "'Bouncer created successfully' in crowdsec_bouncer_creation.stdout"
-  failed_when: false
-  notify: Restart Crowdsec Service
-  when:
-    - enable_crowdsec_import | default(false) | bool
-    - crowdsec_cscli_bouncers_list.rc == 0
-    - crowdsec_machine_id | default('blocklist-import') not in crowdsec_cscli_bouncers_list.stdout
-
-- name: Store blocklist-import bouncer API key
-  ansible.builtin.set_fact:
-    crowdsec_blocklist_import_bouncer_key: "{{ crowdsec_bouncer_creation.stdout | default('') | trim }}"
-  when:
-    - enable_crowdsec_import | default(false)
-    - crowdsec_bouncer_creation is defined
-    - crowdsec_bouncer_creation.stdout is defined
-    - crowdsec_bouncer_creation.stdout | length > 0
-
-- name: Persist blocklist-import bouncer API key to file
-  ansible.builtin.copy:
-    content: "{{ crowdsec_blocklist_import_bouncer_key }}\n"
-    dest: /etc/crowdsec/blocklist-import.bouncer.key
-    owner: root
-    group: root
-    mode: "0600"
-  when:
-    - enable_crowdsec_import | default(false)
-    - crowdsec_blocklist_import_bouncer_key is defined
-    - crowdsec_blocklist_import_bouncer_key | length > 0
+# The machine and bouncer for the blocklist import are managed by the crowdsec_import role
 
 ## CrowdSec Ntfy and Profile Configuration
 

@@ -14,6 +14,7 @@ galaxy_info:
     - security
     - blocklist
 
+# The crowdsec role is not a dependency on purpose: it must already be applied
+# (enable_crowdsec: true), which is asserted at the start of this role's tasks.
 dependencies:
-  - role: crowdsec
   - role: python
