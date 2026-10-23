@@ -2,9 +2,9 @@ name: Lint Ansible
 
 "on":
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   lint:
@@ -23,16 +23,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install yamllint ansible ansible-lint pre-commit
 
-      - name: Yamllint (warnings allowed)
-        run: |
-          # Yamllint exits non-zero for errors only; we've configured most style issues as warnings.
-          yamllint -s .
+      - name: Yamllint (strict, warnings fail)
+        run: yamllint -s .
 
       - name: Ansible-lint
         env:
           ANSIBLE_DEPRECATION_WARNINGS: "false"
-        run: |
-          ansible-lint -v site.yml
+        run: ansible-lint -v site.yml
+
+      - name: Playbook syntax check
+        run: ansible-playbook --syntax-check -i localhost, site.yml
 
       - name: Pre-commit (format checks)
         run: |
