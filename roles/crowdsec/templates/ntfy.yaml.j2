@@ -21,7 +21,7 @@ url: https://{{ ntfy_server }}/{{ ntfy_topic }}
 method: POST
 headers:
   Content-Type: "text/plain"
-{% if ntfy_auth_token %}
+{% if ntfy_auth_token | default('') %}
   Authorization: "Bearer {{ ntfy_auth_token }}"
 {% endif %}
   Title: "Crowdsec Trigger"

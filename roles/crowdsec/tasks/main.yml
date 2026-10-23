@@ -144,7 +144,9 @@
   failed_when: false
 
 - name: Register Caddy bouncer with CrowdSec Local API
-  ansible.builtin.command: "cscli bouncers add caddy-bouncer -k {{ crowdsec_api_key }}"
+  ansible.builtin.command:
+    argv: [cscli, bouncers, add, caddy-bouncer, -k, "{{ crowdsec_api_key }}"]
+  no_log: true
   when:
     - enable_crowdsec | default(true)
     - "'caddy-bouncer' not in crowdsec_cscli_bouncers_list.stdout"
@@ -183,8 +185,15 @@
     dest: /etc/crowdsec/notifications/ntfy.yaml
     owner: root
     group: root
-    mode: "0644"
+    mode: "0600" # May contain the Ntfy auth token
   notify: Restart Crowdsec Service
+  when: ntfy_enabled | default(false)
+
+- name: Check installed CrowdSec parsers (if Ntfy enabled)
+  ansible.builtin.command: cscli parsers list -o json
+  register: crowdsec_cscli_parsers_list
+  changed_when: false
+  check_mode: false
   when: ntfy_enabled | default(false)
 
 - name: Install GeoIP enrichment parser (if Ntfy enabled)
@@ -196,7 +205,7 @@
   notify: Restart Crowdsec Service
   when:
     - ntfy_enabled | default(false)
-    - "'crowdsecurity/geoip-enrich' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
+    - "'crowdsecurity/geoip-enrich' not in (crowdsec_cscli_parsers_list.stdout | default(''))"
 
 - name: Create/update CrowdSec profiles.yaml for Ntfy or dynamic blocking
   ansible.builtin.template:
