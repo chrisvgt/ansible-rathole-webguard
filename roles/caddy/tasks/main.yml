@@ -51,10 +51,19 @@
   failed_when: false
   changed_when: false
 
+# Coraza is needed if it is enabled globally or if any active site sets a
+# coraza_mode other than 'off'. Caddyfile.j2 uses this fact as well, so the
+# plugin is always built whenever the rendered config references coraza_waf.
 - name: Determine if Coraza plugin needs to be built
   ansible.builtin.set_fact:
     caddy_coraza_needed: >-
-      {{ (enable_coraza_waf | default(false)) }}
+      {{ (enable_coraza_waf | default(false) | bool)
+         or (((enable_wildcard | default(false) | bool)
+              | ternary(wildcard_sites | default([]) | map(attribute='sites', default=[]) | flatten,
+                        caddy_sites | default([])))
+             | selectattr('coraza_mode', 'defined')
+             | rejectattr('coraza_mode', 'equalto', 'off')
+             | list | length > 0) }}
 
 - name: Build final Caddy plugin list
   ansible.builtin.set_fact:
@@ -66,7 +75,7 @@
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
             ], []))
-         + (caddy_coraza_needed | default(false) | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
+         + (caddy_coraza_needed | bool | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
          + (enable_rate_limit | default(true) | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
 
 - name: Compute hash of effective Caddy plugins
