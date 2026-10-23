@@ -1,0 +1,19 @@
+---
+# tests/check_mode_server.yml
+# Run by tests/run.sh with --check: a new server without key files must not fail
+
+- name: Check mode on a server without keys
+  hosts: srv
+  gather_facts: false
+  vars:
+    rathole_config_path: /nonexistent/rathole-test
+  tasks:
+    - name: Run tunnel derivation and secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: "{{ item }}"
+      loop: [tunnel, secrets]
+
+    - name: Check placeholders are used
+      ansible.builtin.assert:
+        that: rathole_server_config.transport.noise.local_private_key | length > 0

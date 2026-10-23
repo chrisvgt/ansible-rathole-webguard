@@ -9,3 +9,10 @@ rathole_config_file: "rathole.toml" # Name of the main Rathole configuration fil
 rathole_user: "rathole" # System user for the Rathole service
 rathole_group: "rathole" # System group for the Rathole service
 rathole_memory_max: "256M" # systemd MemoryMax for the Rathole service (hard memory limit)
+
+# --- Tunnel tuple mode (used when tunnel_services is defined) ---
+rathole_port: 2333 # Tunnel port the client connects to
+rathole_transport: # Transport for the tunnel; Noise keys are generated automatically
+  type: "noise"
+  noise:
+    pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"

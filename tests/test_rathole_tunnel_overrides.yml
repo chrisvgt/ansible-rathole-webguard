@@ -1,0 +1,22 @@
+---
+# tests/test_rathole_tunnel_overrides.yml
+# Port, listen address and public address can be overridden per tuple
+
+- name: Override tunnel addresses
+  hosts: tunnel_test
+  gather_facts: false
+  vars:
+    rathole_port: 62917
+    rathole_listen_addr: 203.0.113.10:62917
+    rathole_public_addr: vpn.example.net
+  tasks:
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check overridden addresses
+      ansible.builtin.assert:
+        that: >-
+          (rathole_role == 'server' and rathole_server_config.listen_addr == '203.0.113.10:62917')
+          or (rathole_role == 'client' and rathole_client_config.remote_addr == 'vpn.example.net:62917')

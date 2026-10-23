@@ -1,4 +1,5 @@
-# Variables that apply to all servers
+# Copy to group_vars/all.yml (gitignored). Global settings for all hosts;
+# settings that are missing fall back to the defaults shown here.
 
 # --- System maintenance (defaults shown, uncomment to change) ---
 # apt_upgrade_mode: "safe" # apt upgrade on every run: safe | full | dist | yes | no (no = skip)

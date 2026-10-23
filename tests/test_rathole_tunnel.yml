@@ -1,0 +1,67 @@
+---
+# tests/test_rathole_tunnel.yml
+# Rathole config is derived from tunnel_services and the inventory
+
+- name: Derive Rathole config from tunnel_services
+  hosts: tunnel_test
+  gather_facts: false
+  tasks:
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check server config
+      ansible.builtin.assert:
+        that:
+          - rathole_server_config.listen_addr == '0.0.0.0:2333'
+          - rathole_server_config.services | map(attribute='name') | list == ['web', 'stream', 'apex', 'rd-tcp', 'rd-udp']
+          - (rathole_server_config.services | selectattr('name', 'eq', 'web') | first).bind_addr == '127.0.0.1:2368'
+          - (rathole_server_config.services | selectattr('name', 'eq', 'rd-udp') | first).type == 'udp'
+          - (rathole_server_config.services | selectattr('name', 'eq', 'rd-tcp') | first).bind_addr == '0.0.0.0:21116'
+          - rathole_server_config.services | selectattr('local_addr', 'defined') | list | length == 0
+          - rathole_server_config.transport.type == 'noise'
+          - rathole_auto_secrets | bool
+      when: rathole_role == 'server'
+
+    - name: Check client config
+      ansible.builtin.assert:
+        that:
+          - rathole_client_config.remote_addr == '203.0.113.10:2333'
+          - (rathole_client_config.services | selectattr('name', 'eq', 'stream') | first).local_addr == '192.168.1.10:8096'
+          - rathole_client_config.services | selectattr('bind_addr', 'defined') | list | length == 0
+          - rathole_client_config.transport.type == 'noise'
+          - rathole_tunnel_server == 'srv'
+      when: rathole_role == 'client'
+
+    # The derived mapping must fit the template, not only the assertions above
+    - name: Add test secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: secrets
+      vars:
+        rathole_noise_private_key: test-private
+        rathole_noise_public_key: test-public
+        rathole_default_token: test-token
+
+    - name: Render rathole.toml
+      ansible.builtin.template:
+        src: ../roles/rathole/templates/rathole.toml.j2
+        dest: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/rathole-test-{{ inventory_hostname }}.toml"
+        mode: "0600"
+      register: rendered
+
+    - name: Check rendered rathole.toml
+      ansible.builtin.assert:
+        that: >-
+          (rathole_role == 'server'
+           and 'bind_addr = "0.0.0.0:2333"' in lookup('file', rendered.dest)
+           and '[server.services.rd-udp]' in lookup('file', rendered.dest))
+          or (rathole_role == 'client'
+           and 'remote_addr = "203.0.113.10:2333"' in lookup('file', rendered.dest)
+           and 'local_addr = "192.168.1.10:8096"' in lookup('file', rendered.dest))
+
+    - name: Remove rendered file
+      ansible.builtin.file:
+        path: "{{ rendered.dest }}"
+        state: absent

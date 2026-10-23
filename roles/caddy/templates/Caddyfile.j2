@@ -265,12 +265,136 @@ coraza_waf {
     `
 }
 {%- endmacro %}
+{#
+One site block for traditional mode, also used in wildcard mode for domains
+that the wildcard certificate does not cover.
+#}
+{% macro traditional_site(site) %}
+{{ site.domain }} {
+    route {
+        # === WebSocket detection (must be evaluated first) ===
+        # WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
+        # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
+        @websocket header Upgrade websocket
+        handle @websocket {
+            {% if enable_crowdsec | bool %}
+            crowdsec
+            {% endif %}
+            reverse_proxy localhost:{{ site.local_port }} {
+                header_up X-Request-ID {http.request.id}
+                header_up X-Forwarded-For {http.request.remote.host}
+                header_up X-Forwarded-Proto {http.request.scheme}
+                header_up X-Forwarded-Host {http.request.host}
+                {% if site.stream | default(false) %}
+                flush_interval -1
+                {% endif %}
+            }
+        }
+        # === Standard traffic: full security pipeline ===
+        handle {
+            {% if enable_crowdsec | bool %}
+            # 1. CrowdSec: blocks known bad IPs (cheapest check first)
+            crowdsec
+            {% endif %}
+            {% if enable_rate_limit | default(true) | bool %}
+            # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
+            rate_limit {
+                zone {{ site.name | default(site.domain | replace('.', '_')) }} {
+                    key "{http.request.remote.ip}"
+                    window {{ site.rate_limit_window | default('1m') }}
+                    events {{ site.rate_limit_events | default(500) }}
+                }
+            }
+            {% endif %}
+
+            {% set site_coraza_mode = site.coraza_mode | default(none) %}
+            {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
+                {% set effective_coraza_mode = site_coraza_mode %}
+                {% set site_has_waf = true %}
+            {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
+                {% set site_has_waf = false %}
+            {% else %}
+                {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
+                {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
+            {% endif %}
+            {% if site_has_waf %}
+            # 3. Coraza WAF: lightweight rules, low CPU
+            {{ coraza_directives(effective_coraza_mode, site.name) | indent(12) }}
+            {% endif %}
+            {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
+            # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
+            # Auto-disabled for stream: true sites (media streaming has binary payloads
+            # that AppSec cannot inspect, causing timeouts and 100% CPU).
+            appsec
+            {% endif %}
+            # 5. Reverse Proxy
+            {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
+            @forward_path path {{ site.forward_path }}*
+            reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
+                {% if site.forward_ip is defined %}
+                header_up X-Forwarded-For {{ site.forward_ip }}
+                {% endif %}
+                {% if site.stream | default(false) %}
+                flush_interval -1
+                {% endif %}
+                {% if site.proxy_timeout is defined %}
+                transport http {
+                    response_header_timeout {{ site.proxy_timeout }}
+                    dial_timeout {{ site.proxy_timeout }}
+                }
+                {% endif %}
+            }
+            {% endif %}
+            reverse_proxy localhost:{{ site.local_port }} {
+                header_up X-Request-ID {http.request.id}
+                header_up X-Forwarded-For {http.request.remote.host}
+                header_up X-Forwarded-Proto {http.request.scheme}
+                header_up X-Forwarded-Host {http.request.host}
+                {% if site.stream | default(false) %}
+                flush_interval -1
+                {% endif %}
+                {% if site.proxy_timeout is defined %}
+                transport http {
+                    response_header_timeout {{ site.proxy_timeout }}
+                    dial_timeout {{ site.proxy_timeout }}
+                }
+                {% endif %}
+            }
+        }
+    }
+    # Security headers
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+    }
+
+    # Caching headers for static media/metadata to reduce requests
+    # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
+    {% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
+    @static_assets path {{ cache_paths }}
+    header @static_assets Cache-Control "public, max-age=86400"
+    header @static_assets ETag {http.response.header.ETag}
+
+    # Access logging for this site
+    log {
+        format json
+        output file {{ site.log_file | default(caddy_log_dir ~ '/' ~ site.name ~ '.access.log') }} {
+            roll_size {{ site.log_roll_size | default('10mb') }}
+            roll_keep {{ site.log_roll_keep | default(10) }}
+            roll_keep_for {{ site.log_roll_keep_for | default('36h') }}
+        }
+    }
+}
+{% endmacro %}
 
 # === WILDCARD MODE (supporting multiple base domains) ===
 {% if enable_wildcard | default(false) | bool %}
 
 # Process each base domain separately (e.g., *.example.com, *.example.net)
-{% for base_domain_config in wildcard_sites | default([]) %}
+{% for base_domain_config in caddy_effective_wildcard_sites %}
 {% set base_domain = base_domain_config.domain %}
 {% set sites = base_domain_config.sites | default([]) %}
 
@@ -414,129 +538,14 @@ coraza_waf {
 }
 
 {% endfor %}
+{% for site in caddy_effective_extra_sites %}
+{{ traditional_site(site) }}
+{% endfor %}
 
 # === TRADITIONAL MODE (NO Wildcard) ===
 {% else %}
 
-{% for site in caddy_sites %}
-{{ site.domain }} {
-    route {
-        # === WebSocket detection (must be evaluated first) ===
-        # WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
-        # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
-        @websocket header Upgrade websocket
-        handle @websocket {
-            {% if enable_crowdsec | bool %}
-            crowdsec
-            {% endif %}
-            reverse_proxy localhost:{{ site.local_port }} {
-                header_up X-Request-ID {http.request.id}
-                header_up X-Forwarded-For {http.request.remote.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-Host {http.request.host}
-                {% if site.stream | default(false) %}
-                flush_interval -1
-                {% endif %}
-            }
-        }
-        # === Standard traffic: full security pipeline ===
-        handle {
-            {% if enable_crowdsec | bool %}
-            # 1. CrowdSec: blocks known bad IPs (cheapest check first)
-            crowdsec
-            {% endif %}
-            {% if enable_rate_limit | default(true) | bool %}
-            # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
-            rate_limit {
-                zone {{ site.name | default(site.domain | replace('.', '_')) }} {
-                    key "{http.request.remote.ip}"
-                    window {{ site.rate_limit_window | default('1m') }}
-                    events {{ site.rate_limit_events | default(500) }}
-                }
-            }
-            {% endif %}
-
-            {% set site_coraza_mode = site.coraza_mode | default(none) %}
-            {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
-                {% set effective_coraza_mode = site_coraza_mode %}
-                {% set site_has_waf = true %}
-            {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
-                {% set site_has_waf = false %}
-            {% else %}
-                {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
-                {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
-            {% endif %}
-            {% if site_has_waf %}
-            # 3. Coraza WAF: lightweight rules, low CPU
-            {{ coraza_directives(effective_coraza_mode, site.name) | indent(12) }}
-            {% endif %}
-            {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
-            # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
-            # Auto-disabled for stream: true sites (media streaming has binary payloads
-            # that AppSec cannot inspect, causing timeouts and 100% CPU).
-            appsec
-            {% endif %}
-            # 5. Reverse Proxy
-            {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
-            @forward_path path {{ site.forward_path }}*
-            reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
-                {% if site.forward_ip is defined %}
-                header_up X-Forwarded-For {{ site.forward_ip }}
-                {% endif %}
-                {% if site.stream | default(false) %}
-                flush_interval -1
-                {% endif %}
-                {% if site.proxy_timeout is defined %}
-                transport http {
-                    response_header_timeout {{ site.proxy_timeout }}
-                    dial_timeout {{ site.proxy_timeout }}
-                }
-                {% endif %}
-            }
-            {% endif %}
-            reverse_proxy localhost:{{ site.local_port }} {
-                header_up X-Request-ID {http.request.id}
-                header_up X-Forwarded-For {http.request.remote.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-Host {http.request.host}
-                {% if site.stream | default(false) %}
-                flush_interval -1
-                {% endif %}
-                {% if site.proxy_timeout is defined %}
-                transport http {
-                    response_header_timeout {{ site.proxy_timeout }}
-                    dial_timeout {{ site.proxy_timeout }}
-                }
-                {% endif %}
-            }
-        }
-    }
-    # Security headers
-    header {
-        X-Frame-Options "SAMEORIGIN"
-        X-Content-Type-Options "nosniff"
-        X-XSS-Protection "1; mode=block"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-    }
-
-    # Caching headers for static media/metadata to reduce requests
-    # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
-    {% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
-    @static_assets path {{ cache_paths }}
-    header @static_assets Cache-Control "public, max-age=86400"
-    header @static_assets ETag {http.response.header.ETag}
-
-    # Access logging for this site
-    log {
-        format json
-        output file {{ site.log_file | default(caddy_log_dir ~ '/' ~ site.name ~ '.access.log') }} {
-            roll_size {{ site.log_roll_size | default('10mb') }}
-            roll_keep {{ site.log_roll_keep | default(10) }}
-            roll_keep_for {{ site.log_roll_keep_for | default('36h') }}
-        }
-    }
-}
-
+{% for site in caddy_effective_sites %}
+{{ traditional_site(site) }}
 {% endfor %}
 {% endif %}

@@ -25,90 +25,67 @@ Caddy proxies each site to a local port on the VPS. Rathole binds that port to `
 
 ## Quickstart
 
-### 1. Inventory
+A **tuple** is one server (VPS) and one client (home server) connected by one tunnel. You configure a tuple in two places: a group in `inventory.ini` and one file `group_vars/tunnel_<name>.yml`. Global switches live in `group_vars/all.yml`.
+
+### 1. Copy the example files
 
 ```bash
 git clone https://github.com/chrisvgt/ansible-rathole-webguard.git
 cd ansible-rathole-webguard
-cp inventory.example.ini inventory.ini
+cp -n inventory.example.ini inventory.ini
+cp -n group_vars/all.example.yml group_vars/all.yml
+cp -n group_vars/tunnel.example.yml group_vars/tunnel_home.yml
 ```
+
+Only the `*.example*` files are tracked. Your copies (`inventory.ini`, everything else in `group_vars/` and `host_vars/`) are gitignored and are never committed.
+
+### 2. Inventory
 
 ```ini
-[webservers]
-server ansible_host=203.0.113.10 ansible_user=ubuntu
-client ansible_host=192.168.1.20 ansible_user=ubuntu
+[tunnel_home]
+vps ansible_host=203.0.113.10 rathole_role=server ansible_user=ubuntu
+home ansible_host=192.168.1.20 rathole_role=client ansible_user=ubuntu
+
+[webservers:children]
+tunnel_home
 ```
 
-The host names `server` and `client` select `host_vars/server.yml` and `host_vars/client.yml`. `host_vars/client.yml` refers to `hostvars['server']`, so rename both if you rename a host.
+The group name (`tunnel_home`) selects `group_vars/tunnel_home.yml`. The client connects to the server's `ansible_host`; set `rathole_public_addr` in the tuple file if the client must use another address. List the server first: on a new tuple the server creates the tunnel keys.
 
 `host_key_checking` is enabled in `ansible.cfg`. Connect to each host once with `ssh` and verify the fingerprint, so it is in `~/.ssh/known_hosts`.
 
-### 2. Server
+### 3. Services
 
-```bash
-cp host_vars/server.example.yml host_vars/server.yml
-```
-
-The essentials in `host_vars/server.yml`:
+In `group_vars/tunnel_home.yml`, set `tunnel_id` and list your services once:
 
 ```yaml
-rathole_role: "server"
+tunnel_id: home
 
-crowdsec_api_key: "{{ vault_crowdsec_api_key }}"
-
-caddy_sites:
+tunnel_services:
   - name: jellyfin
-    domain: "jellyfin.example.com"
-    local_port: 8096
-
-rathole_server_config:
-  listen_addr: "0.0.0.0:2333"
-  transport:
-    type: "noise"
-    noise:
-      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
-      local_private_key: "server_private_key_base64" # rathole --genkey
-  services:
-    - name: "jellyfin"
-      token: "a_long_random_token"
-      bind_addr: "127.0.0.1:8096" # Only reachable through Caddy
+    domain: jellyfin.example.com
+    local_addr: 192.168.1.10:8096 # Where the service runs, seen from the client
+    stream: true
 ```
 
-### 3. Client
-
-```bash
-cp host_vars/client.example.yml host_vars/client.yml
-```
-
-```yaml
-rathole_role: "client"
-rathole_client_config:
-  remote_addr: "{{ hostvars['server']['ansible_host'] }}:2333"
-  transport:
-    type: "noise"
-    noise:
-      pattern: "Noise_NK_25519_ChaChaPoly_BLAKE2s"
-      remote_public_key: "server_public_key_base64"
-  services:
-    - name: "jellyfin"
-      token: "a_long_random_token"
-      local_addr: "192.168.1.10:8096"
-```
-
-Service names and tokens must match on both sides.
+From this, the playbook builds the Rathole server and client configuration and the Caddy site. See [Services](#services) for all keys.
 
 ### 4. Secrets and run
 
 Put the secrets in place (see [Secrets](#secrets)), then:
 
 ```bash
-./scripts/run-playbook.sh --no-vault   # secrets in plaintext host_vars
+./scripts/run-playbook.sh --no-vault   # secrets in plaintext, gitignored files
 ./scripts/run-playbook.sh              # secrets in Ansible Vault, prompts for the password
 ```
 
 The script runs `ansible-playbook -i inventory.ini site.yml` with the matching vault option. Use `--vault-file <file>`, `--inventory <file>` or `--playbook <file>` to change the defaults.
 
-Open these ports on the server: 80 and 443 (Caddy), and the Rathole port (2333 in the examples).
+Open these ports on the server: 80 and 443 (Caddy), and the Rathole port (`rathole_port`, default 2333).
+
+### More tuples
+
+Add another group to `inventory.ini`, add it to `[webservers:children]`, and copy `group_vars/tunnel.example.yml` to `group_vars/tunnel_<group>.yml` with its own `tunnel_id`.
 
 ## Secrets
 
@@ -119,11 +96,13 @@ Open these ports on the server: 80 and 443 (Caddy), and the Rathole port (2333 i
 | `crowdsec_machine_password` | `vault_crowdsec_machine_password`   | `enable_crowdsec_import: true` |
 | `cloudflare_api_token`      | `vault_cloudflare_api_token_server` | `enable_cloudflare: true`      |
 
-Generate random values with `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`. The Rathole keys and tokens live in `rathole_server_config` / `rathole_client_config`.
+Generate random values with `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`.
 
-Two ways to store them:
+The tunnel needs no secrets from you. On the first run the server creates a Noise key pair and a default token in `/etc/rathole/` (`noise.key`, `noise.pub`, `default_token`, readable by root and the `rathole` group only). The client reads the public key and the token from its server, also with `--limit <client>`. To keep existing values, set `rathole_noise_private_key`, `rathole_noise_public_key` and `rathole_default_token` in the tuple file. To rotate, delete the three files on the server and run the playbook for both hosts.
 
-**Plaintext (simple).** `host_vars/*` is gitignored except the `*.example.yml` files. Replace each `"{{ vault_* }}"` in `host_vars/server.yml` with the value itself and run `./scripts/run-playbook.sh --no-vault`.
+Two ways to store the other secrets:
+
+**Plaintext (simple).** Replace each `"{{ vault_* }}"` in `group_vars/tunnel_<name>.yml` with the value itself and run `./scripts/run-playbook.sh --no-vault`. The file is gitignored.
 
 **Ansible Vault.** Keep the `"{{ vault_* }}"` references and define the values in an encrypted file:
 
@@ -139,7 +118,7 @@ vault_crowdsec_machine_password: "..."
 vault_cloudflare_api_token_server: "..."
 ```
 
-Run `./scripts/run-playbook.sh` (prompts) or `./scripts/run-playbook.sh --vault-file ~/.vault_pass`. Do not use `group_vars/all/vault.yml`: Ansible then ignores `group_vars/all.yml`. `vault.yml` and `.vault_pass*` are gitignored.
+Run `./scripts/run-playbook.sh` (prompts) or `./scripts/run-playbook.sh --vault-file ~/.vault_pass`. Do not create a directory with the same name as one of your files (`group_vars/all/`, `group_vars/tunnel_home/`): Ansible then ignores the file of that name.
 
 The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible writes it to `/etc/caddy/caddy.env` (root, mode 0600) on the server, and systemd passes it to Caddy. No manual env file is needed.
 
@@ -147,51 +126,39 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 
 ### Feature flags (`group_vars/all.yml`)
 
-| Variable                 | Default       | Effect                                                                                  |
-| ------------------------ | ------------- | --------------------------------------------------------------------------------------- |
-| `enable_crowdsec`        | `true`        | CrowdSec engine, firewall bouncer, AppSec and the Caddy bouncer plugin                  |
-| `enable_rate_limit`      | `true`        | Per-site rate limit (default 500 requests per minute per IP) and the ratelimit plugin   |
-| `enable_cloudflare`      | `false`       | Cloudflare DNS-01 challenge for all certificates (plugin + `cloudflare_api_token`)      |
-| `enable_wildcard`        | `false`       | Serve `wildcard_sites` instead of `caddy_sites`. Requires `enable_cloudflare`           |
-| `enable_coraza_waf`      | `false`       | WAF for every site that does not set `coraza_mode` itself                               |
-| `coraza_mode_default`    | `recommended` | WAF mode used by `enable_coraza_waf`                                                    |
-| `enable_crowdsec_import` | `false`       | Hourly import of public blocklists into CrowdSec. Requires `enable_crowdsec`            |
-| `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file                                  |
-| `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip         |
-| `enable_auto_reboot`     | `true`        | Reboot only if `/var/run/reboot-required` exists. `false` only reports a pending reboot |
+| Variable                 | Default       | Effect                                                                                            |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------- |
+| `enable_crowdsec`        | `true`        | CrowdSec engine, firewall bouncer, AppSec and the Caddy bouncer plugin                            |
+| `enable_rate_limit`      | `true`        | Per-site rate limit (default 500 requests per minute per IP) and the ratelimit plugin             |
+| `enable_cloudflare`      | `false`       | Cloudflare DNS-01 challenge for all certificates (plugin + `cloudflare_api_token`)                |
+| `enable_wildcard`        | `false`       | One wildcard certificate per base domain, see [Services](#services). Requires `enable_cloudflare` |
+| `enable_coraza_waf`      | `false`       | WAF for every site that does not set `coraza_mode` itself                                         |
+| `coraza_mode_default`    | `recommended` | WAF mode used by `enable_coraza_waf`                                                              |
+| `enable_crowdsec_import` | `false`       | Hourly import of public blocklists into CrowdSec. Requires `enable_crowdsec`                      |
+| `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file                                            |
+| `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip                   |
+| `enable_auto_reboot`     | `true`        | Reboot only if `/var/run/reboot-required` exists. `false` only reports a pending reboot           |
 
-Flags can be overridden per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
+Without `group_vars/all.yml` these defaults apply. Flags can also be set per tuple in `group_vars/tunnel_<name>.yml` or per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
 
-Server options in `host_vars/server.yml`: `ntfy_enabled` (CrowdSec alerts via ntfy), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `host_vars/server.example.yml`.
+Server options in the tuple file: `ntfy_enabled` (CrowdSec alerts via ntfy), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `group_vars/tunnel.example.yml`.
 
-### Caddy sites
+### Services
 
-Which list Caddy serves depends on `enable_wildcard`:
+Each entry in `tunnel_services`:
 
-| `enable_wildcard` | `enable_cloudflare` | Sites from       | Certificates                                                     |
-| ----------------- | ------------------- | ---------------- | ---------------------------------------------------------------- |
-| `false`           | `false`             | `caddy_sites`    | One per domain, HTTP/TLS-ALPN challenge (ports 80/443 reachable) |
-| `false`           | `true`              | `caddy_sites`    | One per domain, Cloudflare DNS-01 challenge                      |
-| `true`            | `true`              | `wildcard_sites` | One wildcard certificate per base domain, Cloudflare DNS-01      |
-| `true`            | `false`             | -                | Rejected by the preflight check                                  |
+| Key                                  | Required | Effect                                                                                               |
+| ------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------- |
+| `name`                               | yes      | Unique service name                                                                                  |
+| `local_addr`                         | yes      | Where the service runs, seen from the client (`192.168.1.10:8096`)                                   |
+| `bind_addr`                          | no       | Where Rathole exposes it on the server, default `127.0.0.1:<port of local_addr>`. Caddy proxies here |
+| `domain`                             | no       | One domain or a list. Without a domain the service is tunnel-only (no Caddy site)                    |
+| `type`                               | no       | `tcp` (default) or `udp`                                                                             |
+| `token`, `nodelay`, `retry_interval` | no       | Rathole settings for this service                                                                    |
 
-`caddy_sites` entries use `domain` and `local_port`. `wildcard_sites` groups entries by base domain and uses `subdomain` and `port`:
+Keep `bind_addr` on `127.0.0.1` for web services, so they are only reachable through Caddy. Use `0.0.0.0:<port>` only for tunnel-only services that must be reachable directly (VPN, game servers). The same port may be used once for `tcp` and once for `udp`.
 
-```yaml
-caddy_sites:
-  - name: blog # Also used for the log file and rate limit zone
-    domain: "blog.example.com"
-    local_port: 2368
-
-wildcard_sites:
-  - domain: "*.example.com"
-    sites:
-      - name: blog
-        subdomain: "blog" # blog.example.com
-        port: 2368
-```
-
-Optional per-site keys (both lists):
+All other keys are Caddy site options:
 
 | Key                                                                 | Effect                                                                                |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -202,9 +169,25 @@ Optional per-site keys (both lists):
 | `cache_paths`                                                       | Paths that get `Cache-Control: max-age=86400` (Jellyfin defaults)                     |
 | `proxy_timeout`                                                     | Dial and response header timeout for the backend                                      |
 | `enable_forward`, `forward_path`, `forward_path_port`, `forward_ip` | Send `forward_path*` to another local port, optionally with a fixed `X-Forwarded-For` |
-| `log_file`, `log_roll_size`, `log_roll_keep`, `log_roll_keep_for`   | Access log settings (`caddy_sites` only)                                              |
+| `log_file`, `log_roll_size`, `log_roll_keep`, `log_roll_keep_for`   | Access log settings (traditional mode only)                                           |
+
+How Caddy serves the domains depends on `enable_wildcard`:
+
+|                                  | `enable_wildcard: false`                           | `enable_wildcard: true` (requires `enable_cloudflare`)           |
+| -------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------- |
+| Site blocks                      | One per domain                                     | One per base domain (`*.example.com`), one handler per subdomain |
+| Certificates                     | One per domain, HTTP/TLS-ALPN or Cloudflare DNS-01 | One wildcard certificate per base domain, Cloudflare DNS-01      |
+| Access log                       | One per site                                       | One per base domain                                              |
+| Unknown subdomain                | -                                                  | `404 Service not found`                                          |
+| `example.com`, `a.b.example.com` | One per domain                                     | Own site block (not covered by `*.example.com`)                  |
+
+A service with several domains gets one site per domain, named `<name>_<domain>` (dots replaced by `_`). Site names are used for log files and rate limit zones.
 
 WebSocket upgrades skip rate limiting, WAF and AppSec (they cannot inspect the stream); the CrowdSec IP check still applies.
+
+### Legacy configuration
+
+Configurations from older versions keep working: `rathole_server_config` / `rathole_client_config` and `caddy_sites` / `wildcard_sites` in `host_vars/<host>.yml`, with `rathole_role` per host. A host uses either `tunnel_services` or these variables, not both; the preflight check stops otherwise. To migrate, move the services of both hosts into one `tunnel_services` list and keep the existing keys and token with `rathole_noise_private_key`, `rathole_noise_public_key` and `rathole_default_token`, so the running tunnel does not change.
 
 ### Small host tuning (`system` role)
 
@@ -220,7 +203,7 @@ The role runs before Caddy, so swap is available for the Caddy build.
 
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian-based OS, `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`. The roles also check that `rathole_server_config` / `rathole_client_config` exist, that the CPU architecture is supported and that the import password is set.
+1. **Preflight checks** (before anything changes): Debian-based OS, `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once, both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, and `rathole` on both hosts.
 4. **Reboot** if `/var/run/reboot-required` exists and `enable_auto_reboot` is true.
@@ -267,7 +250,7 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables f
 - installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, version pinned by `crowdsec_import_version`
 - runs as the system user `crowdsec-import` from a sandboxed systemd service and timer
 - creates its own LAPI machine and bouncer; you only set `crowdsec_machine_password`
-- feeds can be switched off one by one (`crowdsec_enable_*`, see `host_vars/server.example.yml`)
+- feeds can be switched off one by one (`crowdsec_enable_*`, see `group_vars/tunnel.example.yml`)
 
 ## Rathole
 
@@ -278,7 +261,7 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables f
 | `websocket` | with `tls: true`  | For networks that only allow HTTP(S)  |
 | `tcp`       | no                | Only for trusted networks             |
 
-Generate Noise keys with `rathole --genkey`. On the server, bind services to `127.0.0.1` so they are only reachable through Caddy.
+With `tunnel_services` the transport is `noise` and the keys are generated automatically (see [Secrets](#secrets)). Set `rathole_transport` in the tuple file to use another transport. On the server, bind web services to `127.0.0.1` so they are only reachable through Caddy.
 
 The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `ProtectSystem=strict`). Files it needs, such as TLS certificates, must not be under `/home`; `/etc/rathole` works.
 
@@ -290,7 +273,7 @@ The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `Prot
 
 ## Updating
 
-Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be overridden in `group_vars/all.yml` or `host_vars/<host>.yml`, without editing role code:
+Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be overridden in `group_vars/all.yml`, `group_vars/tunnel_<name>.yml` or `host_vars/<host>.yml`, without editing role code:
 
 | Variable                  | Component                 |
 | ------------------------- | ------------------------- |
@@ -347,10 +330,12 @@ sudo journalctl -u crowdsec-blocklist-import.service
 ├── ansible.cfg
 ├── inventory.example.ini       # Copy to inventory.ini
 ├── site.yml                    # Main playbook (preflight, upgrade, roles, reboot)
-├── group_vars/all.yml          # Feature flags
-├── host_vars/
-│   ├── server.example.yml      # Copy to server.yml
-│   └── client.example.yml      # Copy to client.yml
+├── group_vars/
+│   ├── all.example.yml         # Copy to all.yml: feature flags
+│   └── tunnel.example.yml      # Copy to tunnel_<name>.yml: one tuple
+├── host_vars/                  # Optional per-host overrides
+├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
+├── tests/                      # Derivation tests (tests/run.sh)
 ├── roles/
 │   ├── system/                 # journald limit, optional swap
 │   ├── caddy/                  # Caddy build, Caddyfile, service

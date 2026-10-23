@@ -1,0 +1,26 @@
+---
+# tests/test_rathole_tunnel_rejects_single_noise_key.yml
+# only one of the two Noise keys
+
+- name: Reject only one of the two Noise keys
+  hosts: srv
+  gather_facts: false
+  vars:
+    rathole_noise_private_key: only-private
+  tasks:
+    - name: Run tunnel derivation
+      block:
+        - name: Run tunnel derivation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'must be set together' in rejected_msg"
