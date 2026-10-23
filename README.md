@@ -285,6 +285,8 @@ Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be 
 
 Then run the playbook again. CrowdSec and system packages are updated by `apt` on every run.
 
+With the [Renovate](https://github.com/apps/renovate) app installed on the repository, `renovate.json` opens a pull request against `develop` whenever one of these versions, a GitHub Action or a pre-commit hook has a new release (weekly, Monday morning). A version set in your own files overrides the role default, so remove such overrides to follow these updates.
+
 ### Upgrading existing hosts
 
 Hosts deployed with an older version of this playbook need a few one-time manual steps on the server:
