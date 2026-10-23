@@ -1,0 +1,62 @@
+---
+# roles/rathole/tasks/tunnel_validate.yml
+# Checks for tunnel_services. site.yml runs them before any role changes the
+# host; tunnel.yml runs them again so the role also works on its own.
+
+- name: Validate tunnel tuple settings
+  ansible.builtin.assert:
+    that:
+      - tunnel_id is defined
+      - tunnel_services is sequence
+      - tunnel_services | selectattr('name', 'undefined') | list | length == 0
+      - tunnel_services | selectattr('local_addr', 'undefined') | list | length == 0
+      - tunnel_services | map(attribute='name') | unique | list | length == tunnel_services | length
+    fail_msg: >-
+      tunnel_services needs tunnel_id, and every service needs a unique name and a local_addr.
+    quiet: true
+
+- name: Ensure tunnel mode is not mixed with legacy settings
+  ansible.builtin.assert:
+    that: lookup('ansible.builtin.varnames', '^' ~ item ~ '$') | length == 0
+    fail_msg: "{{ item }} cannot be used together with tunnel_services. Move its entries into tunnel_services."
+    quiet: true
+  loop:
+    - rathole_server_config
+    - rathole_client_config
+    - caddy_sites
+    - wildcard_sites
+  when: not (rathole_auto_secrets | default(false) | bool)
+
+- name: Find hosts of this tunnel tuple
+  ansible.builtin.set_fact:
+    rathole_tuple_servers: >-
+      {{ groups['all'] | map('extract', hostvars) | selectattr('tunnel_id', 'defined')
+         | selectattr('tunnel_id', 'eq', tunnel_id) | selectattr('rathole_role', 'defined')
+         | selectattr('rathole_role', 'eq', 'server') | map(attribute='inventory_hostname') | list }}
+    rathole_tuple_clients: >-
+      {{ groups['all'] | map('extract', hostvars) | selectattr('tunnel_id', 'defined')
+         | selectattr('tunnel_id', 'eq', tunnel_id) | selectattr('rathole_role', 'defined')
+         | selectattr('rathole_role', 'eq', 'client') | map(attribute='inventory_hostname') | list }}
+
+- name: Ensure the tuple has one server and at most one client
+  ansible.builtin.assert:
+    that:
+      - rathole_tuple_servers | length == 1
+      - rathole_tuple_clients | length <= 1
+    fail_msg: >-
+      Tunnel '{{ tunnel_id }}' needs exactly one host with rathole_role=server and at most one client
+      (servers: {{ rathole_tuple_servers }}, clients: {{ rathole_tuple_clients }}).
+    quiet: true
+
+- name: Ensure each bind address and protocol is used once
+  ansible.builtin.assert:
+    that: rathole_tunnel_bind_keys | unique | length == rathole_tunnel_bind_keys | length
+    fail_msg: "Two services in tunnel '{{ tunnel_id }}' use the same bind_addr and type."
+    quiet: true
+  vars:
+    rathole_tunnel_bind_keys: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for s in tunnel_services -%}
+        {%- set ns.out = ns.out + [(s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', '')))) ~ '/' ~ (s.type | default('tcp'))] -%}
+      {%- endfor -%}
+      {{ ns.out }}

@@ -3,7 +3,7 @@
 # Defaults for the global settings in group_vars/all.yml, so a checkout without
 # that file behaves the same. Values that are set anywhere are kept.
 
-- name: Apply defaults for global settings
+- name: Set defaults for global settings
   ansible.builtin.set_fact:
     enable_rate_limit: "{{ enable_rate_limit | default(true) | bool }}"
     enable_cloudflare: "{{ enable_cloudflare | default(false) | bool }}"

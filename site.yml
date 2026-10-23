@@ -7,8 +7,9 @@
 
   pre_tasks:
     # group_vars/all.yml is optional; missing settings get their documented defaults
+    # Static import, so the defaults also apply when only some tags are selected
     - name: Apply defaults for global settings
-      ansible.builtin.include_tasks: tasks/global_defaults.yml
+      ansible.builtin.import_tasks: tasks/global_defaults.yml
       tags: [always]
 
     - name: Ensure this playbook is only executed on Debian-based systems
@@ -60,6 +61,13 @@
       when:
         - rathole_role == 'server'
         - not (enable_wildcard | bool)
+      tags: [always]
+
+    - name: Validate tunnel tuple settings before changing anything
+      ansible.builtin.import_role:
+        name: rathole
+        tasks_from: tunnel_validate
+      when: (tunnel_services | default(none)) is not none
       tags: [always]
 
     - name: Validate that CrowdSec import has CrowdSec enabled

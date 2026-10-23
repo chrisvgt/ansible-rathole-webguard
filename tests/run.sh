@@ -10,6 +10,9 @@ for test in tests/test_*.yml; do
   ansible-playbook -i tests/hosts.ini "$test"
 done
 
+echo "== site.yml task order"
+./tests/check_site_order.sh
+
 # Example files, copied the way the README describes
 example_dir=$(mktemp -d)
 trap 'rm -rf "$example_dir"' EXIT
