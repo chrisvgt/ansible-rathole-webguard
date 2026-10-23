@@ -1,3 +1,4 @@
+---
 # roles/crowdsec_import/tasks/main.yml
 
 # --- CrowdSec Blocklist Import Role: Installation and Configuration ---
@@ -67,7 +68,7 @@
   when: >-
     (crowdsec_import_installed_version.stdout | default('') | trim | regex_search('[0-9][0-9.]*$'))
     != (crowdsec_import_version | regex_replace('^v', ''))
-  notify: Restart crowdsec-blocklist-import service
+  notify: Restart CrowdSec Blocklist Import
 
 ## Directories
 
@@ -189,7 +190,7 @@
     group: "{{ crowdsec_import_user }}"
     mode: "0640"
   diff: false
-  notify: Restart and enable crowdsec-blocklist-import timer
+  notify: Restart CrowdSec Blocklist Import Timer
 
 - name: Install systemd service for crowdsec-blocklist-import
   ansible.builtin.template:
@@ -198,7 +199,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart and enable crowdsec-blocklist-import timer
+  notify: Restart CrowdSec Blocklist Import Timer
 
 - name: Install systemd timer for crowdsec-blocklist-import
   ansible.builtin.template:
@@ -207,7 +208,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart and enable crowdsec-blocklist-import timer
+  notify: Restart CrowdSec Blocklist Import Timer
 
 - name: Reload systemd and enable timer
   ansible.builtin.systemd:

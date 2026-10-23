@@ -1,3 +1,4 @@
+---
 # roles/go_lang/tasks/main.yml
 
 - name: Ensure Go supports this platform

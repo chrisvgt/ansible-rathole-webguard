@@ -7,27 +7,27 @@
     # These plugins have no built-in order, so they must be declared here to be
     # usable inside `handle` blocks. Order reflects the security pipeline:
     # crowdsec (IP rep) -> rate_limit -> coraza_waf -> appsec -> reverse_proxy
-    {% if enable_crowdsec %}
+    {% if enable_crowdsec | bool %}
     order crowdsec first
     {% endif %}
-    {% if enable_rate_limit | default(true) %}
+    {% if enable_rate_limit | default(true) | bool %}
     order rate_limit before basicauth
     {% endif %}
     {#
     Order directive needed if ANY site has WAF enabled (global or per-site via coraza_mode).
     caddy_coraza_needed is computed in tasks/main.yml (same fact decides the plugin build).
     #}
-    {% if enable_crowdsec %}
+    {% if enable_crowdsec | bool %}
     order appsec before reverse_proxy
     {% endif %}
     {% if caddy_coraza_needed | bool %}
     order coraza_waf before appsec
     {% endif %}
-    {% if enable_rate_limit | default(true) and caddy_coraza_needed | bool %}
+    {% if enable_rate_limit | default(true) | bool and caddy_coraza_needed | bool %}
     order rate_limit before coraza_waf
     {% endif %}
 
-    {% if enable_crowdsec %}
+    {% if enable_crowdsec | bool %}
     crowdsec {
         {# Fallbacks match roles/crowdsec/defaults/main.yml, so this role also works on its own #}
         api_url http://{{ crowdsec_lapi_ip | default('127.0.0.1') }}:{{ crowdsec_lapi_port | default('8080') }}
@@ -38,7 +38,7 @@
     }
     {% endif %}
 
-    {% if enable_cloudflare %}
+    {% if enable_cloudflare | default(false) | bool %}
     # Token comes from the systemd EnvironmentFile ({{ caddy_env_file }})
     acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     {% endif %}
@@ -93,13 +93,13 @@ coraza_waf {
             "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
 
         # Static file whitelist: skip WAF for all GET static assets
-        {% if coraza_file_whitelist_enabled | default(true) %}
+        {% if coraza_file_whitelist_enabled | default(true) | bool %}
         SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
             SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|mp4|webm|ogg|mp3|m3u8|ts|wasm|pdf|txt|csv') }})$" "t:none"
         {% endif %}
 
         # Block dangerous file uploads
-        {% if coraza_block_uploads | default(false) %}
+        {% if coraza_block_uploads | default(false) | bool %}
         {% set upload_blocklist = coraza_upload_blocklist | default(['php','phtml','phar','exe','jar','war','dmg','msi','vbs','ps1','sh','bat','com','scr','pif','aspx','cer','cfm','cgi','pl','py','rb','jsp']) %}
         SecRule FILES_NAMES|FILES "@rx \.({{ upload_blocklist | join('|') }})$" \
             "id:100021,phase:2,deny,t:none,t:lowercase,msg:'Blocked dangerous file upload',severity:CRITICAL"
@@ -120,7 +120,7 @@ coraza_waf {
             "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
 
         # Static file whitelist: skip WAF for GET on static assets
-        {% if coraza_file_whitelist_enabled | default(true) %}
+        {% if coraza_file_whitelist_enabled | default(true) | bool %}
         SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
             SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
         {% endif %}
@@ -158,7 +158,7 @@ coraza_waf {
             "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
 
         # Static file whitelist
-        {% if coraza_file_whitelist_enabled | default(true) %}
+        {% if coraza_file_whitelist_enabled | default(true) | bool %}
         SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
             SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
         {% endif %}
@@ -206,7 +206,7 @@ coraza_waf {
             "id:100010,phase:1,deny,log,msg:'Disallowed HTTP method',severity:WARNING"
 
         # Static file whitelist (only common static extensions)
-        {% if coraza_file_whitelist_enabled | default(true) %}
+        {% if coraza_file_whitelist_enabled | default(true) | bool %}
         SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
             SecRule REQUEST_URI "@rx \.(css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv)$" "t:none"
         {% endif %}
@@ -252,7 +252,7 @@ coraza_waf {
         {% endif %}
 
         # === AUDIT LOG (all modes) ===
-        {% if coraza_audit_log_enabled | default(true) %}
+        {% if coraza_audit_log_enabled | default(true) | bool %}
         SecAuditEngine RelevantOnly
         # Header, request headers and trailer only (no bodies) to keep the log small.
         # Separate dir so CrowdSec's /var/log/caddy/*.log glob does not pick it up;
@@ -267,7 +267,7 @@ coraza_waf {
 {%- endmacro %}
 
 # === WILDCARD MODE (supporting multiple base domains) ===
-{% if enable_wildcard | default(false) %}
+{% if enable_wildcard | default(false) | bool %}
 
 # Process each base domain separately (e.g., *.example.com, *.example.net)
 {% for base_domain_config in wildcard_sites | default([]) %}
@@ -299,7 +299,7 @@ coraza_waf {
             # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
             @{{ site.name }}_ws header Upgrade websocket
             handle @{{ site.name }}_ws {
-                {% if enable_crowdsec %}
+                {% if enable_crowdsec | bool %}
                 crowdsec
                 {% endif %}
                 reverse_proxy localhost:{{ site.port }} {
@@ -314,11 +314,11 @@ coraza_waf {
             }
             # === Standard traffic: full security pipeline ===
             handle {
-                {% if enable_crowdsec %}
+                {% if enable_crowdsec | bool %}
                 # 1. CrowdSec: blocks known bad IPs (cheapest check first)
                 crowdsec
                 {% endif %}
-                {% if enable_rate_limit | default(true) %}
+                {% if enable_rate_limit | default(true) | bool %}
                 # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
                 rate_limit {
                     zone {{ site_id }} {
@@ -336,7 +336,7 @@ coraza_waf {
                 {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
                     {% set site_has_waf = false %}
                 {% else %}
-                    {% set site_has_waf = enable_coraza_waf | default(false) %}
+                    {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
                     {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
                 {% endif %}
                 {% if site_has_waf %}
@@ -344,7 +344,7 @@ coraza_waf {
                 {{ coraza_directives(effective_coraza_mode, site_id) | indent(16) }}
                 {% endif %}
 
-                {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
+                {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
                 # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
                 # Auto-disabled for stream: true sites (media streaming has binary payloads
                 # that AppSec cannot inspect, causing timeouts and 100% CPU).
@@ -426,7 +426,7 @@ coraza_waf {
         # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
         @websocket header Upgrade websocket
         handle @websocket {
-            {% if enable_crowdsec %}
+            {% if enable_crowdsec | bool %}
             crowdsec
             {% endif %}
             reverse_proxy localhost:{{ site.local_port }} {
@@ -441,11 +441,11 @@ coraza_waf {
         }
         # === Standard traffic: full security pipeline ===
         handle {
-            {% if enable_crowdsec %}
+            {% if enable_crowdsec | bool %}
             # 1. CrowdSec: blocks known bad IPs (cheapest check first)
             crowdsec
             {% endif %}
-            {% if enable_rate_limit | default(true) %}
+            {% if enable_rate_limit | default(true) | bool %}
             # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
             rate_limit {
                 zone {{ site.name | default(site.domain | replace('.', '_')) }} {
@@ -463,14 +463,14 @@ coraza_waf {
             {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
                 {% set site_has_waf = false %}
             {% else %}
-                {% set site_has_waf = enable_coraza_waf | default(false) %}
+                {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
                 {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
             {% endif %}
             {% if site_has_waf %}
             # 3. Coraza WAF: lightweight rules, low CPU
             {{ coraza_directives(effective_coraza_mode, site.name) | indent(12) }}
             {% endif %}
-            {% if enable_crowdsec and not site.disable_appsec | default(false) and not site.stream | default(false) %}
+            {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
             # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
             # Auto-disabled for stream: true sites (media streaming has binary payloads
             # that AppSec cannot inspect, causing timeouts and 100% CPU).
