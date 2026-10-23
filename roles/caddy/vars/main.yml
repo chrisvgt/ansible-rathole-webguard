@@ -23,5 +23,12 @@ caddy_env_file: "{{ caddy_config_dir }}/caddy.env" # Root-only environment file 
 # Core plugins based on enable flags are resolved at runtime in tasks.
 caddy_plugins: []
 
+# --- Caddy Build (xcaddy) ---
+# Temporary build dir, removed after each build. /var/tmp instead of /tmp
+# because /tmp is often a RAM-backed tmpfs on small hosts.
+caddy_build_dir: /var/tmp/caddy-build
+caddy_build_jobs: 1 # Parallel Go compile jobs (go build -p); 1 keeps peak RAM low on 2 GB hosts
+caddy_build_gogc: 50 # Go GC target for the compiler; lower = less memory, slightly slower build
+
 # File to record the hash of the effective Caddy plugin list to trigger rebuilds when it changes
 caddy_plugins_hash_file: "{{ caddy_data_dir }}/.plugins.sha1"

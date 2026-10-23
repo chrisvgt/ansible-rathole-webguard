@@ -1,11 +1,10 @@
 # roles/caddy/tasks/main.yml
 
+# Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is needed
 - name: Install Caddy build dependencies
   ansible.builtin.apt:
     name:
       - git
-      - build-essential
-      - apt-transport-https
       - curl
     state: present
     update_cache: true
@@ -91,25 +90,46 @@
   failed_when: false
   changed_when: false
 
-- name: Build Caddy with specified plugins using xcaddy
-  ansible.builtin.command:
-    cmd: >-
-      /usr/local/bin/xcaddy build v{{ caddy_version }}
-      --output {{ caddy_install_path }}
-      {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
-  environment:
-    PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_facts['env'].PATH }}"
-    GOPATH: "/root/go"
-    # Speed up Go build with parallel compilation
-    GOMAXPROCS: "{{ ansible_facts['processor_cores'] | default(4) }}"
-    GOFLAGS: "-mod=mod -v"
-  notify: Restart Caddy Service
-  changed_when: true
+# Only rebuild when the Caddy version or the plugin list changed. All Go
+# caches live in caddy_build_dir and are removed afterwards, even on failure.
+- name: Build Caddy with xcaddy
   when: >-
     ((caddy_version_check.stdout | default('') | regex_search('v([0-9.]+)', '\\1') | default(''))
     != (caddy_version | string))
     or
     ((caddy_plugins_hash_prev.content | default('') | b64decode | trim) != caddy_plugins_hash)
+  block:
+    - name: Create temporary Caddy build directory
+      ansible.builtin.file:
+        path: "{{ caddy_build_dir }}/tmp"
+        state: directory
+        mode: "0700"
+
+    - name: Build Caddy with specified plugins using xcaddy
+      ansible.builtin.command:
+        cmd: >-
+          /usr/local/bin/xcaddy build v{{ caddy_version }}
+          --output {{ caddy_install_path }}
+          {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
+      environment:
+        PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_facts['env'].PATH }}"
+        # All plugins are pure Go: static binary, no C toolchain required
+        CGO_ENABLED: "0"
+        # Keep module cache, build cache and temp files out of /root and /tmp
+        GOPATH: "{{ caddy_build_dir }}/go"
+        GOCACHE: "{{ caddy_build_dir }}/cache"
+        TMPDIR: "{{ caddy_build_dir }}/tmp"
+        # Limit parallel compile jobs and GC headroom so small hosts don't run out of memory
+        GOFLAGS: "-mod=mod -p={{ caddy_build_jobs }}"
+        GOGC: "{{ caddy_build_gogc }}"
+      notify: Restart Caddy Service
+      changed_when: true
+
+  always:
+    - name: Remove temporary Caddy build directory
+      ansible.builtin.file:
+        path: "{{ caddy_build_dir }}"
+        state: absent
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
@@ -185,28 +205,12 @@
     state: started
   become: true
 
-- name: Clean up temporary Caddy build files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "/tmp/caddy_build"
-    - "/tmp/caddy_plugins"
-  changed_when: false
-
-- name: Remove Caddy build dependencies (apt packages) to save disk space
-  ansible.builtin.apt:
-    name:
-      - build-essential
-      - apt-transport-https
-    state: absent
-    purge: true
-    autoremove: true
-
-- name: Clean up Go module cache used for Caddy build
+# Earlier versions of this role built in /root and never cleaned the build cache
+- name: Remove Go caches left behind by previous Caddy builds
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
     - "/root/go/pkg/mod"
     - "/root/go/bin"
+    - "/root/.cache/go-build"
