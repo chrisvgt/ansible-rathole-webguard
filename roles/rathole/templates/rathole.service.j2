@@ -13,6 +13,33 @@ Restart=on-failure
 RestartSec=5s
 ExecStart={{ rathole_install_path }}/{{ rathole_binary_name }} {% if rathole_role == "client" %}-c{% else %}-s{% endif %} {{ rathole_config_path }}/{{ rathole_config_file }}
 LimitNOFILE=1048576
+MemoryMax={{ rathole_memory_max }}
+
+# --- Sandboxing ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+{% if rathole_privileged_ports | bool %}
+# A configured bind address uses a port below 1024
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+{% else %}
+CapabilityBoundingSet=
+{% endif %}
 
 [Install]
 WantedBy=multi-user.target
