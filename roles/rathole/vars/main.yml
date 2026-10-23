@@ -2,6 +2,7 @@
 # roles/rathole/vars/main.yml
 
 rathole_binary_name: "rathole" # Name of the Rathole executable (fixed by the release assets)
+rathole_config_path_default: "/etc/rathole" # Default of rathole_config_path, used to find the server's secrets
 
 # Map Ansible architecture to Rathole release target triples (Linux)
 # Based on available assets like:

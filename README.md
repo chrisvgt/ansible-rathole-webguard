@@ -50,7 +50,7 @@ home ansible_host=192.168.1.20 rathole_role=client ansible_user=ubuntu
 tunnel_home
 ```
 
-The group name (`tunnel_home`) selects `group_vars/tunnel_home.yml`. The client connects to the server's `ansible_host`; set `rathole_public_addr` in the tuple file if the client must use another address. List the server first: on a new tuple the server creates the tunnel keys.
+The group name (`tunnel_home`) selects `group_vars/tunnel_home.yml`. The client connects to the server's `ansible_host` (or its inventory name if there is none; IPv6 works too); set `rathole_public_addr` in the tuple file if the client must use another address. List the server first: on a new tuple the server creates the tunnel keys.
 
 `host_key_checking` is enabled in `ansible.cfg`. Connect to each host once with `ssh` and verify the fingerprint, so it is in `~/.ssh/known_hosts`.
 
@@ -203,7 +203,7 @@ The role runs before Caddy, so swap is available for the Caddy build.
 
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian-based OS, `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once, both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
+1. **Preflight checks** (before anything changes): Debian-based OS, `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, and `rathole` on both hosts.
 4. **Reboot** if `/var/run/reboot-required` exists and `enable_auto_reboot` is true.
