@@ -81,6 +81,13 @@
       tags: [base]
 
   roles:
+    # Small-host tuning (journald size limit, optional swap file).
+    # Runs first so swap is available before the memory-hungry Caddy build.
+    # Set 'enable_system_tuning: false' to skip it (default: true).
+    - role: system
+      when: enable_system_tuning | default(true) | bool
+      tags: system
+
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
     # Dependencies (go_lang, xcaddy) run first, once, via the caddy role's meta/main.yml.

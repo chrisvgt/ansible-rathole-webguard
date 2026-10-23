@@ -1,0 +1,13 @@
+# roles/system/defaults/main.yml
+
+# --- Small-host tuning (journald size limit, optional swap) ---
+# The whole role is toggled in site.yml via 'enable_system_tuning' (default: true)
+
+# Journald
+system_journald_max_use: "200M" # Maximum disk space used by persistent journal logs
+
+# Swap file (useful on hosts with little RAM, e.g. during the Caddy build)
+system_swap_enabled: false # Set to 'true' to create and enable a swap file
+system_swap_file: "/swapfile" # Path of the swap file
+system_swap_size: "1G" # Size of the swap file (fallocate syntax); not resized once created
+system_swappiness: 10 # vm.swappiness: lower values prefer RAM over swap
