@@ -39,10 +39,16 @@
 - name: Build Rathole client config
   ansible.builtin.set_fact:
     rathole_client_config: >-
-      {{ {'remote_addr': (rathole_public_addr | default(hostvars[rathole_tunnel_server]['ansible_host'])) ~ ':' ~ rathole_port,
+      {{ {'remote_addr': rathole_remote_host ~ ':' ~ rathole_port,
           'transport': rathole_transport, 'services': rathole_tunnel_client_services}
          | combine({'heartbeat_timeout': rathole_heartbeat_timeout} if rathole_heartbeat_timeout is defined else {})
          | combine({'retry_interval': rathole_retry_interval} if rathole_retry_interval is defined else {}) }}
     rathole_auto_secrets: true
   no_log: true
   when: rathole_role == 'client'
+  vars:
+    # Without ansible_host Ansible connects to the inventory name, so use that too
+    rathole_remote_host_raw: "{{ rathole_public_addr | default(hostvars[rathole_tunnel_server]['ansible_host'] | default(rathole_tunnel_server)) }}"
+    rathole_remote_host: >-
+      {{ '[' ~ rathole_remote_host_raw ~ ']' if ':' in rathole_remote_host_raw and not rathole_remote_host_raw.startswith('[')
+         else rathole_remote_host_raw }}

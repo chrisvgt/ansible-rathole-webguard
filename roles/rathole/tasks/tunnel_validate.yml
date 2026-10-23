@@ -54,15 +54,27 @@
       (servers: {{ rathole_tuple_servers }}, clients: {{ rathole_tuple_clients }}).
     quiet: true
 
+# 0.0.0.0 and :: listen on every address, so they collide with any other
+# address on the same port and type
 - name: Ensure each bind address and protocol is used once
   ansible.builtin.assert:
-    that: rathole_tunnel_bind_keys | unique | length == rathole_tunnel_bind_keys | length
-    fail_msg: "Two services in tunnel '{{ tunnel_id }}' use the same bind_addr and type."
+    that: rathole_tunnel_bind_conflicts | length == 0
+    fail_msg: >-
+      Services in tunnel '{{ tunnel_id }}' use the same bind_addr and type:
+      {{ rathole_tunnel_bind_conflicts | join(', ') }}
     quiet: true
   vars:
-    rathole_tunnel_bind_keys: >-
-      {%- set ns = namespace(out=[]) -%}
+    rathole_tunnel_bind_conflicts: >-
+      {%- set any_addr = ['0.0.0.0', '::', '[::]'] -%}
+      {%- set ns = namespace(seen=[], out=[]) -%}
       {%- for s in tunnel_services -%}
-        {%- set ns.out = ns.out + [(s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', '')))) ~ '/' ~ (s.type | default('tcp'))] -%}
+        {%- set bind = s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', ''))) -%}
+        {%- set b = {'name': s.name, 'host': bind | regex_replace(':[^:]*$', ''),
+                     'port': bind | regex_replace('^.*:', ''), 'type': s.type | default('tcp')} -%}
+        {%- for o in ns.seen if o.port == b.port and o.type == b.type
+                                and (o.host == b.host or o.host in any_addr or b.host in any_addr) -%}
+          {%- set ns.out = ns.out + [o.name ~ ' and ' ~ b.name ~ ' (' ~ b.port ~ '/' ~ b.type ~ ')'] -%}
+        {%- endfor -%}
+        {%- set ns.seen = ns.seen + [b] -%}
       {%- endfor -%}
       {{ ns.out }}

@@ -210,7 +210,7 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     recurse: true
-  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir] | unique }}"
+  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir | default(caddy_log_dir)] | unique }}"
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
