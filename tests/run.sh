@@ -9,3 +9,13 @@ for test in tests/test_*.yml; do
   echo "== $test"
   ansible-playbook -i tests/hosts.ini "$test"
 done
+
+# Example files, copied the way the README describes
+example_dir=$(mktemp -d)
+trap 'rm -rf "$example_dir"' EXIT
+mkdir -p "$example_dir/group_vars"
+cp inventory.example.ini "$example_dir/inventory.ini"
+cp group_vars/all.example.yml "$example_dir/group_vars/all.yml"
+cp group_vars/tunnel.example.yml "$example_dir/group_vars/tunnel_home.yml"
+echo "== examples"
+ansible-playbook -i "$example_dir/inventory.ini" tests/examples.yml -e "repo_dir=$PWD"

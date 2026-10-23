@@ -1,0 +1,16 @@
+---
+# tasks/global_defaults.yml
+# Defaults for the global settings in group_vars/all.yml, so a checkout without
+# that file behaves the same. Values that are set anywhere are kept.
+
+- name: Apply defaults for global settings
+  ansible.builtin.set_fact:
+    enable_rate_limit: "{{ enable_rate_limit | default(true) | bool }}"
+    enable_cloudflare: "{{ enable_cloudflare | default(false) | bool }}"
+    enable_wildcard: "{{ enable_wildcard | default(false) | bool }}"
+    enable_crowdsec: "{{ enable_crowdsec | default(true) | bool }}"
+    enable_crowdsec_import: "{{ enable_crowdsec_import | default(false) | bool }}"
+    enable_coraza_waf: "{{ enable_coraza_waf | default(false) | bool }}"
+    coraza_mode_default: "{{ coraza_mode_default | default('recommended') }}"
+    coraza_file_whitelist_enabled: "{{ coraza_file_whitelist_enabled | default(true) | bool }}"
+    coraza_file_whitelist_extensions: "{{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }}"
