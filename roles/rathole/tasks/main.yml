@@ -4,7 +4,7 @@
 # Tunnel tuple mode: derive the Rathole config from tunnel_services
 - name: Build Rathole config from tunnel_services
   ansible.builtin.include_tasks: tunnel.yml
-  when: tunnel_services is defined
+  when: (tunnel_services | default(none)) is not none
 
 - name: Validate Rathole role variables
   ansible.builtin.assert:

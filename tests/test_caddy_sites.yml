@@ -1,0 +1,27 @@
+---
+# tests/test_caddy_sites.yml
+# Traditional mode: one Caddy site per service domain, tunnel-only services skipped
+
+- name: Derive Caddy sites in traditional mode
+  hosts: srv
+  gather_facts: false
+  tasks:
+    # Only the derivation; including the role would also run its dependencies
+    - name: Load Caddy role constants
+      ansible.builtin.include_vars: ../roles/caddy/vars/main.yml
+
+    - name: Run site derivation
+      ansible.builtin.include_tasks: ../roles/caddy/tasks/sites.yml
+
+    - name: Check derived sites
+      ansible.builtin.assert:
+        that:
+          - caddy_effective_sites | map(attribute='name') | list == ['web', 'stream_watch_example_com', 'stream_watch_example_org', 'apex']
+          - caddy_effective_sites | map(attribute='domain') | list == ['web.example.com', 'watch.example.com', 'watch.example.org', 'example.com']
+          - caddy_effective_sites[0].local_port | int == 2368
+          - caddy_effective_sites[0].coraza_mode == 'minimal'
+          - caddy_effective_sites[1].stream
+          - caddy_effective_sites | selectattr('local_addr', 'defined') | list | length == 0
+          - caddy_effective_sites | selectattr('bind_addr', 'defined') | list | length == 0
+          - caddy_effective_wildcard_sites == []
+          - caddy_effective_extra_sites == []

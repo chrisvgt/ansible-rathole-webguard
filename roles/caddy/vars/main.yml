@@ -1,0 +1,5 @@
+---
+# roles/caddy/vars/main.yml
+
+# tunnel_services keys that only concern Rathole; all other keys are passed to the Caddy site
+caddy_tunnel_service_keys: [name, local_addr, bind_addr, domain, type, token, nodelay, retry_interval]
