@@ -118,6 +118,11 @@
     group: "{{ rathole_group }}"
     mode: "0750"
 
+# Tunnel tuple mode: create or read Noise keys and the default token
+- name: Add tunnel secrets to the Rathole config
+  ansible.builtin.include_tasks: secrets.yml
+  when: rathole_auto_secrets | default(false) | bool
+
 - name: Create or update Rathole configuration file
   ansible.builtin.template:
     src: rathole.toml.j2
