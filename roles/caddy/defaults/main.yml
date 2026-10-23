@@ -2,6 +2,7 @@
 # roles/caddy/defaults/main.yml
 
 # --- Caddy Installation & Configuration Paths ---
+# renovate: datasource=github-releases depName=caddyserver/caddy extractVersion=^v(?<version>.+)$
 caddy_version: "2.11.4" # Caddy version to install
 caddy_user: caddy # System user for Caddy
 caddy_group: caddy # System group for Caddy

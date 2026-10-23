@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "baseBranchPatterns": ["develop"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Berlin",
+  "pre-commit": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tool versions in role defaults, marked with a '# renovate:' comment",
+      "managerFilePatterns": ["/^roles/[^/]+/defaults/main\\.yml$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s+[a-z_]+_version: \"(?<currentValue>[^\"]+)\""]
+    }
+  ]
+}
