@@ -34,6 +34,9 @@ jobs:
       - name: Playbook syntax check
         run: ansible-playbook --syntax-check -i localhost, site.yml
 
+      - name: Install nftables (firewall rule syntax check)
+        run: sudo apt-get install -y nftables
+
       - name: Tests
         run: ./tests/run.sh
 
