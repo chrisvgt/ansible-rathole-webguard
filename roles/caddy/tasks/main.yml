@@ -1,3 +1,4 @@
+---
 # roles/caddy/tasks/main.yml
 
 # Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is needed
@@ -82,7 +83,7 @@
 
 - name: Configure logrotate for Coraza audit logs
   ansible.builtin.template:
-    src: "templates/logrotate-coraza.j2"
+    src: logrotate-coraza.j2
     dest: "/etc/logrotate.d/caddy-coraza"
     owner: root
     group: root
@@ -91,15 +92,15 @@
 - name: Build final Caddy plugin list
   ansible.builtin.set_fact:
     caddy_plugins_effective: >-
-      {{ (caddy_plugins | default([]))
-         + (enable_cloudflare | default(false) | ternary(['github.com/caddy-dns/cloudflare'], []))
-         + (enable_crowdsec | default(false) | ternary([
+      {{ caddy_plugins
+         + (enable_cloudflare | default(false) | bool | ternary(['github.com/caddy-dns/cloudflare'], []))
+         + (enable_crowdsec | default(false) | bool | ternary([
               'github.com/hslatman/caddy-crowdsec-bouncer/http',
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
             ], []))
          + (caddy_coraza_needed | bool | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
-         + (enable_rate_limit | default(true) | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
+         + (enable_rate_limit | default(true) | bool | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
 
 - name: Compute hash of effective Caddy plugins
   ansible.builtin.set_fact:
@@ -144,7 +145,7 @@
         # Limit parallel compile jobs and GC headroom so small hosts don't run out of memory
         GOFLAGS: "-mod=mod -p={{ caddy_build_jobs }}"
         GOGC: "{{ caddy_build_gogc }}"
-      notify: Restart Caddy Service
+      notify: Restart Caddy
       changed_when: true
 
   always:
@@ -171,13 +172,13 @@
 
 - name: Create Caddy environment file (secrets)
   ansible.builtin.template:
-    src: "templates/caddy.env.j2"
+    src: caddy.env.j2
     dest: "{{ caddy_env_file }}"
     owner: root
     group: root
     mode: "0600"
   no_log: true
-  notify: Restart Caddy Service
+  notify: Restart Caddy
 
 # lstrip_blocks removes the indentation in front of Jinja tags so the rendered
 # Caddyfile stays readable without running `caddy fmt` afterwards.
@@ -185,15 +186,15 @@
 # the Caddy group. Set caddy_no_log: false to see validation errors.
 - name: Create Caddyfile from template
   ansible.builtin.template:
-    src: "templates/Caddyfile.j2"
+    src: Caddyfile.j2
     dest: "{{ caddy_config_file }}"
     owner: root
     group: "{{ caddy_group }}"
     mode: "0640"
     lstrip_blocks: true
     validate: "{{ caddy_install_path }} validate --adapter caddyfile --envfile {{ caddy_env_file }} --config %s"
-  no_log: "{{ caddy_no_log | default(true) }}"
-  notify: Reload Caddy Service
+  no_log: "{{ caddy_no_log | bool }}"
+  notify: Reload Caddy
 
 # `caddy validate` runs as root and creates missing log files owned by root,
 # which the caddy user could not open afterwards.
@@ -208,25 +209,22 @@
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
-    src: "templates/caddy.service.j2"
+    src: caddy.service.j2
     dest: "/etc/systemd/system/caddy.service"
     owner: root
     group: root
     mode: "0644"
-  become: true
-  notify: Restart Caddy Service
+  notify: Restart Caddy
 
 - name: Reload Systemd daemon to pick up new unit file
   ansible.builtin.systemd:
     daemon_reload: true
-  become: true
 
 - name: Enable and start Caddy service
   ansible.builtin.systemd:
     name: caddy
     enabled: true
     state: started
-  become: true
 
 # Earlier versions of this role built in /root and never cleaned the build cache
 - name: Remove Go caches left behind by previous Caddy builds

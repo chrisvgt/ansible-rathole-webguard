@@ -1,3 +1,4 @@
+---
 # roles/system/tasks/main.yml
 
 # --- Journald: cap persistent log size ---
@@ -12,12 +13,12 @@
 
 - name: Limit journald disk usage
   ansible.builtin.template:
-    src: "templates/journald.conf.j2"
+    src: journald.conf.j2
     dest: /etc/systemd/journald.conf.d/size.conf
     owner: root
     group: root
     mode: "0644"
-  notify: Restart journald
+  notify: Restart Journald
 
 # --- Optional swap file ---
 
@@ -74,9 +75,9 @@
 
     - name: Set vm.swappiness
       ansible.builtin.template:
-        src: "templates/sysctl-swap.conf.j2"
+        src: sysctl-swap.conf.j2
         dest: /etc/sysctl.d/60-swap.conf
         owner: root
         group: root
         mode: "0644"
-      notify: Apply swap sysctl settings
+      notify: Apply Swap Sysctl Settings

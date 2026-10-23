@@ -1,3 +1,4 @@
+---
 # roles/system/defaults/main.yml
 
 # --- Small-host tuning (journald size limit, optional swap) ---

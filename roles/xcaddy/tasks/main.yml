@@ -1,3 +1,4 @@
+---
 # roles/xcaddy/tasks/main.yml
 
 - name: Ensure xcaddy supports this platform
@@ -37,7 +38,7 @@
     url: "{{ xcaddy_download_url }}"
     dest: "/tmp/xcaddy_temp.tar.gz"
     mode: "0644"
-  when: xcaddy_version_changed
+  when: xcaddy_version_changed | bool
   register: xcaddy_download_result
   until: xcaddy_download_result is succeeded
   retries: 5
@@ -49,7 +50,7 @@
     dest: "/tmp/"
     remote_src: true
     creates: "/tmp/xcaddy" # Idempotent: only extract if binary doesn't exist
-  when: xcaddy_version_changed
+  when: xcaddy_version_changed | bool
 
 - name: Move xcaddy to installation directory
   ansible.builtin.copy:
@@ -59,7 +60,7 @@
     group: root
     mode: "0755" # Make executable
     remote_src: true # Source is on the remote host (downloaded to /tmp)
-  when: xcaddy_version_changed
+  when: xcaddy_version_changed | bool
 
 - name: Clean up xcaddy temporary files
   ansible.builtin.file:
@@ -68,4 +69,4 @@
   loop:
     - "/tmp/xcaddy_temp.tar.gz"
     - "/tmp/xcaddy"
-  when: xcaddy_version_changed
+  when: xcaddy_version_changed | bool

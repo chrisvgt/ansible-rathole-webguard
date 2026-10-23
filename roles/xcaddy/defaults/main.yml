@@ -1,0 +1,6 @@
+---
+# roles/xcaddy/defaults/main.yml
+
+xcaddy_version: "0.4.7" # Specify the desired xcaddy version
+xcaddy_download_url: "https://github.com/caddyserver/xcaddy/releases/download/v{{ xcaddy_version }}/xcaddy_{{ xcaddy_version }}_linux_{{ xcaddy_arch }}.tar.gz" # Download URL based on architecture
+xcaddy_install_path: "/usr/local/bin" # The directory where the xcaddy binary will be installed

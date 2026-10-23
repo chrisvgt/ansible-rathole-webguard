@@ -1,3 +1,4 @@
+---
 # roles/crowdsec/tasks/main.yml
 
 # --- CrowdSec Role: Installation and Configuration ---
@@ -8,7 +9,7 @@
       - crowdsec_lapi_ip | default('') != ''
       - crowdsec_lapi_port | default('') != ''
     fail_msg: "Required CrowdSec variables (LAPI ip/port) are missing or empty."
-  when: enable_crowdsec | default(true)
+  when: enable_crowdsec | default(true) | bool
 
 ## Repository and Package Installation
 
@@ -43,7 +44,7 @@
       - crowdsec
       - crowdsec-firewall-bouncer-iptables
     state: present
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
 ## Resource Limits (small hosts)
 
@@ -55,7 +56,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
 - name: Ensure CrowdSec systemd drop-in directory exists
   ansible.builtin.file:
@@ -72,7 +73,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
 ## Post-Installation and Service Management
 
@@ -145,7 +146,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
 ## CrowdSec Console and Bouncer Management
 
@@ -161,7 +162,7 @@
   changed_when: "'Successfully enrolled with the Console' in crowdsec_console_enroll_output.stdout"
   failed_when: "crowdsec_console_enroll_output.rc != 0 and 'already enrolled' not in crowdsec_console_enroll_output.stderr and 'You are already enrolled' not in crowdsec_console_enroll_output.stdout"
   when:
-    - enable_crowdsec | default(true)
+    - enable_crowdsec | default(true) | bool
     - crowdsec_enrollment_key is defined and (crowdsec_enrollment_key | length > 0)
     - crowdsec_cscli_console_status.rc == 0
     - (crowdsec_cscli_console_status.stdout | from_json).get('status', '') != 'ENROLLED'
@@ -177,7 +178,7 @@
     argv: [cscli, bouncers, add, caddy-bouncer, -k, "{{ crowdsec_api_key }}"]
   no_log: true
   when:
-    - enable_crowdsec | default(true)
+    - enable_crowdsec | default(true) | bool
     - "'caddy-bouncer' not in crowdsec_cscli_bouncers_list.stdout"
     - crowdsec_cscli_bouncers_list.rc == 0
     - crowdsec_api_key is defined
@@ -193,7 +194,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
 # The machine and bouncer for the blocklist import are managed by the crowdsec_import role
 
@@ -206,24 +207,24 @@
     owner: root
     group: root
     mode: "0755"
-  when: ntfy_enabled | default(false)
+  when: ntfy_enabled | default(false) | bool
 
 - name: Create Ntfy notification configuration file
   ansible.builtin.template:
-    src: "templates/ntfy.yaml.j2"
+    src: ntfy.yaml.j2
     dest: /etc/crowdsec/notifications/ntfy.yaml
     owner: root
     group: root
     mode: "0600" # May contain the Ntfy auth token
-  notify: Restart Crowdsec Service
-  when: ntfy_enabled | default(false)
+  notify: Restart CrowdSec
+  when: ntfy_enabled | default(false) | bool
 
 - name: Check installed CrowdSec parsers (if Ntfy enabled)
   ansible.builtin.command: cscli parsers list -o json
   register: crowdsec_cscli_parsers_list
   changed_when: false
   check_mode: false
-  when: ntfy_enabled | default(false)
+  when: ntfy_enabled | default(false) | bool
 
 - name: Install GeoIP enrichment parser (if Ntfy enabled)
   ansible.builtin.command:
@@ -231,22 +232,22 @@
   register: crowdsec_geoip_install_output
   changed_when: "'Successfully installed' in crowdsec_geoip_install_output.stdout or 'Upgraded' in crowdsec_geoip_install_output.stdout"
   failed_when: "(crowdsec_geoip_install_output.rc != 0 and 'already installed' not in crowdsec_geoip_install_output.stderr and 'already enabled' not in crowdsec_geoip_install_output.stdout)"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
   when:
-    - ntfy_enabled | default(false)
+    - ntfy_enabled | default(false) | bool
     - "'crowdsecurity/geoip-enrich' not in (crowdsec_cscli_parsers_list.stdout | default(''))"
 
 - name: Create/update CrowdSec profiles.yaml for Ntfy or dynamic blocking
   ansible.builtin.template:
-    src: "templates/profiles.yaml.j2"
+    src: profiles.yaml.j2
     dest: /etc/crowdsec/profiles.yaml
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
-  when: (ntfy_enabled | default(false)) or (duration_expr | default(false))
+  notify: Restart CrowdSec
+  when: (ntfy_enabled | default(false) | bool) or (duration_expr | default(false) | bool)
 
-  ## CrowdSec Whitelist Configuration
+## CrowdSec Whitelist Configuration
 
 - name: Ensure CrowdSec postoverflow whitelist directory exists
   ansible.builtin.file:
@@ -255,17 +256,17 @@
     owner: root
     group: root
     mode: "0755"
-  when: dynamic_whitelist_enabled | default(false)
+  when: dynamic_whitelist_enabled | default(false) | bool
 
 - name: Add dynamic IPs to CrowdSec postoverflow whitelist
   ansible.builtin.template:
-    src: 01-my-dynamic-whitelist.yaml.j2 # This template will now handle multiple hostnames
+    src: 01-my-dynamic-whitelist.yaml.j2
     dest: /etc/crowdsec/postoverflows/s01-whitelist/01-my-dynamic-whitelist.yaml
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
-  when: dynamic_whitelist_enabled | default(false)
+  notify: Restart CrowdSec
+  when: dynamic_whitelist_enabled | default(false) | bool
 
 - name: Clean up temporary CrowdSec files
   ansible.builtin.file:

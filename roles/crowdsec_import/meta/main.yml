@@ -1,4 +1,6 @@
 ---
+# roles/crowdsec_import/meta/main.yml
+
 galaxy_info:
   author: chrisvgt
   description: Import threat intelligence blocklists into CrowdSec

@@ -1,3 +1,4 @@
+---
 # roles/rathole/tasks/main.yml
 
 - name: Validate Rathole role variables
@@ -94,7 +95,7 @@
         group: root
         mode: "0755"
         remote_src: true # Source is on the remote host (temporary download directory)
-      notify: Restart Rathole Service
+      notify: Restart Rathole
 
   always:
     - name: Clean up temporary Rathole files
@@ -114,12 +115,12 @@
 
 - name: Create or update Rathole configuration file
   ansible.builtin.template:
-    src: "templates/rathole.toml.j2"
+    src: rathole.toml.j2
     dest: "{{ rathole_config_path }}/{{ rathole_config_file }}"
     owner: root
     group: "{{ rathole_group }}"
     mode: "0640"
-  notify: Restart Rathole Service
+  notify: Restart Rathole
   no_log: true # Do not leak tokens or keys in output/diff
 
 - name: Determine whether Rathole binds to privileged ports (< 1024)
@@ -134,14 +135,14 @@
 
 - name: Create Systemd unit file for Rathole
   ansible.builtin.template:
-    src: "templates/rathole.service.j2"
+    src: rathole.service.j2
     dest: "/etc/systemd/system/rathole.service"
     owner: root
     group: root
     mode: "0644"
   notify:
     - Reload Systemd Daemon
-    - Restart Rathole Service
+    - Restart Rathole
 
 - name: Enable and start Rathole service
   ansible.builtin.systemd:
