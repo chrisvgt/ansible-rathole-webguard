@@ -1,5 +1,10 @@
 # roles/xcaddy/tasks/main.yml
 
+- name: Ensure xcaddy supports this platform
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] in xcaddy_arch_map
+    fail_msg: "Unsupported platform for xcaddy: {{ ansible_facts['system'] }}/{{ ansible_facts['architecture'] }}"
+
 - name: Ensure xcaddy installation path exists
   ansible.builtin.file:
     path: "{{ xcaddy_install_path }}" # e.g., /usr/local/bin
@@ -60,7 +65,7 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  with_items:
+  loop:
     - "/tmp/xcaddy_temp.tar.gz"
     - "/tmp/xcaddy"
   when: xcaddy_version_changed
