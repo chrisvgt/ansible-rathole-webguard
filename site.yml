@@ -85,6 +85,7 @@
       register: reboot_required_file
       tags: [reboot]
 
+    # ansible.builtin.reboot already waits until the host is reachable again
     - name: Reboot host if required
       ansible.builtin.reboot:
         msg: "System rebooting due to package upgrades."
@@ -93,16 +94,16 @@
         connect_timeout: 300
       when:
         - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
+        - reboot_required_file.stat.exists
       tags: [reboot]
 
-    - name: Wait for host to reboot
-      ansible.builtin.wait_for_connection:
-        delay: 10
-        timeout: 300
+    - name: Report pending reboot
+      ansible.builtin.debug:
+        msg: "A reboot is required (/var/run/reboot-required exists) but enable_auto_reboot is false."
       when:
-        - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - not (enable_auto_reboot | default(true) | bool)
+        - reboot_required_file.stat.exists
       tags: [reboot]
 
     - name: Clean up APT package cache to save disk space
