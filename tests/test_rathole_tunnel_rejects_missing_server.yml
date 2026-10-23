@@ -1,0 +1,26 @@
+---
+# tests/test_rathole_tunnel_rejects_missing_server.yml
+# a tuple without server
+
+- name: Reject a tuple without server
+  hosts: srv
+  gather_facts: false
+  vars:
+    tunnel_id: other
+  tasks:
+    - name: Run tunnel derivation
+      block:
+        - name: Run tunnel derivation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'needs exactly one host with rathole_role=server' in rejected_msg"
