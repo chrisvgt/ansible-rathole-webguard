@@ -10,6 +10,15 @@ for test in tests/test_*.yml; do
   ansible-playbook -i tests/hosts.ini "$test"
 done
 
+echo "== no secrets in verbose output"
+if ansible-playbook -v -i tests/hosts.ini tests/leak_check.yml 2>&1 | grep -q LEAKCHECK; then
+  echo "secret value found in output"
+  exit 1
+fi
+
+echo "== check mode on a new server"
+ansible-playbook --check -i tests/hosts.ini tests/check_mode_server.yml
+
 echo "== site.yml task order"
 ./tests/check_site_order.sh
 

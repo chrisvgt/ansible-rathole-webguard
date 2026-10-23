@@ -24,6 +24,7 @@
         {%- set ns.out = ns.out + [{'name': s.name, 'local_addr': s.local_addr} | combine(extra)] -%}
       {%- endfor -%}
       {{ ns.out }}
+  no_log: true # Services may carry tokens
 
 - name: Build Rathole server config
   ansible.builtin.set_fact:
@@ -32,6 +33,7 @@
           'services': rathole_tunnel_server_services}
          | combine({'heartbeat_interval': rathole_heartbeat_interval} if rathole_heartbeat_interval is defined else {}) }}
     rathole_auto_secrets: true
+  no_log: true
   when: rathole_role == 'server'
 
 - name: Build Rathole client config
@@ -42,4 +44,5 @@
          | combine({'heartbeat_timeout': rathole_heartbeat_timeout} if rathole_heartbeat_timeout is defined else {})
          | combine({'retry_interval': rathole_retry_interval} if rathole_retry_interval is defined else {}) }}
     rathole_auto_secrets: true
+  no_log: true
   when: rathole_role == 'client'
