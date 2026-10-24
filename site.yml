@@ -140,6 +140,12 @@
     - role: rathole
       tags: rathole
 
+    # Optional nftables firewall on the server, for hosts without a trusted
+    # provider firewall. Runs last: it opens the ports of the Rathole config.
+    - role: firewall
+      when: rathole_role == "server" and enable_firewall
+      tags: firewall
+
   post_tasks:
     - name: Check if reboot is required after package upgrades
       ansible.builtin.stat:

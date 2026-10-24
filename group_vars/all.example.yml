@@ -25,6 +25,9 @@ enable_crowdsec_import: false # Set to 'false' to disable CrowdSec blocklist imp
 # Global toggle for Coraza WAF
 enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
 
+# Global toggle for the nftables firewall on the server (if the provider firewall is not used or trusted)
+enable_firewall: false
+
 # Coraza WAF mode: recommended | minimal | moderate | strict | off
 coraza_mode_default: recommended
 

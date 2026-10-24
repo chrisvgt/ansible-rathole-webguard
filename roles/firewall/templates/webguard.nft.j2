@@ -1,0 +1,24 @@
+#!/usr/sbin/nft -f
+# File Managed by Ansible
+# roles/firewall/templates/webguard.nft.j2
+# Own table, replaced as a whole: other rules (e.g. the CrowdSec bouncer) stay untouched
+
+table inet webguard
+delete table inet webguard
+
+table inet webguard {
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    ct state established,related accept
+    ct state invalid drop
+    iifname "lo" accept
+    meta l4proto { icmp, ipv6-icmp } accept
+{% if firewall_tcp_ports %}
+    tcp dport { {{ firewall_tcp_ports | join(', ') }} } accept
+{% endif %}
+{% if firewall_udp_ports %}
+    udp dport { {{ firewall_udp_ports | join(', ') }} } accept
+{% endif %}
+  }
+}

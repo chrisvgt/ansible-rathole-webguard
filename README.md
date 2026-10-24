@@ -129,6 +129,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 | Variable                 | Default       | Effect                                                                                            |
 | ------------------------ | ------------- | ------------------------------------------------------------------------------------------------- |
 | `enable_crowdsec`        | `true`        | CrowdSec engine, firewall bouncer, AppSec and the Caddy bouncer plugin                            |
+| `enable_firewall`        | `false`       | nftables firewall on the server, see [Firewall](#firewall)                                        |
 | `enable_rate_limit`      | `true`        | Per-site rate limit (default 500 requests per minute per IP) and the ratelimit plugin             |
 | `enable_cloudflare`      | `false`       | Cloudflare DNS-01 challenge for all certificates (plugin + `cloudflare_api_token`)                |
 | `enable_wildcard`        | `false`       | One wildcard certificate per base domain, see [Services](#services). Requires `enable_cloudflare` |
@@ -208,10 +209,10 @@ The role runs before Caddy, so swap is available for the Caddy build.
 
 1. **Preflight checks** (before anything changes): Debian-based OS, `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`.
-3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, and `rathole` on both hosts.
+3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if `/var/run/reboot-required` exists and `enable_auto_reboot` is true.
 
-Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `ansible-playbook -i inventory.ini site.yml --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `reboot`, `cleanup`.
+Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `ansible-playbook -i inventory.ini site.yml --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
 
 ## Caddy build
 
@@ -254,6 +255,19 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables f
 - runs as the system user `crowdsec-import` from a sandboxed systemd service and timer
 - creates its own LAPI machine and bouncer; you only set `crowdsec_machine_password`
 - feeds can be switched off one by one (`crowdsec_enable_*`, see `group_vars/tunnel.example.yml`)
+
+## Firewall
+
+With `enable_firewall: true` the server drops all incoming connections except:
+
+- SSH: every port `sshd` listens on, plus `ansible_port`
+- 80/tcp, 443/tcp and 443/udp (HTTP/3) for Caddy (`firewall_web_ports: false` closes them)
+- the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000`
+- `firewall_allowed_tcp_ports` / `firewall_allowed_udp_ports`
+
+Use it if the provider firewall is not used or not trusted. The home server (client) is not touched. The rules live in their own nftables table (`inet webguard`, file `/etc/nftables.d/webguard.nft`), loaded at boot by `webguard-firewall.service`, so the CrowdSec bouncer keeps working. When the rules change, a timer removes them again after `firewall_rollback_seconds` (120) unless Ansible can open a new SSH connection, so a mistake does not lock you out.
+
+To remove the firewall, set `enable_firewall: false` and run `sudo systemctl disable webguard-firewall && sudo nft delete table inet webguard` on the server.
 
 ## Rathole
 
@@ -349,7 +363,8 @@ sudo journalctl -u crowdsec-blocklist-import.service
 │   ├── crowdsec/               # CrowdSec engine, AppSec, bouncers
 │   ├── crowdsec_import/        # Blocklist importer
 │   ├── python/                 # pipx for the importer
-│   └── rathole/                # Tunnel server and client
+│   ├── rathole/                # Tunnel server and client
+│   └── firewall/               # Optional nftables firewall on the server
 └── scripts/run-playbook.sh     # Wrapper with vault options
 ```
 

@@ -11,6 +11,7 @@
     enable_crowdsec: "{{ enable_crowdsec | default(true) | bool }}"
     enable_crowdsec_import: "{{ enable_crowdsec_import | default(false) | bool }}"
     enable_coraza_waf: "{{ enable_coraza_waf | default(false) | bool }}"
+    enable_firewall: "{{ enable_firewall | default(false) | bool }}"
     coraza_mode_default: "{{ coraza_mode_default | default('recommended') }}"
     coraza_file_whitelist_enabled: "{{ coraza_file_whitelist_enabled | default(true) | bool }}"
     coraza_file_whitelist_extensions: "{{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }}"
