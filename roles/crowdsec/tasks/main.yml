@@ -169,6 +169,9 @@
     - crowdsec_cscli_console_status.rc == 0
     - (crowdsec_cscli_console_status.stdout | from_json).get('status', '') != 'ENROLLED'
 
+- name: Resolve Caddy bouncer key
+  ansible.builtin.include_tasks: bouncer_key.yml
+
 - name: Check if Caddy bouncer is already registered
   ansible.builtin.command: cscli bouncers list -o json
   register: crowdsec_cscli_bouncers_list
@@ -176,19 +179,47 @@
   failed_when: false
   check_mode: false # Read-only, safe to run in check mode
 
+- name: Determine whether the Caddy bouncer exists
+  ansible.builtin.set_fact:
+    crowdsec_caddy_bouncer_exists: >-
+      {{ crowdsec_cscli_bouncers_list.rc == 0 and 'caddy-bouncer' in
+         (crowdsec_cscli_bouncers_list.stdout | from_json | default([], true) | map(attribute='name') | list) }}
+
+# CrowdSec cannot show a bouncer's key, so ask the LAPI whether it accepts ours:
+# 200 means valid, 403 means the bouncer was registered with another key.
+# HEAD leaves the bouncer's IP, version and last pull untouched.
+# Retried because the LAPI may still be starting.
+- name: Check the Caddy bouncer key against the Local API
+  ansible.builtin.uri:
+    url: "http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}/v1/decisions"
+    method: HEAD
+    headers:
+      X-Api-Key: "{{ crowdsec_bouncer_key }}"
+    status_code: [200, 403]
+  register: crowdsec_bouncer_key_check
+  until: crowdsec_bouncer_key_check.status in [200, 403]
+  retries: 10
+  delay: 3
+  no_log: true
+  check_mode: false # Read-only, safe to run in check mode
+  when: crowdsec_caddy_bouncer_exists | bool
+
+- name: Remove Caddy bouncer registered with another key
+  ansible.builtin.command:
+    argv: [cscli, bouncers, delete, caddy-bouncer]
+  changed_when: true
+  when:
+    - crowdsec_caddy_bouncer_exists | bool
+    - crowdsec_bouncer_key_check.status == 403
+
 - name: Register Caddy bouncer with CrowdSec Local API
   ansible.builtin.command:
-    argv: [cscli, bouncers, add, caddy-bouncer, -k, "{{ crowdsec_api_key }}"]
+    argv: [cscli, bouncers, add, caddy-bouncer, -k, "{{ crowdsec_bouncer_key }}"]
   no_log: true
-  when:
-    - enable_crowdsec | default(true) | bool
-    - "'caddy-bouncer' not in crowdsec_cscli_bouncers_list.stdout"
-    - crowdsec_cscli_bouncers_list.rc == 0
-    - crowdsec_api_key is defined
-    - crowdsec_api_key | length > 0
-  register: crowdsec_bouncer_registration_output
-  changed_when: crowdsec_bouncer_registration_output.rc == 0
-  failed_when: crowdsec_bouncer_registration_output.rc != 0 and 'already exists' not in crowdsec_bouncer_registration_output.stderr
+  when: >-
+    crowdsec_cscli_bouncers_list.rc == 0
+    and (not crowdsec_caddy_bouncer_exists | bool or crowdsec_bouncer_key_check.status == 403)
+  changed_when: true
 
 - name: Configure CrowdSec to monitor Caddy access logs
   ansible.builtin.template:

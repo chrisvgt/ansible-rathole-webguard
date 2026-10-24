@@ -10,13 +10,8 @@
     fail_msg: "enable_crowdsec_import requires enable_crowdsec: true (the crowdsec role must be applied first)."
     quiet: true
 
-- name: Validate blocklist import machine password
-  ansible.builtin.assert:
-    that:
-      - crowdsec_import_blocklist_machine_password | length > 0
-    fail_msg: "crowdsec_machine_password (or vault_crowdsec_machine_password) must be set for the blocklist import."
-    quiet: true
-  no_log: true
+- name: Resolve blocklist import machine password
+  ansible.builtin.include_tasks: machine_password.yml
 
 ## Service User and Installation
 
@@ -97,23 +92,11 @@
   changed_when: false
   check_mode: false
 
-# '--file -' prints the credentials instead of overwriting the agent's local_api_credentials.yaml
-- name: Create CrowdSec machine for blocklist import
-  ansible.builtin.command:
-    argv:
-      - cscli
-      - machines
-      - add
-      - "{{ crowdsec_import_blocklist_machine_id }}"
-      - --password
-      - "{{ crowdsec_import_blocklist_machine_password }}"
-      - --file
-      - "-"
-  changed_when: true
-  no_log: true
-  when: >-
-    crowdsec_import_blocklist_machine_id not in
-    (crowdsec_import_machines_list.stdout | from_json | default([], true) | map(attribute='machineId') | list)
+- name: Determine whether the blocklist import machine exists
+  ansible.builtin.set_fact:
+    crowdsec_import_machine_exists: >-
+      {{ crowdsec_import_blocklist_machine_id in
+      (crowdsec_import_machines_list.stdout | from_json | default([], true) | map(attribute='machineId') | list) }}
 
 - name: Check blocklist import bouncer key file
   ansible.builtin.stat:
@@ -190,7 +173,28 @@
     group: "{{ crowdsec_import_user }}"
     mode: "0640"
   diff: false
+  register: crowdsec_import_env
   notify: Restart CrowdSec Blocklist Import Timer
+
+# The env file holds the password last set on the machine. CrowdSec cannot show
+# a machine's password, so the machine is updated whenever the file changes.
+# '--file -' prints the credentials instead of overwriting the agent's
+# local_api_credentials.yaml; '--force' updates an existing machine.
+- name: Create or update CrowdSec machine for blocklist import
+  ansible.builtin.command:
+    argv:
+      - cscli
+      - machines
+      - add
+      - "{{ crowdsec_import_blocklist_machine_id }}"
+      - --password
+      - "{{ crowdsec_import_blocklist_machine_password }}"
+      - --file
+      - "-"
+      - --force
+  changed_when: true
+  no_log: true
+  when: not crowdsec_import_machine_exists | bool or crowdsec_import_env is changed
 
 - name: Install systemd service for crowdsec-blocklist-import
   ansible.builtin.template:

@@ -170,6 +170,13 @@
   no_log: true
   notify: Restart Caddy
 
+# Caddy runs before the crowdsec role, so the bouncer key is resolved here first
+- name: Resolve CrowdSec bouncer key
+  ansible.builtin.include_role:
+    name: crowdsec
+    tasks_from: bouncer_key
+  when: enable_crowdsec | bool
+
 # lstrip_blocks removes the indentation in front of Jinja tags so the rendered
 # Caddyfile stays readable without running `caddy fmt` afterwards.
 # The Caddyfile holds the CrowdSec API key, so it is only readable by root and

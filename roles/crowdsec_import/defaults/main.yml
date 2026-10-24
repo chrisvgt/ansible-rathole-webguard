@@ -39,8 +39,10 @@ crowdsec_import_blocklist_lapi_url: "{{ crowdsec_lapi_ip | default('127.0.0.1') 
 # Not set here: the role creates the bouncer and reads its key from crowdsec_import_bouncer_key_file
 
 # Machine credentials (required for writing decisions)
-# The role creates this machine with 'cscli machines add' if it does not exist yet
-crowdsec_import_blocklist_machine_password: "{{ crowdsec_machine_password | default(vault_crowdsec_machine_password | default('')) }}"
+# The role creates this machine with 'cscli machines add' if it does not exist yet.
+# Its password is crowdsec_machine_password if set, otherwise generated on the
+# first run and stored in this file.
+crowdsec_import_machine_password_file: "/etc/crowdsec/blocklist-import.machine.password"
 crowdsec_import_blocklist_machine_id: "{{ crowdsec_machine_id | default('blocklist-import') }}"
 
 # =============================================================================

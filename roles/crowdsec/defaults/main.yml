@@ -19,3 +19,7 @@ crowdsec_db_flush_max_age: "7d" # Delete alerts older than this
 # systemd memory limits for the crowdsec service (MemoryHigh throttles, MemoryMax kills)
 crowdsec_memory_high: "300M"
 crowdsec_memory_max: "400M"
+
+# Caddy bouncer key: generated on the first run and stored here, unless
+# crowdsec_api_key is set
+crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key
