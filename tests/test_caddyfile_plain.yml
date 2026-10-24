@@ -1,0 +1,23 @@
+---
+# tests/test_caddyfile_plain.yml
+# Render the Caddyfile with the optional features off; a per-site coraza_mode still enables the WAF
+
+- name: Render Caddyfile without optional features
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    enable_crowdsec: false
+    enable_rate_limit: false
+    enable_coraza_waf: false
+    enable_cloudflare: false
+  tasks:
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check only the web site has the WAF
+      ansible.builtin.assert:
+        that:
+          - caddy_coraza_needed | bool
+          - caddyfile | regex_findall('(?m)^\s*coraza_waf \{$') | length == 1
+          - "'SecAuditLog /var/log/caddy/coraza/modsec_web.log' in caddyfile"

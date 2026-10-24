@@ -57,21 +57,6 @@
 - name: Build Caddy site lists
   ansible.builtin.include_tasks: sites.yml
 
-# Coraza is needed if it is enabled globally or if any active site sets a
-# coraza_mode other than 'off'. Caddyfile.j2 uses this fact as well, so the
-# plugin is always built whenever the rendered config references coraza_waf.
-- name: Determine if Coraza plugin needs to be built
-  ansible.builtin.set_fact:
-    caddy_coraza_needed: >-
-      {{ (enable_coraza_waf | default(false) | bool)
-         or (((enable_wildcard | default(false) | bool)
-              | ternary(caddy_effective_wildcard_sites | map(attribute='sites', default=[]) | flatten
-                          + caddy_effective_extra_sites,
-                        caddy_effective_sites))
-             | selectattr('coraza_mode', 'defined')
-             | rejectattr('coraza_mode', 'equalto', 'off')
-             | list | length > 0) }}
-
 # Own subdirectory so CrowdSec's /var/log/caddy/*.log acquisition glob does
 # not parse the multi-line audit log format.
 - name: Determine Coraza audit log directory

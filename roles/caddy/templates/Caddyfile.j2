@@ -15,7 +15,7 @@
     {% endif %}
     {#
     Order directive needed if ANY site has WAF enabled (global or per-site via coraza_mode).
-    caddy_coraza_needed is computed in tasks/main.yml (same fact decides the plugin build).
+    caddy_coraza_needed is computed in tasks/sites.yml (same fact decides the plugin build).
     #}
     {% if enable_crowdsec | bool %}
     order appsec before reverse_proxy
