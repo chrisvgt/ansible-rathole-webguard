@@ -31,7 +31,8 @@ tunnel_id: home
 # type:       tcp (default) or udp; token, nodelay, retry_interval are optional Rathole settings.
 # All other keys are Caddy site options, see "Per-site options" in the README:
 #   coraza_mode: off | minimal | recommended | moderate | strict
-#   stream: true, disable_appsec: true, cache_paths: "...", log_roll_size: "20mb", ...
+#   stream: true, disable_appsec: true, cache_paths: "...", rate_limit_events: 500, ...
+#   log_file, log_roll_size, ... only apply with enable_wildcard: false
 #
 # enable_wildcard: false -> one Caddy site and certificate per domain
 # enable_wildcard: true  -> one wildcard certificate per base domain (*.example.com),
@@ -75,50 +76,12 @@ duration_expr: true # Enable dynamic increase of blocking time
 # crowdsec_machine_password: "..." # Optional: use your own password instead
 # crowdsec_machine_id: "blocklist-import"
 
-# Optional: Decision settings (customize if needed)
-# crowdsec_decision_duration: "24h"
-# crowdsec_decision_reason: "external_blocklist"
-# crowdsec_decision_type: "ban"
-# crowdsec_decision_origin: "blocklist-import"
-# crowdsec_decision_scenario: "external/blocklist"
+# Further options: switch off single feeds (crowdsec_enable_tor: false),
+# crowdsec_allowlist, crowdsec_decision_duration, ... All of them with their
+# defaults are listed in roles/crowdsec_import/defaults/main.yml.
 
-# Optional: Allowlist settings
-# crowdsec_allowlist: "140.82.121.3,140.82.121.4"  # Default GitHub IPs
-# crowdsec_allowlist_github: false  # Set to true to auto-fetch GitHub IPs
-
-# Optional: Processing settings
-# crowdsec_batch_size: 1000
-# crowdsec_fetch_timeout: 60
-# crowdsec_max_retries: 3
-# crowdsec_dry_run: false  # Set to true to test without importing
-
-# Optional: Logging
-# crowdsec_log_level: "INFO"
-
-# Optional: Blocklist enables (set to false to disable specific feeds)
-# crowdsec_enable_ipsum: true
-# crowdsec_enable_spamhaus: true
-# crowdsec_enable_blocklist_de: true
-# crowdsec_enable_firehol: true
-# crowdsec_enable_abuse_ch: true
-# crowdsec_enable_emerging_threats: true
-# crowdsec_enable_binary_defense: true
-# crowdsec_enable_bruteforce_blocker: true
-# crowdsec_enable_dshield: true
-# crowdsec_enable_ci_army: true
-# crowdsec_enable_botvrij: true
-# crowdsec_enable_greensnow: true
-# crowdsec_enable_stopforumspam: true
-# crowdsec_enable_tor: true  # May cause false positives for Tor users
-# crowdsec_enable_scanners: true
-# crowdsec_enable_abuse_ipdb: true
-# crowdsec_enable_cybercrime_tracker: true
-# crowdsec_enable_vxvault: true
-
-# Optional: Output file path
-# crowdsec_output_file: "/var/lib/crowdsec/blocklists/crowdsec-blocklist.txt"
-
-dynamic_whitelist_enabled: false # Enable whitelist (resolved via DDNS)
+# --- CrowdSec whitelist: never ban your own (dynamic) home IP ---
+dynamic_whitelist_enabled: false # Resolve the hostnames below and whitelist their IPs
 dynamic_ddns_hostnames:
   - "ddns.example.com"
 
