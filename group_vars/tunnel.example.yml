@@ -56,8 +56,8 @@ tunnel_services:
 
   - name: game # Tunnel-only: no domain, reachable directly on the server
     type: udp
-    local_addr: 127.0.0.1:27015
-    bind_addr: 0.0.0.0:27015
+    local_addr: 127.0.0.1:30000
+    bind_addr: 0.0.0.0:30000
 
 # --- Server settings (only used by the server of this tuple) ---
 

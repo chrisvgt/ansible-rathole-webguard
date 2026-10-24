@@ -18,7 +18,7 @@
           - rathole_server_config.services | map(attribute='name') | list == ['web', 'shop', 'apex', 'game-tcp', 'game-udp']
           - (rathole_server_config.services | selectattr('name', 'eq', 'web') | first).bind_addr == '127.0.0.1:2368'
           - (rathole_server_config.services | selectattr('name', 'eq', 'game-udp') | first).type == 'udp'
-          - (rathole_server_config.services | selectattr('name', 'eq', 'game-tcp') | first).bind_addr == '0.0.0.0:27015'
+          - (rathole_server_config.services | selectattr('name', 'eq', 'game-tcp') | first).bind_addr == '0.0.0.0:30000'
           - rathole_server_config.services | selectattr('local_addr', 'defined') | list | length == 0
           - rathole_server_config.transport.type == 'noise'
           - rathole_auto_secrets | bool

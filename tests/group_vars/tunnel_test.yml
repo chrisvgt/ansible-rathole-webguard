@@ -18,9 +18,9 @@ tunnel_services:
     domain: example.com
     local_addr: 127.0.0.1:8080
   - name: game-tcp
-    local_addr: 127.0.0.1:27015
-    bind_addr: 0.0.0.0:27015
+    local_addr: 127.0.0.1:30000
+    bind_addr: 0.0.0.0:30000
   - name: game-udp
     type: udp
-    local_addr: 127.0.0.1:27015
-    bind_addr: 0.0.0.0:27015
+    local_addr: 127.0.0.1:30000
+    bind_addr: 0.0.0.0:30000
