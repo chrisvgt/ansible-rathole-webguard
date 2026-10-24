@@ -22,6 +22,9 @@ ansible-playbook --check -i tests/hosts.ini tests/check_mode_server.yml
 echo "== site.yml task order"
 ./tests/check_site_order.sh
 
+echo "== run-playbook.sh options"
+./tests/check_run_playbook.sh
+
 # Example files, copied the way the README describes
 example_dir=$(mktemp -d)
 trap 'rm -rf "$example_dir"' EXIT

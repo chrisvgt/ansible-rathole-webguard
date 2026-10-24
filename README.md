@@ -79,7 +79,7 @@ Put the secrets in place (see [Secrets](#secrets)), then:
 ./scripts/run-playbook.sh              # secrets in Ansible Vault, prompts for the password
 ```
 
-The script runs `ansible-playbook -i inventory.ini site.yml` with the matching vault option. Use `--vault-file <file>`, `--inventory <file>` or `--playbook <file>` to change the defaults.
+The script runs `ansible-playbook -i inventory.ini site.yml` with the matching vault option. Use `--vault-file <file>`, `--inventory <file>` or `--playbook <file>` to change the defaults. All other options are passed on to `ansible-playbook`, for example `--check --diff`, `--limit home` or `--tags caddy`.
 
 Open these ports on the server: 80 and 443 (Caddy), and the Rathole port (`rathole_port`, default 2333).
 
@@ -212,7 +212,7 @@ The role runs before Caddy, so swap is available for the Caddy build.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if `/var/run/reboot-required` exists and `enable_auto_reboot` is true.
 
-Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `ansible-playbook -i inventory.ini site.yml --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
+Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./scripts/run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
 
 ## Caddy build
 

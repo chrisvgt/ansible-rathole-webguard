@@ -2,9 +2,9 @@
 # Helper to run the main ansible playbook with sensible defaults.
 # Usage:
 #   ./scripts/run-playbook.sh            # prompts for the vault password (--ask-vault-pass)
-#   ./scripts/run-playbook.sh --no-vault # no vault, secrets in plaintext host_vars
+#   ./scripts/run-playbook.sh --no-vault # no vault, secrets in plaintext group_vars
 #   ./scripts/run-playbook.sh --vault-file /path/to/vault_pass.txt
-#   ./scripts/run-playbook.sh --inventory custom_inventory.ini
+#   ./scripts/run-playbook.sh --no-vault --check --diff   # other options go to ansible-playbook
 
 set -euo pipefail
 
@@ -13,6 +13,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 PLAYBOOK="${PLAYBOOK:-site.yml}"
 INVENTORY="${INVENTORY:-inventory.ini}"
 NO_VAULT=false
+EXTRA_ARGS=()
 
 print_usage() {
   cat <<EOF
@@ -25,11 +26,14 @@ Options:
   --playbook <file>    Specify playbook file (default: site.yml)
   -h|--help            Show this help message
 
+All other options are passed on to ansible-playbook (--check, --diff, --limit, --tags, ...).
+
 Examples:
   $0
   $0 --vault-file ~/.vault_pass.txt
   $0 --no-vault
-  $0 --inventory hosts.ini --playbook site.yml
+  $0 --no-vault --check --diff
+  $0 --no-vault --limit home --tags rathole
 EOF
 }
 
@@ -60,10 +64,14 @@ while [[ $# -gt 0 ]]; do
       print_usage
       exit 0
       ;;
+    --)
+      shift
+      EXTRA_ARGS+=("$@")
+      break
+      ;;
     *)
-      echo "Unknown argument: $1"
-      print_usage
-      exit 2
+      EXTRA_ARGS+=("$1")
+      shift
       ;;
   esac
 done
@@ -81,6 +89,9 @@ else
     CMD+=("--ask-vault-pass")
   fi
 fi
+
+# Expanded this way so an empty array also works with set -u on bash 3.2 (macOS)
+CMD+=(${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
 
 echo "Running: ${CMD[*]}"
 exec "${CMD[@]}"
