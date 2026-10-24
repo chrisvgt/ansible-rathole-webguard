@@ -1,0 +1,34 @@
+---
+# tests/test_caddyfile_traditional.yml
+# Render the Caddyfile with every feature on: one site block per domain
+
+- name: Render Caddyfile in traditional mode
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    enable_crowdsec: true
+    enable_rate_limit: true
+    enable_coraza_waf: true
+    enable_cloudflare: true
+    coraza_mode_default: recommended
+  tasks:
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check features per site
+      ansible.builtin.assert:
+        that:
+          - "'acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}' in caddyfile"
+          - "'api_key test-api-key' in caddyfile"
+          - "'order coraza_waf before appsec' in caddyfile"
+          - "'reverse_proxy localhost:2368 {' in caddyfile"
+          - "'reverse_proxy localhost:3000 {' in caddyfile"
+          # AppSec is skipped for stream sites (both shop domains)
+          - caddyfile | regex_findall('(?m)^\s*appsec$') | length == 2
+          - caddyfile | regex_findall('flush_interval -1') | length == 4
+          # web sets coraza_mode minimal, the other three use the global default
+          - caddyfile | regex_findall('PROPFIND') | length == 1
+          - caddyfile | regex_findall('id:100040,') | length == 3
+          - "'SecAuditLog /var/log/caddy/coraza/modsec_web.log' in caddyfile"
+          - "'zone shop_shop_example_org {' in caddyfile"

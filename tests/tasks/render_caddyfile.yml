@@ -1,0 +1,95 @@
+---
+# tests/tasks/render_caddyfile.yml
+# Shared by tests/test_caddyfile_*.yml: derive the sites, render Caddyfile.j2
+# the way the caddy role does and check that the result is well-formed.
+# Sets `caddyfile` to the rendered content for the checks of each test.
+
+- name: Load Caddy role defaults and constants
+  ansible.builtin.include_vars: "../../roles/caddy/{{ item }}/main.yml"
+  loop: [defaults, vars]
+
+- name: Run site derivation
+  ansible.builtin.include_tasks: ../../roles/caddy/tasks/sites.yml
+
+- name: Set values the caddy and crowdsec roles provide at runtime
+  ansible.builtin.set_fact:
+    caddy_coraza_audit_log_dir: "{{ caddy_log_dir }}/coraza"
+    crowdsec_api_key: test-api-key
+
+# Same options as the role's template task, so the output matches the host
+- name: Render the Caddyfile
+  block:
+    - name: Create temporary file
+      ansible.builtin.tempfile:
+        suffix: .Caddyfile
+      register: caddyfile_tmp
+
+    - name: Render Caddyfile.j2
+      ansible.builtin.template:
+        src: ../../roles/caddy/templates/Caddyfile.j2
+        dest: "{{ caddyfile_tmp.path }}"
+        mode: "0600"
+        lstrip_blocks: true
+
+    - name: Read rendered Caddyfile
+      ansible.builtin.slurp:
+        src: "{{ caddyfile_tmp.path }}"
+      register: caddyfile_raw
+  always:
+    - name: Remove temporary file
+      ansible.builtin.file:
+        path: "{{ caddyfile_tmp.path }}"
+        state: absent
+      when: caddyfile_tmp.path is defined
+
+# Coraza directives sit between backticks and contain braces of their own
+- name: Keep rendered content
+  ansible.builtin.set_fact:
+    caddyfile: "{{ caddyfile_raw.content | b64decode }}"
+    caddyfile_outside_directives: "{{ caddyfile_raw.content | b64decode | regex_replace('(?s)`.*?`', '``') }}"
+
+- name: Check the Caddyfile is well-formed
+  vars:
+    brace_depth: >-
+      {%- set ns = namespace(depth=0, lowest=0) -%}
+      {%- for c in caddyfile_outside_directives if c in ['{', '}'] -%}
+        {%- set ns.depth = ns.depth + (1 if c == '{' else -1) -%}
+        {%- set ns.lowest = [ns.lowest, ns.depth] | min -%}
+      {%- endfor -%}
+      {{ [ns.depth, ns.lowest] }}
+    # `order X before Y` fails in Caddy unless Y is a built-in directive or ordered before
+    order_targets_unknown: >-
+      {%- set ns = namespace(known=['basicauth', 'reverse_proxy'], unknown=[]) -%}
+      {%- for line in caddyfile | regex_findall('(?m)^\s*order \S+ .*$') -%}
+        {%- set words = line.split() -%}
+        {%- if words | length == 4 and words[3] not in ns.known -%}
+          {%- set ns.unknown = ns.unknown + [words[3]] -%}
+        {%- endif -%}
+        {%- set ns.known = ns.known + [words[1]] -%}
+      {%- endfor -%}
+      {{ ns.unknown }}
+    zones: "{{ caddyfile | regex_findall('(?m)^\\s*zone (\\S+) \\{$') }}"
+    audit_logs: "{{ caddyfile | regex_findall('SecAuditLog (\\S+)') }}"
+    site_blocks: "{{ caddyfile | regex_findall('(?m)^(\\S+) \\{$') }}"
+    expected_blocks: >-
+      {{ caddy_effective_sites | map(attribute='domain') | list
+         + caddy_effective_wildcard_sites | map(attribute='domain') | list
+         + caddy_effective_extra_sites | map(attribute='domain') | list }}
+  ansible.builtin.assert:
+    that:
+      - brace_depth == [0, 0]
+      - caddyfile | regex_findall('`') | length is even
+      - caddyfile_outside_directives is not search('[{](?:[{]|[%]|[#])')
+      - order_targets_unknown == []
+      - site_blocks | sort == expected_blocks | sort
+      - zones | length == zones | unique | length
+      - audit_logs | length == audit_logs | unique | length
+      # Plugin directives appear only when the plugin is built
+      - (caddyfile is search('(?m)^\s*coraza_waf \{$')) == (caddy_coraza_needed | bool)
+      - (caddyfile is search('(?m)^\s*crowdsec$')) == (enable_crowdsec | bool)
+      - enable_crowdsec | bool or caddyfile is not search('(?m)^\s*appsec$')
+      - (caddyfile is search('(?m)^\s*rate_limit \{$')) == (enable_rate_limit | bool)
+      - ('acme_dns cloudflare' in caddyfile) == (enable_cloudflare | bool)
+    fail_msg: >-
+      braces (depth, lowest) {{ brace_depth }}, unknown order targets {{ order_targets_unknown }},
+      blocks {{ site_blocks }} (expected {{ expected_blocks }}), zones {{ zones }}
