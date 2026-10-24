@@ -21,7 +21,8 @@
     order appsec before reverse_proxy
     {% endif %}
     {% if caddy_coraza_needed | bool %}
-    order coraza_waf before appsec
+    {# appsec is only ordered with CrowdSec; Caddy rejects an unknown target #}
+    order coraza_waf before {{ 'appsec' if enable_crowdsec | bool else 'reverse_proxy' }}
     {% endif %}
     {% if enable_rate_limit | default(true) | bool and caddy_coraza_needed | bool %}
     order rate_limit before coraza_waf
