@@ -1,0 +1,42 @@
+---
+# tests/test_system_unattended_upgrades.yml
+# Automatic security updates: daily run, reboot only when enabled
+
+- name: Render unattended-upgrades configuration
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Load system role defaults
+      ansible.builtin.include_vars: ../roles/system/defaults/main.yml
+
+    - name: Check defaults
+      ansible.builtin.assert:
+        that:
+          - system_unattended_upgrades is true
+          - system_unattended_reboot is false
+
+    - name: Check periodic APT settings
+      ansible.builtin.assert:
+        that:
+          - '''APT::Periodic::Update-Package-Lists "1";'' in periodic'
+          - '''APT::Periodic::Unattended-Upgrade "1";'' in periodic'
+      vars:
+        periodic: "{{ lookup('ansible.builtin.template', '../roles/system/templates/20auto-upgrades.j2') }}"
+
+    - name: Check that the default does not reboot
+      ansible.builtin.assert:
+        that:
+          - '''Unattended-Upgrade::Automatic-Reboot "false";'' in local_conf'
+          - '''Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";'' in local_conf'
+      vars:
+        local_conf: "{{ lookup('ansible.builtin.template', '../roles/system/templates/52unattended-upgrades-local.j2') }}"
+
+    - name: Check reboot settings when enabled
+      ansible.builtin.assert:
+        that:
+          - '''Unattended-Upgrade::Automatic-Reboot "true";'' in local_conf'
+          - '''Unattended-Upgrade::Automatic-Reboot-Time "03:30";'' in local_conf'
+      vars:
+        local_conf: >-
+          {{ lookup('ansible.builtin.template', '../roles/system/templates/52unattended-upgrades-local.j2',
+                    template_vars={'system_unattended_reboot': true, 'system_unattended_reboot_time': '03:30'}) }}
