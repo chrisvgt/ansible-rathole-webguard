@@ -27,6 +27,13 @@ Caddy proxies each site to a local port on the VPS. Rathole binds that port to `
 
 A **tuple** is one server (VPS) and one client (home server) connected by one tunnel. You configure a tuple in two places: a group in `inventory.ini` and one file `group_vars/tunnel_<name>.yml`. Global switches live in `group_vars/all.yml`.
 
+### Before you start
+
+- A computer with Ansible (`ansible-core`, tested with 2.21) that reaches both hosts over SSH, as a user with `sudo`.
+- A VPS and a home server with a supported OS (see above).
+- For each domain a DNS record that points to the VPS (A, and AAAA if the VPS has IPv6). Without Cloudflare, Caddy needs it before the first run to get its certificates.
+- On the VPS, these ports reachable from the internet: 80/tcp, 443/tcp and 443/udp for Caddy, and the Rathole port (default 2333/tcp). Open them in the provider firewall, or let the playbook manage the host firewall (`enable_firewall: true`, see [Firewall](#firewall)).
+
 ### 1. Copy the example files
 
 ```bash
@@ -68,20 +75,30 @@ tunnel_services:
     stream: true
 ```
 
-From this, the playbook builds the Rathole server and client configuration and the Caddy site. See [Services](#services) for all keys.
+From this, the playbook builds the Rathole server and client configuration and the Caddy site. See [Services](#services) for all keys. The list stays the same with or without Cloudflare and wildcard certificates; those are switched in `group_vars/all.yml`.
 
-### 4. Secrets and run
+### 4. Run
 
-Put the secrets in place (see [Secrets](#secrets)), then:
+No secrets are needed for the default settings: the tunnel keys and the CrowdSec credentials are created on the server (see [Secrets](#secrets)). With `enable_cloudflare: true`, set `cloudflare_api_token` in the tuple file first.
 
 ```bash
-./scripts/run-playbook.sh --no-vault   # secrets in plaintext, gitignored files
-./scripts/run-playbook.sh              # secrets in Ansible Vault, prompts for the password
+./scripts/run-playbook.sh --no-vault
 ```
 
-The script runs `ansible-playbook -i inventory.ini site.yml` with the matching vault option. Use `--vault-file <file>`, `--inventory <file>` or `--playbook <file>` to change the defaults. All other options are passed on to `ansible-playbook`, for example `--check --diff`, `--limit home` or `--tags caddy`.
+The script runs `ansible-playbook -i inventory.ini site.yml`. Without `--no-vault` it asks for the vault password, for secrets kept in Ansible Vault. Use `--vault-file <file>`, `--inventory <file>` or `--playbook <file>` to change the defaults. All other options are passed on to `ansible-playbook`, for example `--limit home`, `--tags caddy`, or `-K` if `sudo` asks for a password. Before later changes, `--check --diff` shows what would change without changing anything.
 
-Open these ports on the server: 80 and 443 (Caddy), and the Rathole port (`rathole_port`, default 2333).
+The first run takes a while: Caddy is built from source on the VPS (see [Caddy build](#caddy-build)).
+
+### 5. Check
+
+Open one of your domains in a browser. If it does not load, look at the services:
+
+```bash
+sudo systemctl status rathole caddy crowdsec   # on the VPS
+sudo journalctl -u rathole -n 20               # on both hosts: is the tunnel connected?
+```
+
+See [Maintenance](#maintenance) for more commands and common problems.
 
 ### More tuples
 
@@ -259,7 +276,7 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables f
 - installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, version pinned by `crowdsec_import_version`
 - runs as the system user `crowdsec-import` from a sandboxed systemd service and timer
 - creates its own LAPI machine and bouncer, with a generated password (or `crowdsec_machine_password`)
-- feeds can be switched off one by one (`crowdsec_enable_*`, see `group_vars/tunnel.example.yml`)
+- feeds can be switched off one by one, e.g. `crowdsec_enable_tor: false`; all options and their defaults are in `roles/crowdsec_import/defaults/main.yml`
 
 ## Firewall
 
