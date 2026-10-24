@@ -10,6 +10,7 @@
 # =============================================================================
 
 # Upstream release (git tag) installed via pipx
+# renovate: datasource=github-tags depName=wolffcatskyy/crowdsec-blocklist-import
 crowdsec_import_version: "v3.8.0"
 crowdsec_import_repo_url: "https://github.com/wolffcatskyy/crowdsec-blocklist-import.git"
 
