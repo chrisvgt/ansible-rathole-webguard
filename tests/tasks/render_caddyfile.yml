@@ -14,7 +14,7 @@
 - name: Set values the caddy and crowdsec roles provide at runtime
   ansible.builtin.set_fact:
     caddy_coraza_audit_log_dir: "{{ caddy_log_dir }}/coraza"
-    crowdsec_api_key: test-api-key
+    crowdsec_bouncer_key: test-api-key
 
 # Same options as the role's template task, so the output matches the host
 - name: Render the Caddyfile

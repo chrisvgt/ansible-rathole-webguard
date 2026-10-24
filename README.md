@@ -89,22 +89,30 @@ Add another group to `inventory.ini`, add it to `[webservers:children]`, and cop
 
 ## Secrets
 
-| Variable                    | Vault name                          | Needed when                    |
-| --------------------------- | ----------------------------------- | ------------------------------ |
-| `crowdsec_api_key`          | `vault_crowdsec_api_key`            | `enable_crowdsec: true`        |
-| `crowdsec_enrollment_key`   | `vault_crowdsec_enrollment_key`     | optional, CrowdSec Console     |
-| `crowdsec_machine_password` | `vault_crowdsec_machine_password`   | `enable_crowdsec_import: true` |
-| `cloudflare_api_token`      | `vault_cloudflare_api_token_server` | `enable_cloudflare: true`      |
+With the default settings you set no secrets. The server creates them on the first run and keeps them in root-only files:
 
-Generate random values with `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`.
+| Secret                            | Stored on the server                                   | Set it yourself with        |
+| --------------------------------- | ------------------------------------------------------ | --------------------------- |
+| Rathole Noise keys and token      | `/etc/rathole/noise.key`, `noise.pub`, `default_token` | see below                   |
+| CrowdSec bouncer key for Caddy    | `/etc/crowdsec/caddy.bouncer.key`                      | `crowdsec_api_key`          |
+| Blocklist import machine password | `/etc/crowdsec/blocklist-import.machine.password`      | `crowdsec_machine_password` |
 
-The tunnel needs no secrets from you. On the first run the server creates a Noise key pair and a default token in `/etc/rathole/` (`noise.key`, `noise.pub`, `default_token`, readable by root and the `rathole` group only). The client reads the public key and the token from its server, also with `--limit <client>`. To keep existing values, set `rathole_noise_private_key`, `rathole_noise_public_key` and `rathole_default_token` in the tuple file. To rotate, delete the three files on the server and run the playbook for both hosts.
+A value set in the tuple file always wins. If you change it later, the next run registers the new key or password with CrowdSec.
 
-Two ways to store the other secrets:
+Only these come from you:
 
-**Plaintext (simple).** Replace each `"{{ vault_* }}"` in `group_vars/tunnel_<name>.yml` with the value itself and run `./scripts/run-playbook.sh --no-vault`. The file is gitignored.
+| Variable                  | Needed when                |
+| ------------------------- | -------------------------- |
+| `cloudflare_api_token`    | `enable_cloudflare: true`  |
+| `crowdsec_enrollment_key` | optional, CrowdSec Console |
 
-**Ansible Vault.** Keep the `"{{ vault_* }}"` references and define the values in an encrypted file:
+The Rathole client reads the public key and the token from its server, also with `--limit <client>`. To keep existing tunnel values, set `rathole_noise_private_key`, `rathole_noise_public_key` and `rathole_default_token` in the tuple file. To rotate, delete the three files on the server and run the playbook for both hosts. For the CrowdSec values, delete the file and run the playbook for the server.
+
+Two ways to store your own secrets:
+
+**Plaintext (simple).** Write the value into `group_vars/tunnel_<name>.yml` and run `./scripts/run-playbook.sh --no-vault`. The file is gitignored.
+
+**Ansible Vault.** Reference a vault variable in the tuple file (`cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"`) and define it in an encrypted file:
 
 ```bash
 mkdir -p group_vars/webservers
@@ -112,9 +120,6 @@ ansible-vault create group_vars/webservers/vault.yml
 ```
 
 ```yaml
-vault_crowdsec_api_key: "..."
-vault_crowdsec_enrollment_key: "..."
-vault_crowdsec_machine_password: "..."
 vault_cloudflare_api_token_server: "..."
 ```
 
@@ -253,7 +258,7 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables f
 
 - installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, version pinned by `crowdsec_import_version`
 - runs as the system user `crowdsec-import` from a sandboxed systemd service and timer
-- creates its own LAPI machine and bouncer; you only set `crowdsec_machine_password`
+- creates its own LAPI machine and bouncer, with a generated password (or `crowdsec_machine_password`)
 - feeds can be switched off one by one (`crowdsec_enable_*`, see `group_vars/tunnel.example.yml`)
 
 ## Firewall

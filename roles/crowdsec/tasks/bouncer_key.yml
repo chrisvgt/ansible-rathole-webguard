@@ -1,0 +1,42 @@
+---
+# roles/crowdsec/tasks/bouncer_key.yml
+# Sets crowdsec_bouncer_key: crowdsec_api_key if set, otherwise a key generated
+# once and stored in crowdsec_bouncer_key_file. The caddy role includes this
+# file as well, because it renders the key before CrowdSec is installed.
+
+- name: Check for a stored Caddy bouncer key
+  ansible.builtin.stat:
+    path: "{{ crowdsec_bouncer_key_file }}"
+  register: crowdsec_bouncer_key_stat
+  when: crowdsec_api_key | default('') | length == 0
+
+- name: Read stored Caddy bouncer key
+  ansible.builtin.slurp:
+    src: "{{ crowdsec_bouncer_key_file }}"
+  register: crowdsec_bouncer_key_slurp
+  no_log: true
+  when: crowdsec_bouncer_key_stat.stat.exists | default(false)
+
+- name: Set Caddy bouncer key
+  ansible.builtin.set_fact:
+    crowdsec_bouncer_key: >-
+      {{ crowdsec_api_key | default('', true)
+         or (crowdsec_bouncer_key_slurp.content | b64decode | trim if crowdsec_bouncer_key_slurp is not skipped else '')
+         or lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}
+  no_log: true
+
+# Created by root (the play uses become) and only readable by root
+- name: Ensure directory for the Caddy bouncer key exists
+  ansible.builtin.file:
+    path: "{{ crowdsec_bouncer_key_file | dirname }}"
+    state: directory
+    mode: "0755"
+  when: crowdsec_bouncer_key_stat.stat is defined and not crowdsec_bouncer_key_stat.stat.exists
+
+- name: Store generated Caddy bouncer key
+  ansible.builtin.copy:
+    content: "{{ crowdsec_bouncer_key }}\n"
+    dest: "{{ crowdsec_bouncer_key_file }}"
+    mode: "0600"
+  no_log: true
+  when: crowdsec_bouncer_key_stat.stat is defined and not crowdsec_bouncer_key_stat.stat.exists

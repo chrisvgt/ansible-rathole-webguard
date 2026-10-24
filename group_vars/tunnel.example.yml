@@ -3,9 +3,10 @@
 # The file name must match the tuple's group in inventory.ini ([tunnel_home]).
 # Everything for one server/client pair lives here.
 #
-# Secrets: either replace each "{{ vault_* }}" below with the plain value and
-# run with --no-vault, or keep the references and define the vault_* variables
-# in an Ansible Vault file (see README, "Secrets").
+# Secrets: tunnel keys and CrowdSec credentials are generated on the server.
+# Only cloudflare_api_token comes from you (with enable_cloudflare): either
+# replace "{{ vault_* }}" with the plain value and run with --no-vault, or keep
+# the reference and define it in an Ansible Vault file (see README, "Secrets").
 
 # Required: unique name of this tuple; links the server and the client
 tunnel_id: home
@@ -62,21 +63,17 @@ tunnel_services:
 # --- Server settings (only used by the server of this tuple) ---
 
 # --- Crowdsec Setup ---
-crowdsec_api_key: "{{ vault_crowdsec_api_key }}" # Caddy bouncer key. Generate with: `head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
-crowdsec_enrollment_key: "{{ vault_crowdsec_enrollment_key }}" # Optional: enroll the engine in the CrowdSec Console (skipped if undefined or empty)
+# The Caddy bouncer key is generated on the first run (/etc/crowdsec/caddy.bouncer.key)
+# crowdsec_api_key: "..." # Optional: use your own bouncer key instead
+# crowdsec_enrollment_key: "..." # Optional: enroll the engine in the CrowdSec Console
 duration_expr: true # Enable dynamic increase of blocking time
 
 # --- Crowdsec Blocklist Import Setup ---
-# Required: CrowdSec LAPI credentials
-#
 # The machine and bouncer are created by the crowdsec_import role when
-# enable_crowdsec_import is true. You only need to provide the password.
-#
-# Generate a password with:
-# head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32
-#
-crowdsec_machine_password: "{{ vault_crowdsec_machine_password }}" # Password for the blocklist-import machine
-crowdsec_machine_id: "blocklist-import" # Machine ID (default: blocklist-import)
+# enable_crowdsec_import is true. The machine password is generated on the
+# first run (/etc/crowdsec/blocklist-import.machine.password).
+# crowdsec_machine_password: "..." # Optional: use your own password instead
+# crowdsec_machine_id: "blocklist-import"
 
 # Optional: Decision settings (customize if needed)
 # crowdsec_decision_duration: "24h"

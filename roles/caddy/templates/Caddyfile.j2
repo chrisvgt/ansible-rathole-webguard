@@ -32,7 +32,7 @@
     crowdsec {
         {# Fallbacks match roles/crowdsec/defaults/main.yml, so this role also works on its own #}
         api_url http://{{ crowdsec_lapi_ip | default('127.0.0.1') }}:{{ crowdsec_lapi_port | default('8080') }}
-        api_key {{ crowdsec_api_key }}
+        api_key {{ crowdsec_bouncer_key }}
         ticker_interval {{ crowdsec_ticker_interval | default('15s') }}
         appsec_url http://{{ crowdsec_appsec_ip | default('127.0.0.1') }}:{{ crowdsec_appsec_port | default('7422') }}
         appsec_timeout {{ crowdsec_appsec_timeout | default('10s') }}
