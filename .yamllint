@@ -1,34 +1,29 @@
 extends: default
 
+# CI and pre-commit run `yamllint -s`: warnings fail as well, so every rule is enforced.
 rules:
-  # Keep indentation consistent but treat as a warning to avoid breaking CI on minor spacing
   indentation:
     indent-sequences: consistent
-    level: warning
 
-  # Allow longer lines and only warn when exceeded
+  # Long Jinja expressions and regexes are common in this repo
   line-length:
     max: 300
     allow-non-breakable-words: true
-    level: warning
 
-  # Warn on ambiguous truthy values but don't fail CI
   truthy:
-    allowed-values: ['true', 'false']
-    level: warning
-
-  # Style-only rules: warn, don't fail
-  trailing-spaces:
-    level: warning
-  empty-lines:
-    level: warning
-  new-lines:
-    level: warning
+    allowed-values: ["true", "false"]
 
   # Align comment spacing with Prettier (1 space before inline comments)
   comments:
     min-spaces-from-content: 1
-    level: warning
+
+  # Required by ansible-lint for a compatible yamllint configuration
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
 
   # Disable YAML doc start marker (---) requirement
   document-start: disable

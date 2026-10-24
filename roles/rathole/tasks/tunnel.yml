@@ -1,0 +1,54 @@
+---
+# roles/rathole/tasks/tunnel.yml
+# Build rathole_server_config / rathole_client_config from tunnel_services.
+# The server of a tuple is the host with the same tunnel_id and rathole_role 'server'.
+
+- name: Validate tunnel tuple
+  ansible.builtin.include_tasks: tunnel_validate.yml
+
+- name: Build tunnel service lists
+  ansible.builtin.set_fact:
+    rathole_tunnel_server: "{{ rathole_tuple_servers | first }}"
+    rathole_tunnel_server_services: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for s in tunnel_services -%}
+        {%- set extra = s | dict2items | selectattr('key', 'in', ['type', 'token', 'nodelay']) | items2dict -%}
+        {%- set bind = s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', ''))) -%}
+        {%- set ns.out = ns.out + [{'name': s.name, 'bind_addr': bind} | combine(extra)] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+    rathole_tunnel_client_services: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for s in tunnel_services -%}
+        {%- set extra = s | dict2items | selectattr('key', 'in', ['type', 'token', 'nodelay', 'retry_interval']) | items2dict -%}
+        {%- set ns.out = ns.out + [{'name': s.name, 'local_addr': s.local_addr} | combine(extra)] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+  no_log: true # Services may carry tokens
+
+- name: Build Rathole server config
+  ansible.builtin.set_fact:
+    rathole_server_config: >-
+      {{ {'listen_addr': rathole_listen_addr | default('0.0.0.0:' ~ rathole_port), 'transport': rathole_transport,
+          'services': rathole_tunnel_server_services}
+         | combine({'heartbeat_interval': rathole_heartbeat_interval} if rathole_heartbeat_interval is defined else {}) }}
+    rathole_auto_secrets: true
+  no_log: true
+  when: rathole_role == 'server'
+
+- name: Build Rathole client config
+  ansible.builtin.set_fact:
+    rathole_client_config: >-
+      {{ {'remote_addr': rathole_remote_host ~ ':' ~ rathole_port,
+          'transport': rathole_transport, 'services': rathole_tunnel_client_services}
+         | combine({'heartbeat_timeout': rathole_heartbeat_timeout} if rathole_heartbeat_timeout is defined else {})
+         | combine({'retry_interval': rathole_retry_interval} if rathole_retry_interval is defined else {}) }}
+    rathole_auto_secrets: true
+  no_log: true
+  when: rathole_role == 'client'
+  vars:
+    # Without ansible_host Ansible connects to the inventory name, so use that too
+    rathole_remote_host_raw: "{{ rathole_public_addr | default(hostvars[rathole_tunnel_server]['ansible_host'] | default(rathole_tunnel_server)) }}"
+    rathole_remote_host: >-
+      {{ '[' ~ rathole_remote_host_raw ~ ']' if ':' in rathole_remote_host_raw and not rathole_remote_host_raw.startswith('[')
+         else rathole_remote_host_raw }}

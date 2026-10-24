@@ -1,19 +1,39 @@
+# File Managed by Ansible
+# roles/crowdsec_import/templates/crowdsec-blocklist-import.service.j2
+
 [Unit]
 Description=CrowdSec Blocklist Importer
-After=network.target
 Documentation=https://github.com/wolffcatskyy/crowdsec-blocklist-import
+Wants=network-online.target
+After=network-online.target crowdsec.service
 
 [Service]
 Type=oneshot
+User={{ crowdsec_import_user }}
+Group={{ crowdsec_import_user }}
 EnvironmentFile=/etc/crowdsec/blocklist-import.env
-ExecStart={{ crowdsec_import_home_dir | default('/root') }}/.local/bin/crowdsec-blocklist-import
-WorkingDirectory={{ crowdsec_import_home_dir | default('/root') }}
-User={{ ansible_user | default('root') }}
-Group={{ ansible_user | default('root') }}
+ExecStart={{ crowdsec_import_bin }}
+WorkingDirectory={{ crowdsec_import_install_dir }}
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=crowdsec-blocklist-import
-Environment="PATH=/usr/local/bin:/usr/bin:/bin:{{ crowdsec_import_home_dir | default('/root') }}/.local/bin"
+
+# Sandboxing: the importer only needs outbound HTTP(S) to the feeds and the CrowdSec LAPI
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths={{ crowdsec_import_blocklist_output_file | dirname }}
+
+# Resource limits for small hosts
+MemoryHigh={{ crowdsec_import_memory_high }}
+MemoryMax={{ crowdsec_import_memory_max }}
+Nice=10
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+---
+# roles/firewall/defaults/main.yml
+
+# --- nftables firewall for the server (enabled with 'enable_firewall') ---
+# Always open: SSH (every port sshd listens on, plus ansible_port), the
+# Rathole port and services bound to a public address, e.g. 0.0.0.0:<port>.
+firewall_web_ports: true # 80/tcp, 443/tcp and 443/udp (HTTP/3) for Caddy
+firewall_allowed_tcp_ports: [] # Additional TCP ports to open
+firewall_allowed_udp_ports: [] # Additional UDP ports to open
+firewall_rules_file: /etc/nftables.d/webguard.nft # Loaded at boot by webguard-firewall.service
+firewall_rollback_seconds: 120 # New rules are removed again if Ansible cannot reconnect within this time

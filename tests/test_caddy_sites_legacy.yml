@@ -1,0 +1,29 @@
+---
+# tests/test_caddy_sites_legacy.yml
+# Without tunnel_services the existing caddy_sites / wildcard_sites are used unchanged
+
+- name: Keep legacy site lists
+  hosts: srv
+  gather_facts: false
+  vars:
+    tunnel_services: !!null
+    caddy_sites:
+      - { name: blog, domain: blog.example.com, local_port: 2368 }
+    wildcard_sites:
+      - domain: "*.example.com"
+        sites:
+          - { name: blog, subdomain: blog, port: 2368 }
+  tasks:
+    # Only the derivation; including the role would also run its dependencies
+    - name: Load Caddy role constants
+      ansible.builtin.include_vars: ../roles/caddy/vars/main.yml
+
+    - name: Run site derivation
+      ansible.builtin.include_tasks: ../roles/caddy/tasks/sites.yml
+
+    - name: Check legacy lists are passed through
+      ansible.builtin.assert:
+        that:
+          - caddy_effective_sites == caddy_sites
+          - caddy_effective_wildcard_sites == wildcard_sites
+          - caddy_effective_extra_sites == []

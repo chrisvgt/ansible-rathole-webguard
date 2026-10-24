@@ -1,54 +1,201 @@
 ---
-- name: Determine user home directory
-  ansible.builtin.set_fact:
-    crowdsec_import_home_dir: "{{ ansible_facts['env']['HOME'] | default('/root') }}"
+# roles/crowdsec_import/tasks/main.yml
 
-- name: Ensure user home directory exists
+# --- CrowdSec Blocklist Import Role: Installation and Configuration ---
+
+- name: Ensure CrowdSec is enabled (required by the blocklist import)
+  ansible.builtin.assert:
+    that:
+      - enable_crowdsec | default(true) | bool
+    fail_msg: "enable_crowdsec_import requires enable_crowdsec: true (the crowdsec role must be applied first)."
+    quiet: true
+
+- name: Resolve blocklist import machine password
+  ansible.builtin.include_tasks: machine_password.yml
+
+## Service User and Installation
+
+- name: Create blocklist import system group
+  ansible.builtin.group:
+    name: "{{ crowdsec_import_user }}"
+    system: true
+    state: present
+
+- name: Create blocklist import system user
+  ansible.builtin.user:
+    name: "{{ crowdsec_import_user }}"
+    group: "{{ crowdsec_import_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ crowdsec_import_install_dir }}"
+    create_home: false
+    state: present
+
+# The code is owned by root, so the service user cannot modify what it executes
+- name: Create blocklist import installation directory
   ansible.builtin.file:
-    path: "{{ crowdsec_import_home_dir }}"
+    path: "{{ crowdsec_import_install_dir }}"
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: root
+    group: root
     mode: "0755"
 
-- name: Check if crowdsec-blocklist-import is already installed
-  ansible.builtin.command: which crowdsec-blocklist-import
-  register: crowdsec_import_installed
-  failed_when: false
+- name: Check installed crowdsec-blocklist-import version
+  ansible.builtin.command: "{{ crowdsec_import_bin }} --version"
+  register: crowdsec_import_installed_version
   changed_when: false
+  failed_when: false
+  check_mode: false
 
 - name: Install crowdsec-blocklist-import via pipx
-  ansible.builtin.command: pipx install git+https://github.com/wolffcatskyy/crowdsec-blocklist-import.git@v1.0.0
-  become: true
-  become_user: "{{ ansible_user }}"
-  when: crowdsec_import_installed.rc != 0
+  ansible.builtin.command:
+    argv:
+      - pipx
+      - install
+      - --force
+      - "git+{{ crowdsec_import_repo_url }}@{{ crowdsec_import_version }}"
+  environment:
+    PIPX_HOME: "{{ crowdsec_import_install_dir }}/pipx"
+    PIPX_BIN_DIR: "{{ crowdsec_import_install_dir }}/bin"
+    PIP_NO_CACHE_DIR: "1" # Keep the disk footprint small
   register: crowdsec_import_install_result
-  changed_when: "'installed' in crowdsec_import_install_result.stdout"
+  changed_when: crowdsec_import_install_result.rc == 0
+  when: >-
+    (crowdsec_import_installed_version.stdout | default('') | trim | regex_search('[0-9][0-9.]*$'))
+    != (crowdsec_import_version | regex_replace('^v', ''))
+  notify: Restart CrowdSec Blocklist Import
 
-# Create config and blocklist directories
-- name: Create config and output directories
+## Directories
+
+# Earlier versions of this role changed the owner of /etc/crowdsec, restore it
+- name: Ensure CrowdSec config directory is owned by root
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: /etc/crowdsec
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: root
+    group: root
     mode: "0755"
-  loop:
-    - /etc/crowdsec
-    - /var/lib/crowdsec/blocklists
 
-# Deploy .env configuration
+- name: Create blocklist output directory
+  ansible.builtin.file:
+    path: "{{ crowdsec_import_blocklist_output_file | dirname }}"
+    state: directory
+    owner: "{{ crowdsec_import_user }}"
+    group: "{{ crowdsec_import_user }}"
+    mode: "0750"
+
+## LAPI Machine and Bouncer
+
+- name: List CrowdSec machines
+  ansible.builtin.command: cscli machines list -o json
+  register: crowdsec_import_machines_list
+  changed_when: false
+  check_mode: false
+
+- name: Determine whether the blocklist import machine exists
+  ansible.builtin.set_fact:
+    crowdsec_import_machine_exists: >-
+      {{ crowdsec_import_blocklist_machine_id in
+      (crowdsec_import_machines_list.stdout | from_json | default([], true) | map(attribute='machineId') | list) }}
+
+- name: Check blocklist import bouncer key file
+  ansible.builtin.stat:
+    path: "{{ crowdsec_import_bouncer_key_file }}"
+  register: crowdsec_import_bouncer_key_stat
+
+- name: List CrowdSec bouncers
+  ansible.builtin.command: cscli bouncers list -o json
+  register: crowdsec_import_bouncers_list
+  changed_when: false
+  check_mode: false
+
+- name: Determine whether the blocklist import bouncer exists
+  ansible.builtin.set_fact:
+    crowdsec_import_bouncer_exists: >-
+      {{ crowdsec_import_blocklist_machine_id in
+      (crowdsec_import_bouncers_list.stdout | from_json | default([], true) | map(attribute='name') | list) }}
+
+# The key cannot be read back from CrowdSec, so a bouncer without a stored key is recreated.
+# A stored key without a matching bouncer is replaced by a new one.
+- name: Remove blocklist import bouncer without a stored key
+  ansible.builtin.command:
+    argv: [cscli, bouncers, delete, "{{ crowdsec_import_blocklist_machine_id }}"]
+  changed_when: true
+  when:
+    - crowdsec_import_bouncer_exists | bool
+    - not crowdsec_import_bouncer_key_stat.stat.exists
+
+- name: Create CrowdSec bouncer for blocklist import
+  ansible.builtin.command:
+    argv: [cscli, bouncers, add, "{{ crowdsec_import_blocklist_machine_id }}", -o, raw]
+  register: crowdsec_import_bouncer_add
+  changed_when: true
+  no_log: true
+  when: not (crowdsec_import_bouncer_key_stat.stat.exists and crowdsec_import_bouncer_exists | bool)
+
+- name: Store blocklist import bouncer API key
+  ansible.builtin.copy:
+    content: "{{ crowdsec_import_bouncer_add.stdout | trim }}\n"
+    dest: "{{ crowdsec_import_bouncer_key_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: crowdsec_import_bouncer_add is not skipped
+
+- name: Ensure blocklist import bouncer key file permissions
+  ansible.builtin.file:
+    path: "{{ crowdsec_import_bouncer_key_file }}"
+    state: file
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Read blocklist import bouncer API key
+  ansible.builtin.slurp:
+    src: "{{ crowdsec_import_bouncer_key_file }}"
+  register: crowdsec_import_bouncer_key_slurp
+  no_log: true
+
+- name: Set blocklist import bouncer API key
+  ansible.builtin.set_fact:
+    crowdsec_import_blocklist_bouncer_key: "{{ crowdsec_import_bouncer_key_slurp.content | b64decode | trim }}"
+  no_log: true
+
+## Configuration and systemd Units
+
+# Contains the machine password and bouncer key: readable by root and the service group only
 - name: Create .env configuration for blocklist import
   ansible.builtin.template:
     src: crowdsec-blocklist-import.env.j2
     dest: /etc/crowdsec/blocklist-import.env
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: "0644"
-  become: true
-  notify: Restart and enable crowdsec-blocklist-import timer
+    owner: root
+    group: "{{ crowdsec_import_user }}"
+    mode: "0640"
+  diff: false
+  register: crowdsec_import_env
+  notify: Restart CrowdSec Blocklist Import Timer
 
-# Deploy systemd unit files (optional but recommended)
+# The env file holds the password last set on the machine. CrowdSec cannot show
+# a machine's password, so the machine is updated whenever the file changes.
+# '--file -' prints the credentials instead of overwriting the agent's
+# local_api_credentials.yaml; '--force' updates an existing machine.
+- name: Create or update CrowdSec machine for blocklist import
+  ansible.builtin.command:
+    argv:
+      - cscli
+      - machines
+      - add
+      - "{{ crowdsec_import_blocklist_machine_id }}"
+      - --password
+      - "{{ crowdsec_import_blocklist_machine_password }}"
+      - --file
+      - "-"
+      - --force
+  changed_when: true
+  no_log: true
+  when: not crowdsec_import_machine_exists | bool or crowdsec_import_env is changed
+
 - name: Install systemd service for crowdsec-blocklist-import
   ansible.builtin.template:
     src: crowdsec-blocklist-import.service.j2
@@ -56,8 +203,7 @@
     owner: root
     group: root
     mode: "0644"
-  become: true
-  notify: Restart and enable crowdsec-blocklist-import timer
+  notify: Restart CrowdSec Blocklist Import Timer
 
 - name: Install systemd timer for crowdsec-blocklist-import
   ansible.builtin.template:
@@ -66,21 +212,11 @@
     owner: root
     group: root
     mode: "0644"
-  become: true
-  notify: Restart and enable crowdsec-blocklist-import timer
+  notify: Restart CrowdSec Blocklist Import Timer
 
-# Enable & start systemd timer
 - name: Reload systemd and enable timer
   ansible.builtin.systemd:
     daemon_reload: true
     enabled: true
     name: crowdsec-blocklist-import.timer
     state: started
-  become: true
-
-- name: Clean up pipx cache to save disk space
-  ansible.builtin.file:
-    path: "{{ ansible_facts['env']['HOME'] | default('/root') }}/.cache/pipx"
-    state: absent
-  become: true
-  become_user: "{{ ansible_user }}"

@@ -1,0 +1,33 @@
+---
+# roles/firewall/tasks/ports.yml
+# Ports to open, derived from sshd, the Rathole server config and the defaults
+
+- name: Determine ports to open
+  ansible.builtin.set_fact:
+    firewall_tcp_ports: >-
+      {{ (firewall_ssh_ports + firewall_rathole_ports + firewall_service_ports['tcp']
+          + ([80, 443] if firewall_web_ports | bool else []) + firewall_allowed_tcp_ports)
+         | map('int') | unique | sort }}
+    firewall_udp_ports: >-
+      {{ (firewall_service_ports['udp'] + ([443] if firewall_web_ports | bool else []) + firewall_allowed_udp_ports)
+         | map('int') | unique | sort }}
+  vars:
+    firewall_ssh_ports: >-
+      {{ (firewall_sshd_config.stdout | default('') | regex_findall('(?m)^port (\d+)$'))
+         + ([ansible_port] if ansible_port is defined else [])
+         | default([22], true) }}
+    firewall_rathole_ports: "{{ [rathole_server_config.listen_addr | regex_replace('^.*:', '')] }}"
+    # Services bound to anything but loopback are meant to be reachable
+    firewall_service_ports: >-
+      {%- set ns = namespace(tcp=[], udp=[]) -%}
+      {%- for s in rathole_server_config.services | default([]) -%}
+        {%- set host = s.bind_addr | regex_replace(':[^:]*$', '') -%}
+        {%- if not (host is match('^127\.') or host in ['[::1]', '::1', 'localhost']) -%}
+          {%- if (s.type | default('tcp')) == 'udp' -%}
+            {%- set ns.udp = ns.udp + [s.bind_addr | regex_replace('^.*:', '')] -%}
+          {%- else -%}
+            {%- set ns.tcp = ns.tcp + [s.bind_addr | regex_replace('^.*:', '')] -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ {'tcp': ns.tcp, 'udp': ns.udp} }}

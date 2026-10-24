@@ -1,0 +1,79 @@
+---
+# tests/test_caddyfile_coraza.yml
+# Render the Coraza modes and options; every mode adds rules on top of the previous one
+
+- name: Render each Coraza mode
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    enable_crowdsec: true
+    enable_rate_limit: true
+    enable_coraza_waf: true
+    enable_cloudflare: false
+    coraza_mode_default: recommended
+    tunnel_services:
+      - { name: minimal, domain: minimal.example.com, local_addr: "127.0.0.1:4101", coraza_mode: minimal }
+      - { name: default, domain: default.example.com, local_addr: "127.0.0.1:4102" }
+      - { name: moderate, domain: moderate.example.com, local_addr: "127.0.0.1:4103", coraza_mode: moderate }
+      - { name: strict, domain: strict.example.com, local_addr: "127.0.0.1:4104", coraza_mode: strict }
+      - { name: disabled, domain: disabled.example.com, local_addr: "127.0.0.1:4105", coraza_mode: "off" }
+  tasks:
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check rules per mode
+      ansible.builtin.assert:
+        that:
+          - caddyfile | regex_findall('SecRuleEngine On') | length == 4
+          - caddyfile | regex_findall('PROPFIND') | length == 1
+          - caddyfile | regex_findall('id:100040,') | length == 3
+          - caddyfile | regex_findall('id:100043,') | length == 2
+          - caddyfile | regex_findall('id:100050,') | length == 1
+          - caddyfile | regex_findall('id:100020,') | length == 4
+          - "'modsec_disabled.log' not in caddyfile"
+          - caddyfile | regex_findall('SecAuditEngine RelevantOnly') | length == 4
+
+- name: Render Coraza without audit log and file whitelist
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    enable_crowdsec: true
+    enable_rate_limit: true
+    enable_coraza_waf: true
+    enable_cloudflare: false
+    coraza_audit_log_enabled: false
+    coraza_file_whitelist_enabled: false
+  tasks:
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check options are left out
+      ansible.builtin.assert:
+        that:
+          - "'SecAuditLog ' not in caddyfile"
+          - caddyfile | regex_findall('SecAuditEngine Off') | length == 4
+          - "'id:100020,' not in caddyfile"
+
+- name: Render without any WAF site
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    enable_crowdsec: true
+    enable_rate_limit: true
+    enable_coraza_waf: false
+    enable_cloudflare: false
+    tunnel_services:
+      - { name: blog, domain: blog.example.com, local_addr: "127.0.0.1:4101" }
+      - { name: media, domain: media.example.com, local_addr: "127.0.0.1:4102", coraza_mode: "off" }
+  tasks:
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check Coraza is left out
+      ansible.builtin.assert:
+        that:
+          - not caddy_coraza_needed | bool
+          - "'coraza_waf' not in caddyfile_outside_directives | regex_replace('(?m)^\\s*#.*$', '')"

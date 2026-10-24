@@ -1,0 +1,10 @@
+// File Managed by Ansible
+// roles/system/templates/52unattended-upgrades-local.j2
+// Overrides the distribution defaults in 50unattended-upgrades
+
+// Keep the disk small: drop old kernels and unused dependencies
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+Unattended-Upgrade::Automatic-Reboot "{{ 'true' if system_unattended_reboot | bool else 'false' }}";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ system_unattended_reboot_time }}";

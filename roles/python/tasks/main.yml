@@ -1,3 +1,4 @@
+---
 # roles/python/tasks/main.yml
 
 # --- Python Role: Python and pipx ---
@@ -6,13 +7,12 @@
   ansible.builtin.apt:
     name: pipx
     state: present
-  become: true
-  when: ansible_facts["os_family"] == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Enable pipx for the default user (ensure PATH)
   ansible.builtin.shell: pipx ensurepath
   args:
     executable: /bin/bash
-  become: true
+  become: true # Kept next to become_user (ansible-lint partial-become)
   become_user: "{{ ansible_user }}"
   changed_when: false

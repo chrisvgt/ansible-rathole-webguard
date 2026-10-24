@@ -1,0 +1,28 @@
+---
+# tests/test_rathole_tunnel_rejects_duplicate_bind.yml
+# the same bind_addr and type twice
+
+- name: Reject the same bind_addr and type twice
+  hosts: srv
+  gather_facts: false
+  vars:
+    tunnel_services:
+      - { name: a, local_addr: "127.0.0.1:80", bind_addr: "127.0.0.1:9000" }
+      - { name: b, local_addr: "127.0.0.1:81", bind_addr: "127.0.0.1:9000" }
+  tasks:
+    - name: Run tunnel derivation
+      block:
+        - name: Run tunnel derivation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'same bind_addr and type' in rejected_msg"

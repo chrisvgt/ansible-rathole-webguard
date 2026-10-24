@@ -1,26 +1,5 @@
+---
 # roles/caddy/vars/main.yml
 
-# --- Caddy Installation & Configuration Paths ---
-caddy_version: "2.11.4" # Caddy version to install
-caddy_user: caddy # System user for Caddy
-caddy_group: caddy # System group for Caddy
-
-# Base directories
-caddy_install_dir: /usr/local/bin # Directory for Caddy executable
-caddy_config_dir: /etc/caddy # Directory for Caddy configuration files
-caddy_data_dir: /var/lib/caddy # Directory for Caddy's data (e.g., TLS certs)
-caddy_log_dir: /var/log/caddy # Directory for Caddy's logs
-
-# Full paths for common Caddy files and directories
-caddy_config_path: "{{ caddy_config_dir }}" # Full path to Caddy's configuration directory
-caddy_install_path: "{{ caddy_install_dir }}/caddy" # Full path to the Caddy executable
-caddy_log_path: "{{ caddy_log_dir }}" # Full path to Caddy's primary log directory
-caddy_config_file: "{{ caddy_config_dir }}/Caddyfile" # Full path to the main Caddyfile
-
-# --- Caddy Plugins ---
-# Optional extra plugins can be specified by the user; by default, none are added here.
-# Core plugins based on enable flags are resolved at runtime in tasks.
-caddy_plugins: []
-
-# File to record the hash of the effective Caddy plugin list to trigger rebuilds when it changes
-caddy_plugins_hash_file: "{{ caddy_data_dir }}/.plugins.sha1"
+# tunnel_services keys that only concern Rathole; all other keys are passed to the Caddy site
+caddy_tunnel_service_keys: [name, local_addr, bind_addr, domain, type, token, nodelay, retry_interval]

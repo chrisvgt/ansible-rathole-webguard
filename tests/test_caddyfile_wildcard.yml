@@ -1,0 +1,30 @@
+---
+# tests/test_caddyfile_wildcard.yml
+# Render the Caddyfile in wildcard mode: one block per base domain, apex domains separate
+
+- name: Render Caddyfile in wildcard mode
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: true
+    enable_crowdsec: true
+    enable_rate_limit: true
+    enable_coraza_waf: true
+    enable_cloudflare: true
+    coraza_mode_default: recommended
+  tasks:
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check subdomain handles
+      ansible.builtin.assert:
+        that:
+          - "'@web host web.example.com' in caddyfile"
+          - "'@shop_shop_example_com host shop.example.com' in caddyfile"
+          - "'@shop_shop_example_org host shop.example.org' in caddyfile"
+          - caddyfile | regex_findall('respond \"Service not found\" 404') | length == 2
+          # Zones and audit logs carry the base domain, names may repeat across domains
+          - "'zone example_com_web {' in caddyfile"
+          - "'zone apex {' in caddyfile"
+          - "'SecAuditLog /var/log/caddy/coraza/modsec_example_com_web.log' in caddyfile"
+          - caddyfile | regex_findall('(?m)^\s*appsec$') | length == 2

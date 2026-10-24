@@ -1,0 +1,27 @@
+---
+# tests/test_rathole_tunnel_rejects_legacy_mix.yml
+# tunnel_services together with caddy_sites
+
+- name: Reject tunnel_services together with caddy_sites
+  hosts: srv
+  gather_facts: false
+  vars:
+    caddy_sites:
+      - { name: old, domain: old.example.com, local_port: 8000 }
+  tasks:
+    - name: Run tunnel derivation
+      block:
+        - name: Run tunnel derivation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'caddy_sites cannot be used together' in rejected_msg"

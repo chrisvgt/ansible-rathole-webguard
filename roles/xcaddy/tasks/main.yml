@@ -1,4 +1,10 @@
+---
 # roles/xcaddy/tasks/main.yml
+
+- name: Ensure xcaddy supports this platform
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] in xcaddy_arch_map
+    fail_msg: "Unsupported platform for xcaddy: {{ ansible_facts['system'] }}/{{ ansible_facts['architecture'] }}"
 
 - name: Ensure xcaddy installation path exists
   ansible.builtin.file:
@@ -12,6 +18,7 @@
   register: xcaddy_version_check
   ignore_errors: true
   changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Set xcaddy version changed flag
   ansible.builtin.set_fact:
@@ -32,7 +39,7 @@
     url: "{{ xcaddy_download_url }}"
     dest: "/tmp/xcaddy_temp.tar.gz"
     mode: "0644"
-  when: xcaddy_version_changed
+  when: xcaddy_version_changed | bool
   register: xcaddy_download_result
   until: xcaddy_download_result is succeeded
   retries: 5
@@ -44,7 +51,9 @@
     dest: "/tmp/"
     remote_src: true
     creates: "/tmp/xcaddy" # Idempotent: only extract if binary doesn't exist
-  when: xcaddy_version_changed
+  when:
+    - xcaddy_version_changed | bool
+    - not ansible_check_mode # Tarball is only downloaded in a real run
 
 - name: Move xcaddy to installation directory
   ansible.builtin.copy:
@@ -54,13 +63,15 @@
     group: root
     mode: "0755" # Make executable
     remote_src: true # Source is on the remote host (downloaded to /tmp)
-  when: xcaddy_version_changed
+  when:
+    - xcaddy_version_changed | bool
+    - not ansible_check_mode # Tarball is only downloaded in a real run
 
 - name: Clean up xcaddy temporary files
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  with_items:
+  loop:
     - "/tmp/xcaddy_temp.tar.gz"
     - "/tmp/xcaddy"
-  when: xcaddy_version_changed
+  when: xcaddy_version_changed | bool

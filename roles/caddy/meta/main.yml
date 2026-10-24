@@ -1,4 +1,6 @@
 ---
+# roles/caddy/meta/main.yml
+
 galaxy_info:
   author: chrisvgt
   description: Install and configure Caddy with optional plugins (Cloudflare, CrowdSec)

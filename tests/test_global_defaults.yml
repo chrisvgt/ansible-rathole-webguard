@@ -1,0 +1,40 @@
+---
+# tests/test_global_defaults.yml
+# Without group_vars/all.yml the global settings fall back to the documented defaults
+
+- name: Apply global defaults
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Apply global defaults
+      ansible.builtin.include_tasks: ../tasks/global_defaults.yml
+
+    - name: Check defaults
+      ansible.builtin.assert:
+        that:
+          - enable_rate_limit is true
+          - enable_cloudflare is false
+          - enable_wildcard is false
+          - enable_crowdsec is true
+          - enable_crowdsec_import is false
+          - enable_coraza_waf is false
+          - enable_firewall is false
+          - coraza_mode_default == 'recommended'
+          - coraza_file_whitelist_enabled is true
+          - coraza_file_whitelist_extensions == 'css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv'
+
+- name: Keep values that are set
+  hosts: cli
+  gather_facts: false
+  vars:
+    enable_crowdsec: false
+    coraza_mode_default: strict
+  tasks:
+    - name: Apply global defaults
+      ansible.builtin.include_tasks: ../tasks/global_defaults.yml
+
+    - name: Check set values are kept
+      ansible.builtin.assert:
+        that:
+          - enable_crowdsec is false
+          - coraza_mode_default == 'strict'

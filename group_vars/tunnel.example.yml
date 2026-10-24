@@ -1,0 +1,103 @@
+---
+# Copy to group_vars/tunnel_<name>.yml (gitignored), e.g. group_vars/tunnel_home.yml.
+# The file name must match the tuple's group in inventory.ini ([tunnel_home]).
+# Everything for one server/client pair lives here.
+#
+# Secrets: tunnel keys and CrowdSec credentials are generated on the server.
+# Only cloudflare_api_token comes from you (with enable_cloudflare): either
+# replace "{{ vault_* }}" with the plain value and run with --no-vault, or keep
+# the reference and define it in an Ansible Vault file (see README, "Secrets").
+
+# Required: unique name of this tuple; links the server and the client
+tunnel_id: home
+
+# --- Tunnel (all optional) ---
+# rathole_port: 2333 # Port the client connects to (open it in the server's firewall)
+# rathole_listen_addr: "0.0.0.0:2333" # Server bind address, default 0.0.0.0:<rathole_port>
+# rathole_public_addr: "vps.example.com" # Address the client uses, default: the server's ansible_host
+# Noise keys and the default token are generated on the server on the first run.
+# Set them only to keep existing values:
+# rathole_noise_private_key: "..." # Server private key (rathole --genkey)
+# rathole_noise_public_key: "..." # Matching public key for the client
+# rathole_default_token: "..."
+
+# --- Services ---
+# name:       unique service name (required)
+# local_addr: where the service runs, seen from the client (required)
+# bind_addr:  where Rathole exposes it on the server, default 127.0.0.1:<port of local_addr>.
+#             Caddy proxies to this port. Use 0.0.0.0:<port> only for services
+#             without a domain that must be reachable directly (VPN, games).
+# domain:     one domain or a list. Without a domain the service is tunnel-only (no Caddy site).
+# type:       tcp (default) or udp; token, nodelay, retry_interval are optional Rathole settings.
+# All other keys are Caddy site options, see "Per-site options" in the README:
+#   coraza_mode: off | minimal | recommended | moderate | strict
+#   stream: true, disable_appsec: true, cache_paths: "...", rate_limit_events: 500, ...
+#   log_file, log_roll_size, ... only apply with enable_wildcard: false
+#
+# enable_wildcard: false -> one Caddy site and certificate per domain
+# enable_wildcard: true  -> one wildcard certificate per base domain (*.example.com),
+#                           requires enable_cloudflare: true. Apex domains (example.com)
+#                           get their own site.
+tunnel_services:
+  - name: blog
+    domain: blog.example.com
+    local_addr: 127.0.0.1:2368
+    coraza_mode: minimal
+
+  - name: shop
+    domain: # Same service under two domains
+      - shop.example.com
+      - shop.example.org
+    local_addr: 192.168.1.10:3000 # Can be another host in the client's LAN
+
+  - name: media
+    domain: media.example.com
+    local_addr: 127.0.0.1:8200
+    stream: true
+    disable_appsec: true # Binary payloads cause AppSec timeouts
+
+  - name: game # Tunnel-only: no domain, reachable directly on the server
+    type: udp
+    local_addr: 127.0.0.1:30000
+    bind_addr: 0.0.0.0:30000
+
+# --- Server settings (only used by the server of this tuple) ---
+
+# --- Crowdsec Setup ---
+# The Caddy bouncer key is generated on the first run (/etc/crowdsec/caddy.bouncer.key)
+# crowdsec_api_key: "..." # Optional: use your own bouncer key instead
+# crowdsec_enrollment_key: "..." # Optional: enroll the engine in the CrowdSec Console
+duration_expr: true # Enable dynamic increase of blocking time
+
+# --- Crowdsec Blocklist Import Setup ---
+# The machine and bouncer are created by the crowdsec_import role when
+# enable_crowdsec_import is true. The machine password is generated on the
+# first run (/etc/crowdsec/blocklist-import.machine.password).
+# crowdsec_machine_password: "..." # Optional: use your own password instead
+# crowdsec_machine_id: "blocklist-import"
+
+# Further options: switch off single feeds (crowdsec_enable_tor: false),
+# crowdsec_allowlist, crowdsec_decision_duration, ... All of them with their
+# defaults are listed in roles/crowdsec_import/defaults/main.yml.
+
+# --- CrowdSec whitelist: never ban your own (dynamic) home IP ---
+dynamic_whitelist_enabled: false # Resolve the hostnames below and whitelist their IPs
+dynamic_ddns_hostnames:
+  - "ddns.example.com"
+
+# --- Ntfy Setup ---
+ntfy_enabled: false # Set to `true` to enable ntfy notifications
+ntfy_server: "ntfy.example.com"
+ntfy_topic: "crowdsec_alerts"
+ntfy_auth_token: "" # Optional: Your ntfy authentication token
+
+# --- Cloudflare Setup (only used with enable_cloudflare: true) ---
+# API token with Zone:DNS:Edit for your zones. Ansible writes it to
+# /etc/caddy/caddy.env (root, 0600) on the server; no manual env file needed.
+cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
+
+# --- Small host tuning (system role, optional) ---
+# system_swap_enabled: true # Recommended on 2 GB RAM hosts (Caddy build)
+# system_swap_size: "1G"
+# system_swappiness: 10
+# system_journald_max_use: "200M"

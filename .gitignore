@@ -1,3 +1,5 @@
 inventory.ini
 node_modules
 .ansible
+vault.yml
+.vault_pass*

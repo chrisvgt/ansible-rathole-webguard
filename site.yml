@@ -6,12 +6,79 @@
   any_errors_fatal: true # Stop on first error to avoid partial deployments
 
   pre_tasks:
+    # group_vars/all.yml is optional; missing settings get their documented defaults
+    # Static import, so the defaults also apply when only some tags are selected
+    - name: Apply defaults for global settings
+      ansible.builtin.import_tasks: tasks/global_defaults.yml
+      tags: [always]
+
     - name: Ensure this playbook is only executed on Debian-based systems
       ansible.builtin.assert:
         that:
-          - ansible_facts["os_family"] == "Debian"
+          - ansible_facts['os_family'] == "Debian"
         fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
         success_msg: "System is Debian-based. Proceeding with the playbook."
+
+    # --- Preflight validation: fail early, before anything is changed ---
+    - name: Validate rathole_role
+      ansible.builtin.assert:
+        that:
+          - rathole_role is defined
+          - rathole_role in ['server', 'client']
+        fail_msg: "rathole_role must be set to 'server' or 'client' for every host (in inventory.ini or host_vars)."
+        quiet: true
+      tags: [always]
+
+    - name: Validate that wildcard support has Cloudflare enabled
+      ansible.builtin.assert:
+        that: enable_cloudflare | default(false) | bool
+        fail_msg: "enable_wildcard requires enable_cloudflare: true (wildcard certificates use the Cloudflare DNS challenge)."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_wildcard | default(false) | bool
+      tags: [always]
+
+    - name: Validate Cloudflare API token
+      ansible.builtin.assert:
+        that:
+          - cloudflare_api_token is defined
+          - cloudflare_api_token | string | length > 0
+        fail_msg: "enable_cloudflare is true, but cloudflare_api_token is undefined or empty."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_cloudflare | default(false) | bool
+      tags: [always]
+
+    - name: Validate that the server has sites in traditional mode
+      ansible.builtin.assert:
+        that: >-
+          (caddy_sites | default([]) | length > 0)
+          or (tunnel_services | default([], true) | map(attribute='domain', default='') | select | list | length > 0)
+        fail_msg: "enable_wildcard is false, so caddy_sites or a tunnel_services entry with a domain is required."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - not (enable_wildcard | bool)
+      tags: [always]
+
+    - name: Validate tunnel tuple settings before changing anything
+      ansible.builtin.import_role:
+        name: rathole
+        tasks_from: tunnel_validate
+      when: (tunnel_services | default(none)) is not none
+      tags: [always]
+
+    - name: Validate that CrowdSec import has CrowdSec enabled
+      ansible.builtin.assert:
+        that: enable_crowdsec | default(false) | bool
+        fail_msg: "enable_crowdsec_import requires enable_crowdsec: true."
+        quiet: true
+      when:
+        - rathole_role == 'server'
+        - enable_crowdsec_import | default(false) | bool
+      tags: [always]
 
     - name: Ensure APT cache is updated and perform a system upgrade (Debian-based systems)
       ansible.builtin.apt:
@@ -19,7 +86,7 @@
         cache_valid_time: 3600
         upgrade: "{{ apt_upgrade_mode | default('safe') }}"
         autoremove: true
-      when: ansible_facts["os_family"] == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Install common system utilities (Debian-based systems)
       ansible.builtin.apt:
@@ -28,7 +95,7 @@
           - unzip # For extracting archives
           - git # For version control and cloning repositories
         state: present
-      when: ansible_facts["os_family"] == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
       tags: [base]
 
     - name: Ensure /usr/local/bin exists
@@ -38,23 +105,17 @@
         mode: "0755"
       tags: [base]
 
-    # Pre-install Go + xcaddy in parallel before Caddy role
-    - name: Pre-install Go toolchain (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: go_lang
-      when: rathole_role == "server"
-      tags: [caddy, go]
-
-    - name: Pre-install xcaddy (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: xcaddy
-      when: rathole_role == "server"
-      tags: [caddy, xcaddy]
-
   roles:
+    # Small-host tuning (journald size limit, optional swap file, security updates).
+    # Runs first so swap is available before the memory-hungry Caddy build.
+    # Set 'enable_system_tuning: false' to skip it (default: true).
+    - role: system
+      when: enable_system_tuning | default(true) | bool
+      tags: system
+
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
-    # Dependencies (go_lang, xcaddy) are already resolved via pre_tasks.
+    # Dependencies (go_lang, xcaddy) run first, once, via the caddy role's meta/main.yml.
     - role: caddy
       when: rathole_role == "server"
       tags: caddy
@@ -67,7 +128,8 @@
 
     # CrowdSec blocklist import role
     # Only included if host is a Rathole 'server' AND crowdsec_import is enabled.
-    # Dependencies (crowdsec, python) are auto-resolved via meta/main.yml.
+    # Depends on the python role (meta/main.yml). The crowdsec role above must
+    # run first; the role asserts enable_crowdsec instead of depending on it.
     - role: crowdsec_import
       when: rathole_role == "server" and enable_crowdsec_import
       tags: crowdsec_import
@@ -78,6 +140,12 @@
     - role: rathole
       tags: rathole
 
+    # Optional nftables firewall on the server, for hosts without a trusted
+    # provider firewall. Runs last: it opens the ports of the Rathole config.
+    - role: firewall
+      when: rathole_role == "server" and enable_firewall
+      tags: firewall
+
   post_tasks:
     - name: Check if reboot is required after package upgrades
       ansible.builtin.stat:
@@ -85,6 +153,7 @@
       register: reboot_required_file
       tags: [reboot]
 
+    # ansible.builtin.reboot already waits until the host is reachable again
     - name: Reboot host if required
       ansible.builtin.reboot:
         msg: "System rebooting due to package upgrades."
@@ -92,35 +161,21 @@
         post_reboot_delay: 10
         connect_timeout: 300
       when:
-        - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - ansible_facts['os_family'] == "Debian"
+        - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
+        - reboot_required_file.stat.exists
       tags: [reboot]
 
-    - name: Wait for host to reboot
-      ansible.builtin.wait_for_connection:
-        delay: 10
-        timeout: 300
+    - name: Report pending reboot
+      ansible.builtin.debug:
+        msg: "A reboot is required (/var/run/reboot-required exists) but enable_auto_reboot is false."
       when:
-        - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - not (enable_auto_reboot | default(true) | bool)
+        - reboot_required_file.stat.exists
       tags: [reboot]
 
+    # Temporary download/build files are cleaned up by each role itself
     - name: Clean up APT package cache to save disk space
       ansible.builtin.apt:
         clean: true
-      tags: [cleanup]
-
-    - name: Clean up global temporary files from roles
-      ansible.builtin.shell:
-        cmd: |
-          rm -f /tmp/go*.tar.gz
-          rm -f /tmp/xcaddy_temp.tar.gz
-          rm -f /tmp/xcaddy
-          rm -f /tmp/rathole_*.zip
-          rm -rf /tmp/rathole_unpacked
-          rm -f /tmp/install_crowdsec.sh
-          rm -rf /tmp/caddy_build
-          rm -rf /tmp/caddy_plugins
-        executable: /bin/bash
-      changed_when: false
       tags: [cleanup]

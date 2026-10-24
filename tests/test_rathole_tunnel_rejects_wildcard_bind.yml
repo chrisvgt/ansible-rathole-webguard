@@ -1,0 +1,32 @@
+---
+# tests/test_rathole_tunnel_rejects_wildcard_bind.yml
+# 0.0.0.0:<port> collides with any other address on the same port and type
+
+- name: Reject a port bound on 0.0.0.0 and on 127.0.0.1
+  hosts: srv
+  gather_facts: false
+  vars:
+    tunnel_services:
+      - { name: alpha, local_addr: "127.0.0.1:80", bind_addr: "127.0.0.1:9000" }
+      - { name: beta, local_addr: "127.0.0.1:81", bind_addr: "0.0.0.0:9000" }
+      - { name: gamma, local_addr: "127.0.0.1:82", bind_addr: "0.0.0.0:9000", type: udp }
+  tasks:
+    - name: Run tunnel derivation
+      block:
+        - name: Run tunnel derivation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected with both service names
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'same bind_addr and type' in rejected_msg"
+          - "'alpha' in rejected_msg and 'beta' in rejected_msg"
+          - "'gamma' not in rejected_msg"
+        fail_msg: "{{ rejected_msg | default('not rejected') }}"

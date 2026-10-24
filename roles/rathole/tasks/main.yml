@@ -1,8 +1,27 @@
+---
 # roles/rathole/tasks/main.yml
+
+# Tunnel tuple mode: derive the Rathole config from tunnel_services
+- name: Build Rathole config from tunnel_services
+  ansible.builtin.include_tasks: tunnel.yml
+  when: (tunnel_services | default(none)) is not none
+
+- name: Validate Rathole role variables
+  ansible.builtin.assert:
+    that:
+      - rathole_role is defined
+      - rathole_role in ['server', 'client']
+      - rathole_role != 'server' or (rathole_server_config | default(none)) is mapping
+      - rathole_role != 'client' or (rathole_client_config | default(none)) is mapping
+    fail_msg: >-
+      rathole_role must be 'server' or 'client' and the matching
+      rathole_server_config / rathole_client_config mapping (or tunnel_services) must be defined.
+    quiet: true
 
 - name: Ensure Rathole system group exists
   ansible.builtin.group:
     name: "{{ rathole_group }}"
+    system: true
     state: present
 
 - name: Ensure Rathole system user exists
@@ -20,6 +39,7 @@
   failed_when: false
   changed_when: false
   ignore_errors: true
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Extract Rathole version from output
   ansible.builtin.set_fact:
@@ -28,7 +48,12 @@
 
 - name: Determine Rathole target triple
   ansible.builtin.set_fact:
-    rathole_target_triple: "{{ (rathole_target_map[ansible_facts['system']] | default({}))[ansible_facts['architecture']] | default('x86_64-unknown-linux-gnu') }}"
+    rathole_target_triple: "{{ (rathole_target_map[ansible_facts['system']] | default({}))[ansible_facts['architecture']] | default('') }}"
+
+- name: Ensure Rathole target triple is supported
+  ansible.builtin.assert:
+    that: rathole_target_triple | length > 0
+    fail_msg: "Unsupported platform for Rathole: {{ ansible_facts['system'] }}/{{ ansible_facts['architecture'] }}"
 
 - name: Determine Rathole asset name and download URL
   ansible.builtin.set_fact:
@@ -43,86 +68,97 @@
     msg: >
       Rathole installed version: {{ rathole_installed_version | default('not installed') }}, Target version: {{ rathole_version }}
 
-- name: Download Rathole zip asset
-  ansible.builtin.get_url:
-    url: "{{ rathole_download_url }}"
-    dest: "/tmp/{{ rathole_asset_name }}"
-    mode: "0644"
-  register: rathole_download_result
-  until: rathole_download_result is succeeded
-  retries: 5
-  delay: 2 # Retry download up to 5 times with a 2-second delay
+- name: Download and install Rathole binary
   when: (rathole_installed_version | default('not installed')) != rathole_version
+  block:
+    - name: Create temporary Rathole download directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: rathole_
+      register: rathole_tmp_dir
 
-- name: Ensure Rathole unpack directory exists
-  ansible.builtin.file:
-    path: "/tmp/rathole_unpacked"
-    state: directory
-    mode: "0755"
-  when: (rathole_installed_version | default('not installed')) != rathole_version
+    - name: Download Rathole zip asset
+      ansible.builtin.get_url:
+        url: "{{ rathole_download_url }}"
+        dest: "{{ rathole_tmp_dir.path }}/{{ rathole_asset_name }}"
+        mode: "0644"
+      register: rathole_download_result
+      until: rathole_download_result is succeeded
+      retries: 5
+      delay: 2 # Retry download up to 5 times with a 2-second delay
 
-- name: Unarchive Rathole asset
-  ansible.builtin.unarchive:
-    src: "/tmp/{{ rathole_asset_name }}"
-    dest: "/tmp/rathole_unpacked"
-    remote_src: true
-    mode: "0755"
-  when: (rathole_installed_version | default('not installed')) != rathole_version
+    - name: Unarchive Rathole asset
+      ansible.builtin.unarchive:
+        src: "{{ rathole_tmp_dir.path }}/{{ rathole_asset_name }}"
+        dest: "{{ rathole_tmp_dir.path }}"
+        remote_src: true
+      when: not ansible_check_mode # Asset is only downloaded in a real run
 
-- name: Move Rathole binary to /usr/local/bin
-  ansible.builtin.copy:
-    src: "/tmp/rathole_unpacked/{{ rathole_binary_name }}"
-    dest: "{{ rathole_install_path }}/{{ rathole_binary_name }}"
-    owner: root
-    group: root
-    mode: "0755"
-    remote_src: true # Source is on the remote host (downloaded to /tmp)
-  when: (rathole_installed_version | default('not installed')) != rathole_version
-  notify: Restart Rathole Service
+    - name: Move Rathole binary to /usr/local/bin
+      ansible.builtin.copy:
+        src: "{{ rathole_tmp_dir.path }}/{{ rathole_binary_name }}"
+        dest: "{{ rathole_install_path }}/{{ rathole_binary_name }}"
+        owner: root
+        group: root
+        mode: "0755"
+        remote_src: true # Source is on the remote host (temporary download directory)
+      notify: Restart Rathole
+      when: not ansible_check_mode
 
+  always:
+    - name: Clean up temporary Rathole files
+      ansible.builtin.file:
+        path: "{{ rathole_tmp_dir.path }}"
+        state: absent
+      when: rathole_tmp_dir.path is defined
+
+# The config holds tokens and private keys: readable by the service group only
 - name: Create Rathole configuration directory
   ansible.builtin.file:
     path: "{{ rathole_config_path }}"
     state: directory
-    owner: "{{ rathole_user }}"
+    owner: root
     group: "{{ rathole_group }}"
-    mode: "0755"
-    recurse: true
+    mode: "0750"
+
+# Tunnel tuple mode: create or read Noise keys and the default token
+- name: Add tunnel secrets to the Rathole config
+  ansible.builtin.include_tasks: secrets.yml
+  when: rathole_auto_secrets | default(false) | bool
 
 - name: Create or update Rathole configuration file
   ansible.builtin.template:
-    src: "templates/rathole.toml.j2"
+    src: rathole.toml.j2
     dest: "{{ rathole_config_path }}/{{ rathole_config_file }}"
-    owner: "{{ rathole_user }}"
+    owner: root
     group: "{{ rathole_group }}"
-    mode: "0644"
-  notify: Restart Rathole Service
-  register: rathole_config_changed
+    mode: "0640"
+  notify: Restart Rathole
+  no_log: true # Do not leak tokens or keys in output/diff
+
+- name: Determine whether Rathole binds to privileged ports (< 1024)
+  ansible.builtin.set_fact:
+    rathole_privileged_ports: >-
+      {{
+        rathole_role == 'server'
+        and (([rathole_server_config.listen_addr | default('')]
+              + (rathole_server_config.services | default([]) | map(attribute='bind_addr', default='') | list))
+             | select | map('regex_replace', '^.*:', '') | map('int') | select('lt', 1024) | list | length > 0)
+      }}
 
 - name: Create Systemd unit file for Rathole
   ansible.builtin.template:
-    src: "templates/rathole.service.j2"
+    src: rathole.service.j2
     dest: "/etc/systemd/system/rathole.service"
     owner: root
     group: root
     mode: "0644"
   notify:
     - Reload Systemd Daemon
-    - Restart Rathole Service
-  register: rathole_service_changed
-
-  # Systemd daemon reload is handled by a handler triggered above
+    - Restart Rathole
 
 - name: Enable and start Rathole service
   ansible.builtin.systemd:
     name: rathole
     enabled: true
     state: started
-
-- name: Clean up temporary Rathole files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "/tmp/{{ rathole_asset_name }}"
-    - "/tmp/rathole_unpacked"

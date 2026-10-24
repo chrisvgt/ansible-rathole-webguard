@@ -1,0 +1,64 @@
+---
+# tests/test_firewall_ports.yml
+# Open ports: SSH, web, the Rathole port and services bound to a public address
+
+- name: Derive firewall ports
+  hosts: srv
+  gather_facts: false
+  vars:
+    ansible_port: 22
+    firewall_sshd_config: { stdout: "port 2222\naddressfamily any\n" }
+    rathole_server_config:
+      listen_addr: 0.0.0.0:7000
+      services:
+        - { name: web, bind_addr: "127.0.0.1:3000" }
+        - { name: game-tcp, bind_addr: "0.0.0.0:30000" }
+        - { name: game-udp, bind_addr: "0.0.0.0:30000", type: udp }
+        - { name: v6, bind_addr: "[::]:9100" }
+        - { name: local6, bind_addr: "[::1]:9200" }
+  tasks:
+    - name: Load firewall role defaults
+      ansible.builtin.include_vars: ../roles/firewall/defaults/main.yml
+
+    # include_vars takes precedence over play vars
+    - name: Set additional ports
+      ansible.builtin.set_fact:
+        firewall_allowed_tcp_ports: [8443]
+        firewall_allowed_udp_ports: [51000]
+
+    - name: Run port derivation
+      ansible.builtin.include_tasks: ../roles/firewall/tasks/ports.yml
+
+    - name: Check ports
+      ansible.builtin.assert:
+        that:
+          - firewall_tcp_ports == [22, 80, 443, 2222, 7000, 8443, 9100, 30000]
+          - firewall_udp_ports == [443, 30000, 51000]
+        fail_msg: "tcp {{ firewall_tcp_ports }}, udp {{ firewall_udp_ports }}"
+
+- name: Derive firewall ports without web ports
+  hosts: srv
+  gather_facts: false
+  vars:
+    firewall_sshd_config: { stdout: "port 22\n" }
+    rathole_server_config: { listen_addr: "0.0.0.0:2333" }
+  tasks:
+    - name: Load firewall role defaults
+      ansible.builtin.include_vars: ../roles/firewall/defaults/main.yml
+
+    # Facts from the first play persist, so reset them here
+    - name: Disable web ports and additional ports
+      ansible.builtin.set_fact:
+        firewall_web_ports: false
+        firewall_allowed_tcp_ports: []
+        firewall_allowed_udp_ports: []
+
+    - name: Run port derivation
+      ansible.builtin.include_tasks: ../roles/firewall/tasks/ports.yml
+
+    - name: Check ports
+      ansible.builtin.assert:
+        that:
+          - firewall_tcp_ports == [22, 2333]
+          - firewall_udp_ports == []
+        fail_msg: "tcp {{ firewall_tcp_ports }}, udp {{ firewall_udp_ports }}"

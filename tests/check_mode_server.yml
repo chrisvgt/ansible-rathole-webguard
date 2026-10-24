@@ -1,0 +1,30 @@
+---
+# tests/check_mode_server.yml
+# Run by tests/run.sh with --check: a new server without key files must not fail
+
+- name: Check mode on a server without keys
+  hosts: srv
+  gather_facts: false
+  vars:
+    rathole_config_path: /nonexistent/rathole-test
+    crowdsec_bouncer_key_file: /nonexistent/crowdsec-test/caddy.bouncer.key
+    crowdsec_import_machine_password_file: /nonexistent/crowdsec-test/blocklist-import.machine.password
+  tasks:
+    - name: Run tunnel derivation and secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: "{{ item }}"
+      loop: [tunnel, secrets]
+
+    - name: Check placeholders are used
+      ansible.builtin.assert:
+        that: rathole_server_config.transport.noise.local_private_key | length > 0
+
+    - name: Resolve CrowdSec secrets
+      ansible.builtin.include_tasks: tasks/crowdsec_secrets.yml
+
+    - name: Check CrowdSec secrets are set
+      ansible.builtin.assert:
+        that:
+          - crowdsec_bouncer_key | length == 32
+          - crowdsec_import_blocklist_machine_password | length == 32

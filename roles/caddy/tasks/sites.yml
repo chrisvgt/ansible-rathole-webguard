@@ -1,0 +1,84 @@
+---
+# roles/caddy/tasks/sites.yml
+# Build the site lists the Caddyfile renders. With tunnel_services, every
+# service domain becomes a site; services without a domain are tunnel-only.
+# Without tunnel_services, caddy_sites / wildcard_sites are used unchanged.
+
+- name: Use legacy site lists
+  ansible.builtin.set_fact:
+    caddy_effective_sites: "{{ caddy_sites | default([]) }}"
+    caddy_effective_wildcard_sites: "{{ wildcard_sites | default([]) }}"
+    caddy_effective_extra_sites: []
+  when: (tunnel_services | default(none)) is none
+
+- name: Build sites from tunnel_services
+  when: (tunnel_services | default(none)) is not none
+  block:
+    # One entry per domain. Rathole-only keys are dropped, all other keys
+    # (coraza_mode, stream, cache_paths, ...) are passed to the site. Empty
+    # domains mean tunnel-only.
+    - name: Build one site per service domain
+      ansible.builtin.set_fact:
+        caddy_tunnel_sites: >-
+          {%- set ns = namespace(out=[]) -%}
+          {%- for s in tunnel_services if s.domain | default(none) -%}
+            {%- set domains = ([s.domain] if s.domain is string else s.domain) | select | map('lower') | list -%}
+            {%- set options = s | dict2items | rejectattr('key', 'in', caddy_tunnel_service_keys) | items2dict -%}
+            {%- set port = (s.bind_addr | default(s.local_addr)) | regex_replace('^.*:', '') | int -%}
+            {%- for d in domains -%}
+              {%- set site_name = s.name if domains | length == 1 else s.name ~ '_' ~ (d | replace('.', '_')) -%}
+              {%- set ns.out = ns.out + [{'name': site_name, 'domain': d, 'local_port': port} | combine(options)] -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {{ ns.out }}
+
+    - name: Use traditional site blocks
+      ansible.builtin.set_fact:
+        caddy_effective_sites: "{{ caddy_tunnel_sites }}"
+        caddy_effective_wildcard_sites: []
+        caddy_effective_extra_sites: []
+      when: not (enable_wildcard | default(false) | bool)
+
+    # Wildcard mode: sub.example.com is grouped under *.example.com. Apex
+    # domains and deeper names are not covered by that certificate and get
+    # their own block instead.
+    - name: Group sites by wildcard base domain
+      ansible.builtin.set_fact:
+        caddy_effective_sites: []
+        caddy_effective_wildcard_sites: >-
+          {%- set ns = namespace(bases=[], groups={}) -%}
+          {%- for site in caddy_tunnel_sites if site.domain.split('.') | length == 3 -%}
+            {%- set labels = site.domain.split('.') -%}
+            {%- set base = '*.' ~ labels[1:] | join('.') -%}
+            {%- if base not in ns.bases -%}{%- set ns.bases = ns.bases + [base] -%}{%- endif -%}
+            {%- set entry = site | dict2items | rejectattr('key', 'in', ['domain', 'local_port']) | items2dict
+                            | combine({'subdomain': labels[0], 'port': site.local_port}) -%}
+            {%- set ns.groups = ns.groups | combine({base: ns.groups[base] | default([]) + [entry]}) -%}
+          {%- endfor -%}
+          {%- set result = namespace(out=[]) -%}
+          {%- for base in ns.bases -%}
+            {%- set result.out = result.out + [{'domain': base, 'sites': ns.groups[base]}] -%}
+          {%- endfor -%}
+          {{ result.out }}
+        caddy_effective_extra_sites: >-
+          {%- set ns = namespace(out=[]) -%}
+          {%- for site in caddy_tunnel_sites if site.domain.split('.') | length != 3 -%}
+            {%- set ns.out = ns.out + [site] -%}
+          {%- endfor -%}
+          {{ ns.out }}
+      when: enable_wildcard | default(false) | bool
+
+# Coraza is needed if it is enabled globally or if any active site sets a
+# coraza_mode other than 'off'. Caddyfile.j2 uses this fact as well, so the
+# plugin is always built whenever the rendered config references coraza_waf.
+- name: Determine if Coraza plugin needs to be built
+  ansible.builtin.set_fact:
+    caddy_coraza_needed: >-
+      {{ (enable_coraza_waf | default(false) | bool)
+         or (((enable_wildcard | default(false) | bool)
+              | ternary(caddy_effective_wildcard_sites | map(attribute='sites', default=[]) | flatten
+                          + caddy_effective_extra_sites,
+                        caddy_effective_sites))
+             | selectattr('coraza_mode', 'defined')
+             | rejectattr('coraza_mode', 'equalto', 'off')
+             | list | length > 0) }}
