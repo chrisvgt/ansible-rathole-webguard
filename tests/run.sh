@@ -25,6 +25,13 @@ echo "== site.yml task order"
 echo "== run-playbook.sh options"
 ./tests/check_run_playbook.sh
 
+echo "== crowdsec in docker"
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  ./tests/check_crowdsec_docker.sh
+else
+  echo "skipped (docker not available)"
+fi
+
 # Example files, copied the way the README describes
 example_dir=$(mktemp -d)
 trap 'rm -rf "$example_dir"' EXIT
