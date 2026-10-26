@@ -1,134 +1,71 @@
 ---
 # tests/test_crowdsec_login_bf.yml
-# Services with login_path get a failed login scenario on the Caddy access log;
-# services without it are skipped, and the file is removed when none is left
+# Failed login detection: the path pattern and the rendered scenario
 
-- name: Render failed login scenarios
+- name: Render the failed login scenario
   hosts: srv
   gather_facts: false
-  vars:
-    tunnel_services:
-      - name: shop
-        domain: [Shop.example.com, shop.example.org]
-        local_addr: 127.0.0.1:4201
-        login_path: /api/login
-      - name: wiki
-        domain: wiki.example.com
-        local_addr: 127.0.0.1:4202
-        login_path: [/login, /api/auth]
-        login_fail_status: [200]
-      - name: media
-        domain: media.example.com
-        local_addr: 127.0.0.1:4203
-      - name: game
-        type: udp
-        local_addr: 127.0.0.1:4204
-        bind_addr: 0.0.0.0:4204
-  handlers:
-    - name: Restart CrowdSec
-      ansible.builtin.set_fact:
-        test_restarted: true
   tasks:
     - name: Load CrowdSec defaults
       ansible.builtin.include_vars: ../roles/crowdsec/defaults/main.yml
 
-    - name: Create temporary directory
-      ansible.builtin.tempfile:
-        state: directory
-      register: test_dir
-
-    - name: Use a temporary scenario file
-      ansible.builtin.set_fact:
-        crowdsec_login_bf_file: "{{ test_dir.path }}/local-login-bf.yaml"
-
-    - name: Run and check
-      block:
-        - name: Configure failed login scenarios
-          ansible.builtin.include_tasks: ../roles/crowdsec/tasks/login_bf.yml
-
-        - name: Run handlers
-          ansible.builtin.meta: flush_handlers
-
-        - name: Read scenario file
-          ansible.builtin.slurp:
-            src: "{{ crowdsec_login_bf_file }}"
-          register: test_file
-
-        - name: Parse scenarios
-          ansible.builtin.set_fact:
-            test_scenarios: "{{ test_file.content | b64decode | from_yaml_all | select | list }}"
-
-        - name: Check one scenario per service with login_path
-          ansible.builtin.assert:
-            that:
-              - test_restarted | default(false)
-              - test_scenarios | map(attribute='name') | list == ['local/login-bf-shop', 'local/login-bf-wiki']
-              - test_scenarios | map(attribute='type') | unique | list == ['leaky']
-              - test_scenarios | map(attribute='groupby') | unique | list == ['evt.Meta.source_ip']
-              - test_scenarios | map(attribute='capacity') | unique | list == [crowdsec_login_bf_capacity]
-              - test_scenarios | map(attribute='labels.remediation') | unique | list == [true]
-              # Domains are lowercased, statuses are strings like the parser's
-              - >-
-                test_scenarios[0].filter == "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_verb == 'POST'
-                && evt.Meta.target_fqdn in [\"shop.example.com\", \"shop.example.org\"]
-                && any([\"/api/login\"], { evt.Meta.http_path startsWith # })
-                && evt.Meta.http_status in [\"400\", \"401\", \"403\"]"
-              - '''any(["/login", "/api/auth"]'' in test_scenarios[1].filter'
-              - '''evt.Meta.http_status in ["200"]'' in test_scenarios[1].filter'
-
-        - name: Reset handler flag
-          ansible.builtin.set_fact:
-            test_restarted: false
-
-        - name: Configure failed login scenarios without login paths
-          ansible.builtin.include_tasks: ../roles/crowdsec/tasks/login_bf.yml
-          vars:
-            tunnel_services:
-              - { name: media, domain: media.example.com, local_addr: "127.0.0.1:4203" }
-
-        - name: Run handlers
-          ansible.builtin.meta: flush_handlers
-
-        - name: Check the scenario file
-          ansible.builtin.stat:
-            path: "{{ crowdsec_login_bf_file }}"
-          register: test_stat
-
-        - name: Check the file is removed without login paths
-          ansible.builtin.assert:
-            that:
-              - not test_stat.stat.exists
-              - test_restarted
-
-      always:
-        - name: Remove temporary directory
-          ansible.builtin.file:
-            path: "{{ test_dir.path }}"
-            state: absent
-
-- name: Reject a login path without leading slash
-  hosts: srv
-  gather_facts: false
-  vars:
-    crowdsec_login_bf_file: /nonexistent/local-login-bf.yaml
-    tunnel_services:
-      - { name: shop, domain: shop.example.com, local_addr: "127.0.0.1:4201", login_path: api/login }
-  tasks:
-    - name: Load CrowdSec defaults
-      ansible.builtin.include_vars: ../roles/crowdsec/defaults/main.yml
-
-    - name: Configure failed login scenarios
-      block:
-        - name: Configure failed login scenarios
-          ansible.builtin.include_tasks: ../roles/crowdsec/tasks/login_bf.yml
-      rescue:
-        - name: Remember failure message
-          ansible.builtin.set_fact:
-            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
-
-    - name: Check that the configuration was rejected
+    # Python and Go (CrowdSec) regex agree on this simple pattern
+    - name: Check the login path pattern
       ansible.builtin.assert:
         that:
-          - rejected_msg is defined
-          - "'shop' in rejected_msg and 'login_path' in rejected_msg"
-        fail_msg: "{{ rejected_msg | default('not rejected') }}"
+          - test_login_paths | reject('search', crowdsec_login_path_pattern) | list == []
+          - test_other_paths | select('search', crowdsec_login_path_pattern) | list == []
+      vars:
+        test_login_paths:
+          - /login
+          - /api/auth/login
+          - /user/sign_in
+          - /users/sign-in
+          - /SignIn
+          - /Users/AuthenticateByName
+          - /identity/connect/token
+          - /api/v1/oauth/token
+        test_other_paths: [/api/items, /Sessions/Playing/Progress, /upload, /api/search]
+
+    - name: Create temporary file
+      ansible.builtin.tempfile:
+        suffix: .yaml
+      register: test_file
+
+    - name: Render and check
+      block:
+        - name: Render scenario
+          ansible.builtin.template:
+            src: ../roles/crowdsec/templates/login-bf.yaml.j2
+            dest: "{{ test_file.path }}"
+            mode: "0600"
+
+        - name: Read scenario
+          ansible.builtin.slurp:
+            src: "{{ test_file.path }}"
+          register: test_content
+
+        - name: Parse scenario
+          ansible.builtin.set_fact:
+            test_scenario: "{{ test_content.content | b64decode | from_yaml }}"
+
+        # Query strings are cut off before matching, statuses are strings like the parser's
+        - name: Check the scenario
+          ansible.builtin.assert:
+            that:
+              - test_scenario.name == 'local/login-bf'
+              - test_scenario.type == 'leaky'
+              - test_scenario.groupby == 'evt.Meta.source_ip'
+              - test_scenario.capacity == crowdsec_login_bf_capacity
+              - test_scenario.leakspeed == crowdsec_login_bf_leakspeed
+              - test_scenario.labels.remediation
+              - >-
+                test_scenario.filter == "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_verb == 'POST'
+                && Split(evt.Meta.http_path, \"?\")[0] matches " ~ (crowdsec_login_path_pattern | to_json) ~ "
+                && evt.Meta.http_status in [\"400\", \"401\", \"403\"]"
+
+      always:
+        - name: Remove temporary file
+          ansible.builtin.file:
+            path: "{{ test_file.path }}"
+            state: absent

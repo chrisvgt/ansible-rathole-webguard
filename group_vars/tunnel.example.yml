@@ -33,7 +33,6 @@ tunnel_id: home
 #   coraza_mode: off | minimal | recommended | moderate | strict
 #   stream: true, disable_appsec: true, cache_paths: "...", rate_limit_events: 500, ...
 #   log_file, log_roll_size, ... only apply with enable_wildcard: false
-#   login_path: "/api/login" -> CrowdSec bans IPs with repeated failed logins
 #
 # enable_wildcard: false -> one Caddy site and certificate per domain
 # enable_wildcard: true  -> one wildcard certificate per base domain (*.example.com),
@@ -50,7 +49,6 @@ tunnel_services:
       - shop.example.com
       - shop.example.org
     local_addr: 192.168.1.10:3000 # Can be another host in the client's LAN
-    login_path: /api/login # Ban IPs with repeated failed logins
 
   - name: media
     domain: media.example.com
