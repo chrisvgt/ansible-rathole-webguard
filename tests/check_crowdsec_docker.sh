@@ -5,6 +5,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# renovate: datasource=docker depName=crowdsecurity/crowdsec
 image=crowdsecurity/crowdsec:v1.8.1
 
 work=$(mktemp -d)
