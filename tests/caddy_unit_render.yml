@@ -10,8 +10,9 @@
   vars:
     role_dir: "{{ playbook_dir }}/../roles/caddy"
   tasks:
-    - name: Load Caddy defaults
-      ansible.builtin.include_vars: "{{ role_dir }}/defaults/main.yml"
+    - name: Load Caddy defaults and vars
+      ansible.builtin.include_vars: "{{ role_dir }}/{{ item }}/main.yml"
+      loop: [defaults, vars]
 
     - name: Render unit
       ansible.builtin.template:
@@ -29,5 +30,6 @@
           env_file={{ caddy_env_file }}
           data_dir={{ caddy_data_dir }}
           log_dir={{ caddy_log_dir }}
+          admin_socket={{ caddy_admin_socket }}
         dest: "{{ out_dir }}/paths.sh"
         mode: "0644"

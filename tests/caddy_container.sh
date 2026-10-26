@@ -24,6 +24,7 @@ install -o root -g root -m 0600 /dev/null "$env_file"
 cat >"$config_file" <<EOF
 {
 	skip_install_trust
+	admin unix/$admin_socket
 }
 
 https://localhost {
@@ -51,6 +52,11 @@ check "binds port 443 and answers over HTTPS" "curl -sk https://localhost/ | gre
 check "stores certificates in the data dir" "find $data_dir -name '*.crt' | grep -q ."
 check "writes the access log" "grep -q '\"status\":200' $log_dir/test.access.log"
 check "reloads" "systemctl reload caddy && sleep 2 && systemctl is-active caddy"
+
+# --- Admin API ---
+check "admin API not on TCP 2019" "! curl -s -o /dev/null http://localhost:2019/config/"
+check "admin API on the socket for caddy" "runuser -u caddy -- curl -sf --unix-socket $admin_socket http://localhost/config/ | grep -q apps"
+check "admin socket closed to other users" "! runuser -u nobody -- curl -sf --unix-socket $admin_socket http://localhost/config/"
 
 # --- Sandbox ---
 check "root filesystem is read-only" "test \$(mount_mode /) = ro"
