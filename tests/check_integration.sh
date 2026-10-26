@@ -63,7 +63,10 @@ check() {
 }
 
 echo "== first run"
-playbook | tee "$logs/run1.log"
+if ! playbook | tee "$logs/run1.log"; then
+  echo "FAIL first run (ansible-playbook exit code ${PIPESTATUS[0]})"
+  exit 1
+fi
 
 server_ip=$(ip_of "$server")
 client_ip=$(ip_of "$client")
@@ -95,7 +98,10 @@ sleep 20
 check "the IP is allowed again after unbanning" "https | grep -q 'hello from the client'"
 
 echo "== second run (nothing may change)"
-playbook | tee "$logs/run2.log"
+if ! playbook | tee "$logs/run2.log"; then
+  echo "FAIL second run (ansible-playbook exit code ${PIPESTATUS[0]})"
+  fail=1
+fi
 changed=$(grep -E "^it-(server|client) +:" "$logs/run2.log" | grep -oE 'changed=[0-9]+' | cut -d= -f2 | awk '{s += $1} END {print s + 0}')
 if [[ $changed -ne 0 ]]; then
   echo "FAIL second run changed $changed task(s):"

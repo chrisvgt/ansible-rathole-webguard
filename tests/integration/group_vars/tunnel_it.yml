@@ -11,3 +11,10 @@ tunnel_services:
     bind_addr: 0.0.0.0:51820
 
 duration_expr: true
+
+# Optional CrowdSec features, so their tasks run too
+dynamic_whitelist_enabled: true
+dynamic_ddns_hostnames: [localhost]
+ntfy_enabled: true
+ntfy_server: ntfy.invalid # Notifications fail quietly, nothing leaves the test
+ntfy_topic: integration

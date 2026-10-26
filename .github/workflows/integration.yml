@@ -44,5 +44,7 @@ jobs:
       - name: Full run against a server and a client
         run: ./tests/check_integration.sh
 
+      # Also after a failed run, to see what was covered
       - name: Task coverage (at least 90%)
+        if: ${{ !cancelled() }}
         run: python3 tests/coverage.py "$TASK_COVERAGE_FILE" --min 90 --missing
