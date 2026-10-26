@@ -3,6 +3,14 @@
 # nftables input filter for the server. Uses its own table, so other rules
 # (e.g. the CrowdSec bouncer) are not touched.
 
+- name: Remove the firewall when it is turned off
+  ansible.builtin.include_tasks: disable.yml
+  when: not enable_firewall | default(false) | bool
+
+- name: Stop here when the firewall is turned off
+  ansible.builtin.meta: end_role
+  when: not enable_firewall | default(false) | bool
+
 - name: Ensure the Rathole server config is known
   ansible.builtin.assert:
     that: rathole_server_config is defined

@@ -48,3 +48,10 @@ if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
 else
   echo "skipped (docker not available)"
 fi
+
+echo "== firewall in systemd"
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  ./tests/check_firewall_systemd.sh
+else
+  echo "skipped (docker not available)"
+fi

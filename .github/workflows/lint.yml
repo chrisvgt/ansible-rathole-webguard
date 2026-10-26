@@ -37,6 +37,11 @@ jobs:
       - name: Install nftables (firewall rule syntax check)
         run: sudo apt-get install -y nftables
 
+      # The firewall test runs nftables with conntrack in a container, which
+      # cannot load kernel modules itself
+      - name: Load nftables kernel modules
+        run: sudo modprobe -a nf_tables nft_ct
+
       - name: Tests
         run: ./tests/run.sh
 
