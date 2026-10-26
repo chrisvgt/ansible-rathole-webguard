@@ -41,3 +41,10 @@ cp group_vars/all.example.yml "$example_dir/group_vars/all.yml"
 cp group_vars/tunnel.example.yml "$example_dir/group_vars/tunnel_home.yml"
 echo "== examples"
 ansible-playbook -i "$example_dir/inventory.ini" tests/examples.yml -e "repo_dir=$PWD"
+
+echo "== caddy unit in systemd"
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  ./tests/check_caddy_systemd.sh
+else
+  echo "skipped (docker not available)"
+fi
