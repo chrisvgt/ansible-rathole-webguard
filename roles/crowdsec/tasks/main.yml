@@ -84,6 +84,14 @@
     enabled: true
     daemon_reload: true
 
+# Shipped with the package: daily `cscli hub update` + `hub upgrade` + reload,
+# so collections and app whitelists follow upstream changes
+- name: Ensure daily CrowdSec hub updates are enabled
+  ansible.builtin.systemd:
+    name: crowdsec-hubupdate.timer
+    state: started
+    enabled: true
+
 # TODO:
 # - name: Wait for CrowdSec Local API to be ready
 #   ansible.builtin.wait_for:
@@ -291,12 +299,12 @@
   notify: Restart CrowdSec
   when: ntfy_enabled | default(false) | bool
 
-- name: Check installed CrowdSec parsers (if Ntfy enabled)
+- name: Check installed CrowdSec parsers
   ansible.builtin.command: cscli parsers list -o json
   register: crowdsec_cscli_parsers_list
   changed_when: false
-  check_mode: false
-  when: ntfy_enabled | default(false) | bool
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Install GeoIP enrichment parser (if Ntfy enabled)
   ansible.builtin.command:
@@ -320,6 +328,24 @@
   when: (ntfy_enabled | default(false) | bool) or (duration_expr | default(false) | bool)
 
 ## CrowdSec Whitelist Configuration
+
+# Without these, normal use of Nextcloud, Jellyfin, Seerr, ... gets users banned
+- name: Install hub whitelists for common apps
+  ansible.builtin.command:
+    argv: [cscli, parsers, install, "{{ item }}"]
+  changed_when: true
+  notify: Restart CrowdSec
+  loop: "{{ crowdsec_hub_whitelists }}"
+  when: item not in (crowdsec_cscli_parsers_list.stdout | default(''))
+
+- name: Ignore expired sessions outside login paths
+  ansible.builtin.template:
+    src: session-whitelist.yaml.j2
+    dest: "{{ crowdsec_session_whitelist_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
 
 - name: Ensure CrowdSec postoverflow whitelist directory exists
   ansible.builtin.file:

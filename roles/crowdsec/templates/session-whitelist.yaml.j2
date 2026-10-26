@@ -1,0 +1,15 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/session-whitelist.yaml.j2
+# A POST answered with 401 outside a login path comes from an app client with
+# an expired session (e.g. after a dropped connection), not from password
+# guessing. Login paths stay covered by local/login-bf, basic auth by
+# crowdsecurity/http-generic-bf.
+
+name: local/session-whitelist
+description: "Ignore expired sessions outside login paths"
+filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log']"
+whitelist:
+  reason: "Expired session outside a login path"
+  expression:
+    - {{ ("evt.Meta.http_verb == 'POST' && evt.Meta.http_status == '401' && evt.Meta.sub_type != 'auth_fail'"
+          ~ ' && !(Split(evt.Meta.http_path, "?")[0] matches ' ~ crowdsec_login_path_pattern | to_json ~ ')') | to_json }}

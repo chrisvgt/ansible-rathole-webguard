@@ -273,6 +273,8 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables f
 
 Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (`login`, `sign-in`, `auth`, `token`); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
 
+Normal use of common self-hosted apps does not get users banned: the official CrowdSec whitelists for Nextcloud, Jellyfin, Jellyseerr, Overseerr and a few others are installed (`crowdsec_hub_whitelists`), and a `POST` answered with `401` outside a login path counts as an expired session, not as an attack. The package's `crowdsec-hubupdate.timer` updates collections and whitelists daily.
+
 `enable_crowdsec_import: true` adds [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import), which imports 28+ public feeds (IPsum, Spamhaus DROP, Blocklist.de, Firehol, Abuse.ch, DShield, Tor exit nodes and others) every hour:
 
 - installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, version pinned by `crowdsec_import_version`
