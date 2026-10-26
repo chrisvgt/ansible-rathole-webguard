@@ -16,7 +16,7 @@ tunnel_services:
     stream: true
   - name: apex
     domain: example.com
-    local_addr: 127.0.0.1:8080
+    local_addr: 127.0.0.1:8070
   - name: game-tcp
     local_addr: 127.0.0.1:30000
     bind_addr: 0.0.0.0:30000

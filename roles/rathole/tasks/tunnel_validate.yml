@@ -78,3 +78,41 @@
         {%- set ns.seen = ns.seen + [b] -%}
       {%- endfor -%}
       {{ ns.out }}
+
+# A service bound to a port the server already uses cannot start (Rathole
+# reports "Address already in use"), or Caddy reaches the wrong program.
+# 8080 is a common app port and also the CrowdSec Local API.
+- name: Ensure no service binds a port the server already uses
+  ansible.builtin.assert:
+    that: rathole_tunnel_reserved_conflicts | length == 0
+    fail_msg: >-
+      Services in tunnel '{{ tunnel_id }}' use a port the server already needs:
+      {{ rathole_tunnel_reserved_conflicts | join(', ') }}.
+      Set bind_addr to a free port, e.g. bind_addr: 127.0.0.1:18080 (Caddy proxies to it).
+    quiet: true
+  vars:
+    rathole_tunnel_server_vars: "{{ hostvars[rathole_tuple_servers[0]] }}"
+    rathole_tunnel_reserved: >-
+      {{ [
+           {'port': '80', 'type': 'tcp', 'by': 'Caddy'},
+           {'port': '443', 'type': 'tcp', 'by': 'Caddy'},
+           {'port': '443', 'type': 'udp', 'by': 'Caddy'},
+           {'port': (rathole_listen_addr | default('0.0.0.0:' ~ rathole_port)) | string | regex_replace('^.*:', ''),
+            'type': 'tcp', 'by': 'Rathole'},
+           {'port': rathole_tunnel_server_vars.ansible_port | default(22) | string, 'type': 'tcp', 'by': 'SSH'},
+         ]
+         + ([
+              {'port': crowdsec_lapi_port | default('8080') | string, 'type': 'tcp', 'by': 'CrowdSec Local API'},
+              {'port': crowdsec_appsec_port | default('7422') | string, 'type': 'tcp', 'by': 'CrowdSec AppSec'},
+              {'port': '6060', 'type': 'tcp', 'by': 'CrowdSec metrics'},
+            ] if enable_crowdsec | default(true) | bool else []) }}
+    rathole_tunnel_reserved_conflicts: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for s in tunnel_services -%}
+        {%- set bind = s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', ''))) -%}
+        {%- set port = bind | regex_replace('^.*:', '') -%}
+        {%- for r in rathole_tunnel_reserved if r.port == port and r.type == (s.type | default('tcp')) -%}
+          {%- set ns.out = ns.out + [s.name ~ ' (' ~ port ~ '/' ~ r.type ~ ', ' ~ r.by ~ ')'] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.out }}
