@@ -1,0 +1,35 @@
+---
+# roles/crowdsec/tasks/login_bf.yml
+# Services with login_path get their own brute force scenario on the Caddy
+# access log. The apps run on the client, so their own logs are out of reach;
+# failed logins are recognised by path and response status instead.
+
+- name: Collect services with a login path
+  ansible.builtin.set_fact:
+    crowdsec_login_services: "{{ tunnel_services | default([], true) | selectattr('login_path', 'defined') | list }}"
+
+- name: Check login paths
+  ansible.builtin.assert:
+    that:
+      - item.domain | default([], true) | length > 0
+      - ([item.login_path] if item.login_path is string else item.login_path) | reject('match', '^/') | list | length == 0
+    fail_msg: "{{ item.name }}: login_path needs a domain and must start with / (e.g. /api/login)"
+    quiet: true
+  loop: "{{ crowdsec_login_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Configure failed login scenarios
+  ansible.builtin.template:
+    src: login-bf.yaml.j2
+    dest: "{{ crowdsec_login_bf_file }}"
+    mode: "0644"
+  notify: Restart CrowdSec
+  when: crowdsec_login_services | length > 0
+
+- name: Remove failed login scenarios
+  ansible.builtin.file:
+    path: "{{ crowdsec_login_bf_file }}"
+    state: absent
+  notify: Restart CrowdSec
+  when: crowdsec_login_services | length == 0

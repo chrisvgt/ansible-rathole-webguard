@@ -230,6 +230,9 @@
     mode: "0644"
   notify: Restart CrowdSec
 
+- name: Configure failed login detection
+  ansible.builtin.include_tasks: login_bf.yml
+
 # The machine and bouncer for the blocklist import are managed by the crowdsec_import role
 
 ## CrowdSec Ntfy and Profile Configuration

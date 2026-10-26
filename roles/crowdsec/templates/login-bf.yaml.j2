@@ -1,0 +1,30 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/login-bf.yaml.j2
+# One scenario per service with login_path: repeated failed POSTs to the login
+# path, read from the Caddy access log, ban the client IP.
+{% for svc in crowdsec_login_services %}
+{% set domains = ([svc.domain] if svc.domain is string else svc.domain) | select | map('lower') | list %}
+{% set paths = [svc.login_path] if svc.login_path is string else svc.login_path %}
+{% set statuses = svc.login_fail_status | default(crowdsec_login_fail_status) | map('string') | list %}
+---
+type: leaky
+name: local/login-bf-{{ svc.name }}
+description: {{ ('Failed logins on ' ~ svc.name) | to_json }}
+filter: {{ ("evt.Meta.log_type == 'http_access-log' && evt.Meta.http_verb == 'POST'"
+            ~ " && evt.Meta.target_fqdn in " ~ domains | to_json
+            ~ " && any(" ~ paths | to_json ~ ", { evt.Meta.http_path startsWith # })"
+            ~ " && evt.Meta.http_status in " ~ statuses | to_json) | to_json }}
+groupby: evt.Meta.source_ip
+capacity: {{ crowdsec_login_bf_capacity }}
+leakspeed: {{ crowdsec_login_bf_leakspeed | to_json }}
+blackhole: 1m
+labels:
+  service: http
+  behavior: "http:bruteforce"
+  label: "HTTP login brute force"
+  classification:
+    - attack.T1110
+  confidence: 3
+  spoofable: 0
+  remediation: true
+{% endfor %}

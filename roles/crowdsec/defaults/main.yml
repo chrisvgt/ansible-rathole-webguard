@@ -20,6 +20,12 @@ crowdsec_db_flush_max_age: "7d" # Delete alerts older than this
 crowdsec_memory_high: "300M"
 crowdsec_memory_max: "400M"
 
+# Failed login detection for services with login_path (see README)
+crowdsec_login_fail_status: [400, 401, 403] # Responses that count as a failed login
+crowdsec_login_bf_capacity: 5 # Failed logins tolerated before a ban
+crowdsec_login_bf_leakspeed: "1m" # One failed login is forgotten per interval
+crowdsec_login_bf_file: /etc/crowdsec/scenarios/local-login-bf.yaml
+
 # Caddy bouncer key: generated on the first run and stored here, unless
 # crowdsec_api_key is set
 crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key

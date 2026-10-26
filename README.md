@@ -193,6 +193,7 @@ All other keys are Caddy site options:
 | `proxy_timeout`                                                     | Dial and response header timeout for the backend                                      |
 | `enable_forward`, `forward_path`, `forward_path_port`, `forward_ip` | Send `forward_path*` to another local port, optionally with a fixed `X-Forwarded-For` |
 | `log_file`, `log_roll_size`, `log_roll_keep`, `log_roll_keep_for`   | Access log settings (traditional mode only)                                           |
+| `login_path`, `login_fail_status`                                   | Ban IPs with repeated failed logins (see [Failed logins](#failed-logins))             |
 
 How Caddy serves the domains depends on `enable_wildcard`:
 
@@ -270,6 +271,20 @@ Audit logs (relevant events only, no bodies) are written to `/var/log/caddy/cora
 ## CrowdSec
 
 With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables firewall bouncer, the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. The database is flushed (5000 alerts, 7 days) and the service is limited to 400 MB RAM.
+
+### Failed logins
+
+CrowdSec reads the Caddy access logs. Out of the box it bans IPs that repeatedly fail HTTP basic auth or get `401`/`403` on a `POST`. Many apps answer a wrong password with `400` or `200`, and their own logs stay on the client, so tell CrowdSec where the login is:
+
+```yaml
+tunnel_services:
+  - name: shop
+    domain: shop.example.com
+    local_addr: 127.0.0.1:3000
+    login_path: /api/login # or a list of paths
+```
+
+Failed `POST`s to that path (`400`, `401`, `403`) from one IP lead to a ban after 5 attempts; one attempt is forgotten per minute. For an app that answers a failed login with another status, set `login_fail_status: [200]`. The limits are `crowdsec_login_bf_capacity` and `crowdsec_login_bf_leakspeed`. Check with `sudo cscli alerts list`.
 
 `enable_crowdsec_import: true` adds [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import), which imports 28+ public feeds (IPsum, Spamhaus DROP, Blocklist.de, Firehol, Abuse.ch, DShield, Tor exit nodes and others) every hour:
 
