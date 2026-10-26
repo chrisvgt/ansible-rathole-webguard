@@ -115,7 +115,10 @@ check "Caddy bouncer is registered" "on $server 'cscli bouncers list -o raw' | g
 check "failed login scenario is loaded" "on $server 'cscli scenarios list -o raw' | grep -q local/login-bf"
 check "app whitelists are installed" "on $server 'cscli parsers list -o raw' | grep -q crowdsecurity/nextcloud-whitelist"
 check "hub updates are scheduled" "on $server 'systemctl is-enabled crowdsec-hubupdate.timer'"
-check "blocklist import is scheduled" "on $server 'systemctl list-timers --all' | grep -q blocklist"
+check "blocklist import is scheduled" "on $server 'systemctl is-active crowdsec-blocklist-import.timer'"
+check "blocklist import ran successfully" "test \"\$(on $server 'systemctl show -p Result --value crowdsec-blocklist-import.service')\" = success"
+on "$server" 'systemctl is-active crowdsec-blocklist-import.timer && test "$(systemctl show -p Result --value crowdsec-blocklist-import.service)" = success' >/dev/null 2>&1 ||
+  on "$server" 'systemctl status --no-pager -n 20 crowdsec-blocklist-import.timer crowdsec-blocklist-import.service' || true
 if [[ -n ${CI:-} ]]; then
   check "swap file is active" "on $server 'swapon --show=NAME --noheadings' | grep -q /swap/swapfile"
 fi
