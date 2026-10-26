@@ -84,10 +84,25 @@ server_ip=$(ip_of "$server")
 client_ip=$(ip_of "$client")
 https() { on "$client" "curl -sk --max-time 5 --resolve web.test:443:$server_ip $* https://web.test/"; }
 
+# Shown when the site does not answer through the tunnel
+diagnose() {
+  echo "--- diagnostics"
+  echo "HTTP status: $(https -o /dev/null -w '%{http_code}' || true)"
+  echo "server, Rathole port on 127.0.0.1:8080:"
+  on "$server" 'curl -s --max-time 3 http://127.0.0.1:8080/; ss -ltnp | grep -E ":(8080|2333) "' || true
+  echo "client, app on 127.0.0.1:8080:"
+  on "$client" 'curl -s --max-time 3 http://127.0.0.1:8080/; systemctl is-active it-app' || true
+  on "$server" 'journalctl -u rathole --no-pager -n 15' || true
+  on "$client" 'journalctl -u rathole --no-pager -n 15' || true
+  on "$server" 'tail -n 3 /var/log/caddy/*.access.log' || true
+  echo "---"
+}
+
 echo "== checks"
 check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer rathole'"
 check "client tunnel is active" "on $client 'systemctl is-active rathole'"
 check "site answers through the tunnel" "https | grep -q 'hello from the client'"
+https | grep -q 'hello from the client' || diagnose
 check "HSTS is sent" "https -I | grep -qi '^strict-transport-security: max-age=31536000'"
 check "no Server header" "! https -I | grep -qi '^server:'"
 check "Caddy admin API only on its socket" "on $server 'test -S /run/caddy/admin.sock && ! curl -s --max-time 2 http://localhost:2019/config/'"
