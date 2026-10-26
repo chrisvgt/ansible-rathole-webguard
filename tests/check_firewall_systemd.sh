@@ -34,7 +34,13 @@ done
 
 # The rules need conntrack from the host kernel (missing e.g. after a kernel
 # update without reboot)
-if ! probe=$(docker exec -i "$name" nft -c -f - <<<'table inet t { chain c { type filter hook input priority 0; ct state established accept; } }' 2>&1); then
+probe_rules='table inet probe {
+  chain input {
+    type filter hook input priority filter;
+    ct state established accept
+  }
+}'
+if ! probe=$(docker exec -i "$name" nft -c -f - <<<"$probe_rules" 2>&1); then
   echo "$probe"
   echo "skipped (host kernel cannot load nft_ct; reboot after a kernel update)"
   # Never skip in CI: a skipped test must not look like a passed one
