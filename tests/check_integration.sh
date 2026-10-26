@@ -88,8 +88,8 @@ https() { on "$client" "curl -sk --max-time 5 --resolve web.test:443:$server_ip 
 diagnose() {
   echo "--- diagnostics"
   echo "HTTP status: $(https -o /dev/null -w '%{http_code}' || true)"
-  echo "server, Rathole port on 127.0.0.1:8080:"
-  on "$server" 'curl -s --max-time 3 http://127.0.0.1:8080/; ss -ltnp | grep -E ":(8080|2333) "' || true
+  echo "server, Rathole port on 127.0.0.1:18080:"
+  on "$server" 'curl -s --max-time 3 http://127.0.0.1:18080/' || true
   echo "client, app on 127.0.0.1:8080:"
   on "$client" 'curl -s --max-time 3 http://127.0.0.1:8080/; systemctl is-active it-app' || true
   on "$server" 'journalctl -u rathole --no-pager -n 15' || true
