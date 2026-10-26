@@ -286,7 +286,7 @@ Normal use of common self-hosted apps does not get users banned: the official Cr
 
 With `enable_firewall: true` the server drops all incoming connections except:
 
-- SSH: every port `sshd` listens on, plus `ansible_port`
+- SSH: every port `sshd` listens on (including `ListenAddress` with its own port), `ansible_port` and the port Ansible is connected on, so a non-default port set only in `~/.ssh/config` is kept open too
 - 80/tcp, 443/tcp and 443/udp (HTTP/3) for Caddy (`firewall_web_ports: false` closes them)
 - the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000`
 - `firewall_allowed_tcp_ports` / `firewall_allowed_udp_ports`

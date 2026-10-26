@@ -12,10 +12,18 @@
       {{ (firewall_service_ports['udp'] + ([443] if firewall_web_ports | bool else []) + firewall_allowed_udp_ports)
          | map('int') | unique | sort }}
   vars:
+    # sshd -T lists every listen address with its port; 'port' alone misses
+    # ListenAddress entries with their own port. The port of the current
+    # connection (SSH_CONNECTION) covers ports set in ~/.ssh/config.
     firewall_ssh_ports: >-
-      {{ (firewall_sshd_config.stdout | default('') | regex_findall('(?m)^port (\d+)$'))
-         + ([ansible_port] if ansible_port is defined else [])
-         | default([22], true) }}
+      {%- set sshd = firewall_sshd_config.stdout | default('') -%}
+      {%- set listening = sshd | regex_findall('(?m)^listenaddress \S+:(\d+)$')
+                          or sshd | regex_findall('(?m)^port (\d+)$') -%}
+      {%- set connection = (firewall_ssh_connection.stdout | default('')).split() -%}
+      {%- set ports = listening
+                      + ([ansible_port] if ansible_port is defined else [])
+                      + (connection[3:4] if connection | length == 4 else []) -%}
+      {{ ports or [22] }}
     firewall_rathole_ports: "{{ [rathole_server_config.listen_addr | regex_replace('^.*:', '')] }}"
     # Services bound to anything but loopback are meant to be reachable
     firewall_service_ports: >-
