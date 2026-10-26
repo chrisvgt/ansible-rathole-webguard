@@ -14,6 +14,9 @@ User={{ caddy_user }}
 Group={{ caddy_group }}
 ExecStart={{ caddy_install_path }} run --config {{ caddy_config_file }} --adapter caddyfile
 ExecReload={{ caddy_install_path }} reload --config {{ caddy_config_file }} --force --adapter caddyfile
+# /run/caddy holds the admin API socket, reachable only by the caddy user
+RuntimeDirectory=caddy
+RuntimeDirectoryMode=0700
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 LimitNPROC=512

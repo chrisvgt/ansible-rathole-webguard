@@ -28,6 +28,10 @@
     order rate_limit before coraza_waf
     {% endif %}
 
+    # Admin API on a socket only the caddy user can reach (default: TCP
+    # localhost:2019, open to every local process). `caddy reload` finds it here.
+    admin unix/{{ caddy_admin_socket }}
+
     {% if enable_crowdsec | bool %}
     crowdsec {
         {# Fallbacks match roles/crowdsec/defaults/main.yml, so this role also works on its own #}
