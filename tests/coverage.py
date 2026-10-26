@@ -5,7 +5,8 @@ Usage: tests/coverage.py RECORD_FILE [--min PERCENT]
 
 RECORD_FILE holds "file:line" of executed tasks, written by
 tests/callback_plugins/task_coverage.py. Tasks inside block/rescue/always count
-one by one, the block itself does not.
+one by one, the block itself does not. meta tasks (reset_connection, end_role,
+...) are left out: Ansible reports them to no callback, so they cannot be measured.
 """
 
 import argparse
@@ -29,7 +30,7 @@ def tasks_in(node, path, out):
         if nested:
             for child in nested:
                 tasks_in(child, path, out)
-        else:
+        elif not any(k in keys for k in ("meta", "ansible.builtin.meta")):
             out.add(f"{path}:{item.start_mark.line + 1}")
 
 

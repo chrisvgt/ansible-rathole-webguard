@@ -11,15 +11,15 @@ image=webguard-integration:debian12
 net=webguard-it
 server=it-server
 client=it-client
-logs=$(mktemp -d)
 
 cleanup() {
+  docker exec "$server" swapoff /swap/swapfile >/dev/null 2>&1 || true
   docker rm -f "$server" "$client" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
-  rm -rf "$logs"
 }
-trap cleanup EXIT
-cleanup
+cleanup # Leftovers of an aborted run
+logs=$(mktemp -d)
+trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs to root
 
 # Debian with systemd and what Ansible needs (built once, reused)
 if ! docker image inspect "$image" >/dev/null 2>&1; then
@@ -30,11 +30,21 @@ if ! docker image inspect "$image" >/dev/null 2>&1; then
   docker rm it-build >/dev/null
 fi
 
+# Swap needs a real filesystem (not overlayfs) and changes the host kernel, so
+# it is only tested in CI, where the host is a throwaway VM
+extra=()
+mounts=()
+if [[ -n ${CI:-} ]]; then
+  mkdir -p "$logs/swap"
+  mounts=(-v "$logs/swap:/swap")
+  extra=(-e system_swap_enabled=true -e system_swap_file=/swap/swapfile -e system_swap_size=64M)
+fi
+
 docker network create "$net" >/dev/null
-for host in "$server" "$client"; do
-  docker run -d --name "$host" --hostname "$host" --network "$net" --privileged \
-    --tmpfs /run --tmpfs /run/lock "$image" /lib/systemd/systemd >/dev/null
-done
+docker run -d --name "$server" --hostname "$server" --network "$net" --privileged \
+  --tmpfs /run --tmpfs /run/lock ${mounts[@]+"${mounts[@]}"} "$image" /lib/systemd/systemd >/dev/null
+docker run -d --name "$client" --hostname "$client" --network "$net" --privileged \
+  --tmpfs /run --tmpfs /run/lock "$image" /lib/systemd/systemd >/dev/null
 for host in "$server" "$client"; do
   for _ in $(seq 60); do
     state=$(docker exec "$host" systemctl is-system-running 2>/dev/null || true)
@@ -49,7 +59,7 @@ docker exec "$client" systemd-run --unit it-app python3 /opt/app.py >/dev/null
 
 playbook() {
   ANSIBLE_ROLES_PATH="$PWD/roles" ANSIBLE_FORCE_COLOR=0 \
-    ansible-playbook -i tests/integration/hosts.ini site.yml "$@"
+    ansible-playbook -i tests/integration/hosts.ini site.yml ${extra[@]+"${extra[@]}"} "$@"
 }
 on() { docker exec "$1" bash -c "$2"; }
 ip_of() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"; }
@@ -89,6 +99,9 @@ check "failed login scenario is loaded" "on $server 'cscli scenarios list -o raw
 check "app whitelists are installed" "on $server 'cscli parsers list -o raw' | grep -q crowdsecurity/nextcloud-whitelist"
 check "hub updates are scheduled" "on $server 'systemctl is-enabled crowdsec-hubupdate.timer'"
 check "blocklist import is scheduled" "on $server 'systemctl list-timers --all' | grep -q blocklist"
+if [[ -n ${CI:-} ]]; then
+  check "swap file is active" "on $server 'swapon --show=NAME --noheadings' | grep -q /swap/swapfile"
+fi
 
 on "$server" "cscli decisions add --ip $client_ip --duration 10m" >/dev/null
 sleep 20 # Caddy bouncer polls every 15 s
@@ -117,6 +130,16 @@ if playbook --check --diff >"$logs/check.log" 2>&1; then echo "ok   --check --di
   grep -E '^(fatal|failed):' -A3 "$logs/check.log" | head -40
   fail=1
 fi
+
+echo "== new Caddy bouncer key"
+new_key=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)
+playbook -e "crowdsec_api_key=$new_key" --tags caddy,crowdsec >"$logs/key.log" 2>&1 || {
+  tail -30 "$logs/key.log"
+  fail=1
+}
+check "Caddy uses the new key" "on $server 'grep -q \"api_key $new_key\" /etc/caddy/Caddyfile'"
+check "the Local API accepts the new key" "on $server \"curl -s -o /dev/null -w '%{http_code}' -I -H 'X-Api-Key: $new_key' http://127.0.0.1:8080/v1/decisions\" | grep -q 200"
+check "the site answers with the new key" "https | grep -q 'hello from the client'"
 
 echo "== firewall off"
 playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
