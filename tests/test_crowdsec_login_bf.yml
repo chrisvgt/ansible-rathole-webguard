@@ -49,20 +49,22 @@
           ansible.builtin.set_fact:
             test_scenario: "{{ test_content.content | b64decode | from_yaml }}"
 
-        # Query strings are cut off before matching, statuses are strings like the parser's
+        # Query strings are cut off before matching, statuses are strings like the
+        # parser's; a success on the same path from the same IP resets the count
         - name: Check the scenario
           ansible.builtin.assert:
             that:
               - test_scenario.name == 'local/login-bf'
               - test_scenario.type == 'leaky'
-              - test_scenario.groupby == 'evt.Meta.source_ip'
               - test_scenario.capacity == crowdsec_login_bf_capacity
               - test_scenario.leakspeed == crowdsec_login_bf_leakspeed
               - test_scenario.labels.remediation
               - >-
                 test_scenario.filter == "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_verb == 'POST'
                 && Split(evt.Meta.http_path, \"?\")[0] matches " ~ (crowdsec_login_path_pattern | to_json) ~ "
-                && evt.Meta.http_status in [\"400\", \"401\", \"403\"]"
+                && (evt.Meta.http_status in [\"400\", \"401\", \"403\"] || evt.Meta.http_status matches \"^[23]\")"
+              - test_scenario.cancel_on == 'evt.Meta.http_status matches "^[23]"'
+              - test_scenario.groupby == 'evt.Meta.source_ip + " " + Split(evt.Meta.http_path, "?")[0]'
 
       always:
         - name: Remove temporary file

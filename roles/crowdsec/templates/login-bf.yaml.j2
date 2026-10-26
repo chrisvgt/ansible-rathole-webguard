@@ -3,14 +3,20 @@
 # Repeated failed POSTs to login-like paths, read from the Caddy access log,
 # ban the client IP. Covers apps that answer a wrong password with 400, which
 # the stock scenarios (401/403 only) miss.
+# A successful login (2xx/3xx) on the same path resets the count, so a user who
+# retries after a dropped connection is not banned. Counting per path keeps an
+# attacker from resetting it through another endpoint that always succeeds.
+{% set path = 'Split(evt.Meta.http_path, "?")[0]' %}
 
 type: leaky
 name: local/login-bf
 description: "Failed logins on login-like paths"
 filter: {{ ("evt.Meta.log_type == 'http_access-log' && evt.Meta.http_verb == 'POST'"
-            ~ " && Split(evt.Meta.http_path, \"?\")[0] matches " ~ crowdsec_login_path_pattern | to_json
-            ~ " && evt.Meta.http_status in " ~ crowdsec_login_fail_status | map('string') | list | to_json) | to_json }}
-groupby: evt.Meta.source_ip
+            ~ " && " ~ path ~ " matches " ~ crowdsec_login_path_pattern | to_json
+            ~ " && (evt.Meta.http_status in " ~ crowdsec_login_fail_status | map('string') | list | to_json
+            ~ " || evt.Meta.http_status matches \"^[23]\")") | to_json }}
+cancel_on: {{ 'evt.Meta.http_status matches "^[23]"' | to_json }}
+groupby: {{ ('evt.Meta.source_ip + " " + ' ~ path) | to_json }}
 capacity: {{ crowdsec_login_bf_capacity }}
 leakspeed: {{ crowdsec_login_bf_leakspeed | to_json }}
 blackhole: 1m
