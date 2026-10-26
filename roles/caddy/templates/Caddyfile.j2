@@ -267,6 +267,22 @@ coraza_waf {
 }
 {%- endmacro %}
 {#
+Security headers for every site. HSTS keeps browsers on HTTPS after the first
+visit (without includeSubDomains, so other subdomains are not affected).
+X-XSS-Protection is left out: browsers dropped it and it can cause harm.
+#}
+{% macro security_headers() %}
+# Security headers
+header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Frame-Options "SAMEORIGIN"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+    -Server
+}
+{%- endmacro %}
+{#
 One site block for traditional mode, also used in wildcard mode for domains
 that the wildcard certificate does not cover.
 #}
@@ -363,14 +379,7 @@ that the wildcard certificate does not cover.
             }
         }
     }
-    # Security headers
-    header {
-        X-Frame-Options "SAMEORIGIN"
-        X-Content-Type-Options "nosniff"
-        X-XSS-Protection "1; mode=block"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-    }
+    {{ security_headers() | indent(4) }}
 
     # Caching headers for static media/metadata to reduce requests
     # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
@@ -513,14 +522,7 @@ that the wildcard certificate does not cover.
                     {% endif %}
                 }
             }
-            # Security headers (applies to this subdomain)
-            header {
-                X-Frame-Options "SAMEORIGIN"
-                X-Content-Type-Options "nosniff"
-                X-XSS-Protection "1; mode=block"
-                Referrer-Policy "strict-origin-when-cross-origin"
-                Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-            }
+            {{ security_headers() | indent(12) }}
 
             # Caching headers for static media/metadata to reduce requests
             # Use site.cache_paths to customize per site (Jellyfin defaults if not set)

@@ -71,6 +71,10 @@
     zones: "{{ caddyfile | regex_findall('(?m)^\\s*zone (\\S+) \\{$') }}"
     audit_logs: "{{ caddyfile | regex_findall('SecAuditLog (\\S+)') }}"
     site_blocks: "{{ caddyfile | regex_findall('(?m)^(\\S+) \\{$') }}"
+    # Every served site (traditional block or wildcard subdomain) sends HSTS
+    served_sites: >-
+      {{ (caddy_effective_sites + caddy_effective_extra_sites
+          + caddy_effective_wildcard_sites | map(attribute='sites', default=[]) | flatten) | length }}
     expected_blocks: >-
       {{ caddy_effective_sites | map(attribute='domain') | list
          + caddy_effective_wildcard_sites | map(attribute='domain') | list
@@ -90,6 +94,10 @@
       - enable_crowdsec | bool or caddyfile is not search('(?m)^\s*appsec$')
       - (caddyfile is search('(?m)^\s*rate_limit \{$')) == (enable_rate_limit | bool)
       - ('acme_dns cloudflare' in caddyfile) == (enable_cloudflare | bool)
+      # Security headers
+      - caddyfile | regex_findall('Strict-Transport-Security "max-age=31536000"') | length == served_sites | int
+      - caddyfile | regex_findall('(?m)^\\s*-Server$') | length == served_sites | int
+      - "'X-XSS-Protection' not in caddyfile"
     fail_msg: >-
       braces (depth, lowest) {{ brace_depth }}, unknown order targets {{ order_targets_unknown }},
       blocks {{ site_blocks }} (expected {{ expected_blocks }}), zones {{ zones }}

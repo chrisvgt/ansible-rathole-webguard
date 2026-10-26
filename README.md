@@ -5,7 +5,7 @@
 Ansible playbook that publishes services from a home network through a small VPS:
 
 - **Rathole** tunnels the services from your LAN (client) to the VPS (server).
-- **Caddy** on the VPS terminates TLS and reverse-proxies to the tunnel.
+- **Caddy** on the VPS terminates TLS, sets security headers (HSTS, no-sniff, frame and referrer policy) and reverse-proxies to the tunnel.
 - **CrowdSec** (optional, on by default) blocks bad IPs and inspects requests (AppSec).
 - **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates and blocklist import are opt-in.
 
