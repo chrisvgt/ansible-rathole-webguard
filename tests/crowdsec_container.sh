@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs inside the CrowdSec container for tests/check_crowdsec_docker.sh.
-# /t holds the rendered config (etc/), the role's hub collections and this script.
+# /t holds the rendered config (etc/), the role's hub items and this script.
 set -u
 
 fail=0
@@ -33,6 +33,9 @@ cscli hub update >/dev/null 2>&1 || bad "hub update"
 while read -r collection; do
   cscli collections install "$collection" >/dev/null 2>&1 || bad "install $collection"
 done </t/collections.txt
+while read -r parser; do
+  cscli parsers install "$parser" >/dev/null 2>&1 || bad "install $parser"
+done </t/hub_whitelists.txt
 
 check "configuration loads (crowdsec -t)" crowdsec -t
 scenarios=$(cscli scenarios list -o json 2>/dev/null)
@@ -80,8 +83,8 @@ case $(appsec /.env) in *" 403 "*) ok "AppSec blocks /.env (virtual patching)" ;
 n=0
 log() {
   n=$((n + 1))
-  printf '{"level":"info","ts":%s.%03d,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"%s","remote_port":"51234","client_ip":"%s","proto":"HTTP/2.0","method":"%s","host":"app.example.com","uri":"%s","headers":{"User-Agent":["Mozilla/5.0"]}},"bytes_read":30,"duration":0.01,"size":20,"status":%s,"resp_headers":{}}\n' \
-    "$(date +%s)" "$n" "$1" "$1" "$2" "$3" "$4" >>/var/log/caddy/test.access.log
+  printf '{"level":"info","ts":%s.%03d,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"%s","remote_port":"51234","client_ip":"%s","proto":"HTTP/2.0","method":"%s","host":"app.example.com","uri":"%s","headers":{"User-Agent":["Mozilla/5.0"]}},"bytes_read":30,"duration":0.01,"size":20,"status":%s,"resp_headers":%s}\n' \
+    "$(date +%s)" "$n" "$1" "$1" "$2" "$3" "$4" "${5:-{\}}" >>/var/log/caddy/test.access.log
 }
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.7 POST /api/auth/login 400; done
 for s in 400 400 400 400 302 400 400 400 400; do log 198.51.100.8 POST /api/auth/login "$s"; done
@@ -91,9 +94,21 @@ for i in 1 2 3 4 5 6 7 8; do
 done
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.10 POST /api/items 400; done
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.20 POST /api/auth/login 400; done
+# Normal use of common self-hosted apps that the stock scenarios ban
+for i in $(seq 1 15); do log 198.51.100.31 GET "/Items/f6e5d4c3b2a1$i/Images/Thumb?fillWidth=400" 404; done
+for i in $(seq 1 8); do log 198.51.100.32 POST /Sessions/Playing/Progress 401; done
+for i in $(seq 1 8); do log 198.51.100.33 POST /Sessions/Playing/Progress 403; done
+for i in $(seq 1 30); do log 198.51.100.34 PROPFIND "/remote.php/dav/files/user/folder$i/new$i.txt" 404; done
+for i in $(seq 1 30); do log 198.51.100.35 GET "/core/preview?fileId=$i&x=250&y=250" 404; done
+for i in $(seq 1 60); do log 198.51.100.36 GET "/api/v1/movie/$((1000 + i))" 200; done
+# Still detected: basic auth guessing, probing for unknown paths
+for i in 1 2 3 4 5 6 7 8; do log 198.51.100.40 POST /api/upload 401 '{"Www-Authenticate":["Basic realm=\"x\""]}'; done
+for i in $(seq 1 30); do log 198.51.100.41 GET "/backup$i.zip" 404; done
 sleep 10
 
 decisions=$(cscli decisions list -o raw 2>/dev/null)
+alerts=$(cscli alerts list -o raw -l 0 2>/dev/null)
+has_alert() { echo "$alerts" | grep -q ",Ip,$1,$2,"; }
 has_ban() { echo "$decisions" | grep -q ",Ip:$1,local/login-bf,ban,"; }
 no_decision() { ! echo "$decisions" | grep -q ":$1,"; }
 check "brute force on a login path: ban" has_ban 198.51.100.7
@@ -101,6 +116,14 @@ check "retry after a successful login: no ban" no_decision 198.51.100.8
 check "reset through another endpoint: still ban" has_ban 198.51.100.9
 check "failed POSTs elsewhere: no ban" no_decision 198.51.100.10
 check "DDNS whitelist: no ban" no_decision 198.51.100.20
+check "Jellyfin missing thumbnails: no ban" no_decision 198.51.100.31
+check "client with an expired session (401): no ban" no_decision 198.51.100.32
+check "Jellyfin progress reports (403): no ban" no_decision 198.51.100.33
+check "Nextcloud WebDAV sync: no ban" no_decision 198.51.100.34
+check "Nextcloud previews: no ban" no_decision 198.51.100.35
+check "Seerr browsing: no ban" no_decision 198.51.100.36
+check "basic auth guessing: ban" has_alert 198.51.100.40 crowdsecurity/http-generic-bf
+check "probing unknown paths: ban" has_alert 198.51.100.41 crowdsecurity/http-probing
 # profiles.yaml with duration_expr: first ban lasts 4h
 check "first ban lasts 4h" sh -c "echo '$decisions' | grep ',Ip:198.51.100.7,' | grep -q ',3h59m'"
 check "no fatal errors" sh -c "! grep -q 'level=fatal' /tmp/crowdsec.log"

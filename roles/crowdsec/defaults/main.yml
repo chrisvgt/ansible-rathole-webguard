@@ -28,6 +28,22 @@ crowdsec_login_bf_capacity: 5 # Failed logins tolerated before a ban
 crowdsec_login_bf_leakspeed: "1m" # One failed login is forgotten per interval
 crowdsec_login_bf_file: /etc/crowdsec/scenarios/local-login-bf.yaml
 
+# Hub whitelists for common self-hosted apps. Each only skips known harmless
+# requests of its app (missing thumbnails, WebDAV sync, ...), so they are safe
+# to install even if the app is not used. Only official crowdsecurity items
+# with upstream hub tests and a generic HTTP filter (works with Caddy logs);
+# crowdsec-hubupdate.timer keeps them up to date when apps change.
+crowdsec_hub_whitelists:
+  - crowdsecurity/nextcloud-whitelist
+  - crowdsecurity/jellyfin-whitelist
+  - crowdsecurity/jellyseerr-whitelist
+  - crowdsecurity/overseerr-whitelist
+  - crowdsecurity/calibre-web-whitelist
+  - crowdsecurity/actual-budget-whitelist
+  - crowdsecurity/rocketchat-whitelist
+  - crowdsecurity/zammad-whitelist
+crowdsec_session_whitelist_file: /etc/crowdsec/parsers/s02-enrich/local-session-whitelist.yaml
+
 # Caddy bouncer key: generated on the first run and stored here, unless
 # crowdsec_api_key is set
 crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key
