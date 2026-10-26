@@ -115,6 +115,7 @@
   register: crowdsec_cscli_caddy_collection_output
   changed_when: "'Successfully installed' in crowdsec_cscli_caddy_collection_output.stdout or 'Upgraded' in crowdsec_cscli_caddy_collection_output.stdout"
   failed_when: "(crowdsec_cscli_caddy_collection_output.rc != 0 and 'already installed' not in crowdsec_cscli_caddy_collection_output.stderr and 'already enabled' not in crowdsec_cscli_caddy_collection_output.stdout)"
+  notify: Restart CrowdSec
   when: "'crowdsecurity/caddy' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 ## CrowdSec AppSec Setup
@@ -124,6 +125,7 @@
   register: crowdsec_cscli_appsec_virtual_patching_output
   changed_when: "'Successfully installed' in crowdsec_cscli_appsec_virtual_patching_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_virtual_patching_output.stdout"
   failed_when: "(crowdsec_cscli_appsec_virtual_patching_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_virtual_patching_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_virtual_patching_output.stdout)"
+  notify: Restart CrowdSec
   when: "'crowdsecurity/appsec-virtual-patching' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 - name: Install CrowdSec AppSec generic rules collection
@@ -131,6 +133,7 @@
   register: crowdsec_cscli_appsec_generic_rules_output
   changed_when: "'Successfully installed' in crowdsec_cscli_appsec_generic_rules_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_generic_rules_output.stdout"
   failed_when: "(crowdsec_cscli_appsec_generic_rules_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_generic_rules_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_generic_rules_output.stdout)"
+  notify: Restart CrowdSec
   when: "'crowdsecurity/appsec-generic-rules' not in (crowdsec_cscli_collections_list.stdout | default(''))"
 
 - name: Install CrowdSec AppSec HTTP CVE collection
@@ -138,7 +141,23 @@
   register: crowdsec_cscli_appsec_http_cve_output
   changed_when: "'Successfully installed' in crowdsec_cscli_appsec_http_cve_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_http_cve_output.stdout"
   failed_when: "(crowdsec_cscli_appsec_http_cve_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_http_cve_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_http_cve_output.stdout)"
+  notify: Restart CrowdSec
   when: "'crowdsecurity/http-cve' not in (crowdsec_cscli_collections_list.stdout | default(''))"
+
+# The install tasks above tolerate "already installed", so check the result:
+# failed login detection relies on these scenarios from crowdsecurity/caddy
+- name: Check installed CrowdSec scenarios
+  ansible.builtin.command: cscli scenarios list -o json
+  register: crowdsec_cscli_scenarios_list
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Check HTTP brute force scenarios are installed
+  ansible.builtin.assert:
+    that: "'crowdsecurity/http-generic-bf' in crowdsec_cscli_scenarios_list.stdout"
+    fail_msg: "crowdsecurity/http-generic-bf is missing, failed logins are not detected. Run: cscli collections install crowdsecurity/caddy"
+  when: crowdsec_cscli_scenarios_list.rc == 0
 
 - name: Configure CrowdSec to listen for AppSec requests
   ansible.builtin.template:
