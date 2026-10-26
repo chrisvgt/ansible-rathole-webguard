@@ -175,7 +175,9 @@
       tags: [reboot]
 
     # Temporary download/build files are cleaned up by each role itself
+    # Housekeeping, not a configuration change: always reported as changed by apt
     - name: Clean up APT package cache to save disk space
       ansible.builtin.apt:
         clean: true
+      changed_when: false
       tags: [cleanup]
