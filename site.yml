@@ -123,7 +123,7 @@
     # The 'crowdsec' role provides security and is optional.
     # It's included only if the host is a Rathole 'server' AND 'enable_crowdsec' is true.
     - role: crowdsec
-      when: rathole_role == "server" and enable_crowdsec
+      when: rathole_role == "server" and enable_crowdsec | bool
       tags: crowdsec
 
     # CrowdSec blocklist import role
@@ -131,7 +131,7 @@
     # Depends on the python role (meta/main.yml). The crowdsec role above must
     # run first; the role asserts enable_crowdsec instead of depending on it.
     - role: crowdsec_import
-      when: rathole_role == "server" and enable_crowdsec_import
+      when: rathole_role == "server" and enable_crowdsec_import | bool
       tags: crowdsec_import
 
     # The 'rathole' role is always applied. Its internal tasks will
