@@ -249,6 +249,25 @@
     mode: "0644"
   notify: Restart CrowdSec
 
+# The apps run on the client, so their own logs are out of reach; failed
+# logins are recognised in the Caddy access log by path and status instead
+- name: Configure failed login detection
+  ansible.builtin.template:
+    src: login-bf.yaml.j2
+    dest: "{{ crowdsec_login_bf_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
+  when: crowdsec_login_detection | bool
+
+- name: Remove failed login detection
+  ansible.builtin.file:
+    path: "{{ crowdsec_login_bf_file }}"
+    state: absent
+  notify: Restart CrowdSec
+  when: not crowdsec_login_detection | bool
+
 # The machine and bouncer for the blocklist import are managed by the crowdsec_import role
 
 ## CrowdSec Ntfy and Profile Configuration
