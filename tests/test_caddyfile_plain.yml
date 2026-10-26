@@ -12,6 +12,11 @@
     enable_coraza_waf: false
     enable_cloudflare: false
   tasks:
+    # set_fact, because the role defaults loaded by the render task beat play vars
+    - name: Use certificates from Caddy's own CA
+      ansible.builtin.set_fact:
+        caddy_local_certs: true
+
     - name: Render and check structure
       ansible.builtin.include_tasks: tasks/render_caddyfile.yml
 
