@@ -36,6 +36,8 @@ done
 # update without reboot)
 if ! docker exec -i "$name" nft -c -f - <<<'table inet t { chain c { type filter hook input priority 0; ct state established accept; } }' 2>/dev/null; then
   echo "skipped (host kernel cannot load nft_ct; reboot after a kernel update)"
+  # Never skip in CI: a skipped test must not look like a passed one
+  [[ -z ${CI:-} ]] || exit 1
   exit 0
 fi
 
