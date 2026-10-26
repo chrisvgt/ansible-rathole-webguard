@@ -16,6 +16,16 @@
   failed_when: false
   check_mode: false # Read-only, safe to run in check mode
 
+# Without become: sudo drops SSH_CONNECTION. Its last field is the port this
+# run is connected on, however the inventory or ~/.ssh/config sets it.
+- name: Read the port of the current SSH connection
+  ansible.builtin.command: printenv SSH_CONNECTION
+  become: false
+  register: firewall_ssh_connection
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
 - name: Determine ports to open
   ansible.builtin.include_tasks: ports.yml
 
