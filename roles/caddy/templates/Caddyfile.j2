@@ -31,6 +31,11 @@
     # Admin API on a socket only the caddy user can reach (default: TCP
     # localhost:2019, open to every local process). `caddy reload` finds it here.
     admin unix/{{ caddy_admin_socket }}
+    {% if caddy_local_certs | bool %}
+
+    # Certificates from Caddy's own CA (caddy_local_certs)
+    local_certs
+    {% endif %}
 
     {% if enable_crowdsec | bool %}
     crowdsec {

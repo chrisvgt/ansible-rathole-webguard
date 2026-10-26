@@ -12,7 +12,7 @@
         ansible_connection: local
         tunnel_id: "{{ item.tunnel_id }}"
         rathole_role: "{{ item.role }}"
-        tunnel_services: [{ name: web, local_addr: "127.0.0.1:80" }]
+        tunnel_services: [{ name: web, local_addr: "127.0.0.1:3000" }]
         expected_remote_addr: "{{ item.expected | default(omit) }}"
         ansible_host: "{{ item.ansible_host | default(omit) }}"
       loop:

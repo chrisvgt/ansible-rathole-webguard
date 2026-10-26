@@ -25,5 +25,5 @@
           - caddy_effective_wildcard_sites[0].sites[0].coraza_mode == 'minimal'
           - caddy_effective_wildcard_sites[1].sites | map(attribute='name') | list == ['shop_shop_example_org']
           - caddy_effective_extra_sites | map(attribute='domain') | list == ['example.com']
-          - caddy_effective_extra_sites[0].local_port | int == 8080
+          - caddy_effective_extra_sites[0].local_port | int == 8070
           - caddy_effective_sites == []

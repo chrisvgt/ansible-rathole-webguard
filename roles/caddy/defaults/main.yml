@@ -12,6 +12,9 @@ caddy_install_dir: /usr/local/bin # Directory for Caddy executable
 caddy_config_dir: /etc/caddy # Directory for Caddy configuration files
 caddy_data_dir: /var/lib/caddy # Directory for Caddy's data (e.g., TLS certs)
 caddy_log_dir: /var/log/caddy # Directory for Caddy's logs
+# Certificates from Caddy's own CA instead of Let's Encrypt: for LAN-only
+# domains without public DNS and for tests. Browsers do not trust them.
+caddy_local_certs: false
 
 # Full paths for common Caddy files
 caddy_install_path: "{{ caddy_install_dir }}/caddy" # Full path to the Caddy executable

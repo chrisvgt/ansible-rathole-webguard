@@ -1,0 +1,50 @@
+name: Integration
+
+"on":
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TASK_COVERAGE_FILE: ${{ github.workspace }}/task-coverage.txt
+      ANSIBLE_CALLBACK_PLUGINS: ${{ github.workspace }}/tests/callback_plugins
+      ANSIBLE_CALLBACKS_ENABLED: task_coverage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Ansible
+        run: pip install ansible pyyaml
+
+      # The firewall tests run nftables with conntrack in containers, which
+      # cannot load kernel modules themselves
+      - name: Prepare nftables
+        run: |
+          sudo apt-get install -y nftables
+          sudo modprobe -a nf_tables nft_ct
+
+      - name: Tests
+        run: ./tests/run.sh
+
+      - name: Full run against a server and a client
+        run: ./tests/check_integration.sh
+
+      # Also after a failed run, to see what was covered
+      - name: Task coverage (at least 90%)
+        if: ${{ !cancelled() }}
+        run: python3 tests/coverage.py "$TASK_COVERAGE_FILE" --min 90 --missing

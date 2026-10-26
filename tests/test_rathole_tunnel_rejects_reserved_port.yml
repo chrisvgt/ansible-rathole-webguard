@@ -1,0 +1,57 @@
+---
+# tests/test_rathole_tunnel_rejects_reserved_port.yml
+# A service must not bind a port the server already uses: Caddy (80, 443 and
+# 443/udp), the Rathole port, SSH and, with CrowdSec, its Local API, AppSec and
+# metrics. 8080 is a common app port and also the CrowdSec Local API.
+
+- name: Reject services on ports the server already uses
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_crowdsec: true
+    tunnel_services:
+      - { name: app, local_addr: "127.0.0.1:8080" } # Bound on the server as 127.0.0.1:8080
+      - { name: web, local_addr: "127.0.0.1:3000", bind_addr: "0.0.0.0:443" }
+      - { name: quic, local_addr: "127.0.0.1:3001", bind_addr: "0.0.0.0:443", type: udp }
+      - { name: tunnel, local_addr: "127.0.0.1:3002", bind_addr: "127.0.0.1:2333" }
+      - { name: git-ssh, local_addr: "127.0.0.1:22" }
+      - { name: fine, local_addr: "127.0.0.1:3003" }
+      - { name: game, local_addr: "127.0.0.1:2333", bind_addr: "0.0.0.0:30000", type: udp }
+  tasks:
+    - name: Run tunnel validation
+      block:
+        - name: Run tunnel validation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel_validate
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected with the right services
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'app (8080/tcp, CrowdSec Local API)' in rejected_msg"
+          - "'web (443/tcp, Caddy)' in rejected_msg"
+          - "'quic (443/udp, Caddy)' in rejected_msg"
+          - "'tunnel (2333/tcp, Rathole)' in rejected_msg"
+          - "'git-ssh (22/tcp, SSH)' in rejected_msg"
+          - "'bind_addr' in rejected_msg"
+          - "'fine' not in rejected_msg"
+          - "'game' not in rejected_msg"
+        fail_msg: "{{ rejected_msg | default('not rejected') }}"
+
+- name: Allow port 8080 without CrowdSec
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_crowdsec: false
+    tunnel_services:
+      - { name: app, local_addr: "127.0.0.1:8080" }
+  tasks:
+    - name: Run tunnel validation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel_validate

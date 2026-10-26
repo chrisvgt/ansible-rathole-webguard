@@ -98,6 +98,7 @@
       - caddyfile | regex_findall('Strict-Transport-Security "max-age=31536000"') | length == served_sites | int
       - caddyfile | regex_findall('(?m)^\\s*-Server$') | length == served_sites | int
       - "'X-XSS-Protection' not in caddyfile"
+      - (caddyfile is search('(?m)^\\s*local_certs$')) == (caddy_local_certs | bool)
       # Admin API only on a socket the caddy user owns
       - caddyfile is search('(?m)^\\s*admin unix/' ~ caddy_admin_socket ~ '$')
     fail_msg: >-

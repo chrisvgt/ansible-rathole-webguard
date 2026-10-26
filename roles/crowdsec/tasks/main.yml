@@ -18,17 +18,31 @@
     name: curl
     state: present
 
-- name: Download CrowdSec APT install script
-  ansible.builtin.get_url:
-    url: https://install.crowdsec.net
-    dest: /tmp/install_crowdsec.sh
-    mode: "0755"
+- name: Check for the CrowdSec APT repository
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+  register: crowdsec_apt_repo
 
-- name: Add CrowdSec APT repository via script
-  ansible.builtin.shell: set -o pipefail && /bin/bash /tmp/install_crowdsec.sh
-  args:
-    executable: /bin/bash
-    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+# Only on the first run: the script is downloaded, run and removed again
+- name: Add the CrowdSec APT repository
+  when: not crowdsec_apt_repo.stat.exists
+  block:
+    - name: Download CrowdSec APT install script
+      ansible.builtin.get_url:
+        url: https://install.crowdsec.net
+        dest: /tmp/install_crowdsec.sh
+        mode: "0755"
+
+    - name: Add CrowdSec APT repository via script
+      ansible.builtin.command: /bin/bash /tmp/install_crowdsec.sh
+      args:
+        creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+
+  always:
+    - name: Remove the CrowdSec APT install script
+      ansible.builtin.file:
+        path: /tmp/install_crowdsec.sh
+        state: absent
 
 - name: Ensure CrowdSec data directory exists
   ansible.builtin.file:
@@ -365,8 +379,3 @@
     mode: "0644"
   notify: Restart CrowdSec
   when: dynamic_whitelist_enabled | default(false) | bool
-
-- name: Clean up temporary CrowdSec files
-  ansible.builtin.file:
-    path: "/tmp/install_crowdsec.sh"
-    state: absent
