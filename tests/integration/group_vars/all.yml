@@ -1,0 +1,13 @@
+---
+# Global settings for the integration test: every feature that works without
+# a public domain is on
+enable_rate_limit: true
+enable_cloudflare: false
+enable_wildcard: false
+enable_crowdsec: true
+enable_crowdsec_import: true
+enable_coraza_waf: true
+enable_firewall: true
+enable_auto_reboot: false # Containers cannot reboot
+coraza_mode_default: recommended
+caddy_local_certs: true # No public DNS: certificates from Caddy's own CA

@@ -1,0 +1,13 @@
+---
+tunnel_id: it
+
+tunnel_services:
+  - name: web
+    domain: web.test
+    local_addr: 127.0.0.1:8080
+  - name: vpn # Passed through without Caddy, like WireGuard
+    type: udp
+    local_addr: 127.0.0.1:51820
+    bind_addr: 0.0.0.0:51820
+
+duration_expr: true
