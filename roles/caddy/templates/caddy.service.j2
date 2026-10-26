@@ -6,6 +6,8 @@ Description=Caddy HTTP/2 web server
 Documentation=https://caddyserver.com/docs/
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=30s
 
 [Service]
 User={{ caddy_user }}
@@ -15,15 +17,34 @@ ExecReload={{ caddy_install_path }} reload --config {{ caddy_config_file }} --fo
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 LimitNPROC=512
-PrivateTmp=true
-ProtectSystem=full
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# --- Sandboxing: read-only system, writes only to data and log directories ---
 NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ [caddy_data_dir, caddy_log_dir, caddy_coraza_audit_log_dir | default(caddy_log_dir)] | unique | join(' ') }}
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
 Restart=on-failure
 RestartSec=3
-StartLimitBurst=5
-StartLimitIntervalSec=30s
 Environment="HOME={{ caddy_data_dir }}"
 Environment="XDG_CONFIG_HOME={{ caddy_data_dir }}"
 Environment="XDG_DATA_HOME={{ caddy_data_dir }}"
