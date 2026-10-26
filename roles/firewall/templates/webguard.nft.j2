@@ -13,7 +13,9 @@ table inet webguard {
     ct state established,related accept
     ct state invalid drop
     iifname "lo" accept
-    meta l4proto { icmp, ipv6-icmp } accept
+    # ICMP (1) and ICMPv6 (58) as numbers: names need /etc/protocols, which
+    # minimal images without netbase lack
+    meta l4proto { 1, 58 } accept
 {% if firewall_tcp_ports %}
     tcp dport { {{ firewall_tcp_ports | join(', ') }} } accept
 {% endif %}
