@@ -37,7 +37,9 @@ mounts=()
 if [[ -n ${CI:-} ]]; then
   mkdir -p "$logs/swap"
   mounts=(-v "$logs/swap:/swap")
-  extra=(-e system_swap_enabled=true -e system_swap_file=/swap/swapfile -e system_swap_size=64M)
+  # Only the server has the mount
+  extra=(-e '{"system_swap_enabled": "{{ inventory_hostname == \"it-server\" }}"}'
+    -e system_swap_file=/swap/swapfile -e system_swap_size=64M)
 fi
 
 docker network create "$net" >/dev/null
