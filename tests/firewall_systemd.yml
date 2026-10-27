@@ -5,7 +5,7 @@
 
 - name: Enable the firewall
   hosts: fw
-  gather_facts: false
+  gather_facts: true # The role picks the package manager by OS family
   vars:
     enable_firewall: true
     rathole_server_config:
@@ -47,7 +47,7 @@
 
 - name: Disable the firewall
   hosts: fw
-  gather_facts: false
+  gather_facts: true # The role picks the package manager by OS family
   vars:
     enable_firewall: false
   tasks:

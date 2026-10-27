@@ -84,7 +84,7 @@
         cd {{ (crowdsec_archive_dir.path ~ '/crowdsec') | quote }}
         install -D -m 0755 cmd/crowdsec/crowdsec /usr/local/bin/crowdsec
         install -D -m 0755 cmd/crowdsec-cli/cscli /usr/local/bin/cscli
-        install -d -m 0755 /usr/local/lib/crowdsec/plugins /etc/crowdsec/notifications /etc/crowdsec/acquis.d
+        install -d -m 0755 /usr/local/lib/crowdsec/plugins /etc/crowdsec/notifications /etc/crowdsec/acquis.d /etc/crowdsec/hub /var/lib/crowdsec/data
         for plugin in cmd/notification-*/notification-*; do
           install -m 0755 "$plugin" /usr/local/lib/crowdsec/plugins/
         done
