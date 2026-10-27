@@ -15,4 +15,15 @@ for tags in all caddy rathole; do
     fail=1
   fi
 done
+
+# Arch Linux removes the modules of the running kernel when it upgrades it: the
+# reboot into the new kernel comes before the roles, which need modules (nftables)
+tasks=$(ansible-playbook -i tests/hosts.ini site.yml --list-tasks 2>/dev/null)
+reboot=$({ grep -n "Reboot into the new kernel (Arch Linux)" <<<"$tasks" || true; } | head -1 | cut -d: -f1)
+first_role=$({ grep -nE "^\s+(caddy|crowdsec|crowdsec_import|rathole|system|go_lang|xcaddy|firewall) : " <<<"$tasks" || true; } |
+  grep -v "TAGS: \[always\]" | head -1 | cut -d: -f1) # Not the preflight checks
+if [[ -z "$reboot" || -z "$first_role" || "$reboot" -gt "$first_role" ]]; then
+  echo "FAIL: Arch Linux reboot=${reboot:-missing} first_role=${first_role:-none}"
+  fail=1
+fi
 exit $fail

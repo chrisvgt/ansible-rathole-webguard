@@ -46,3 +46,18 @@
     - name: Check that Debian needs a reboot
       ansible.builtin.assert:
         that: reboot_required is true
+
+    # A container runs the host's kernel, whose modules it never has
+    - name: Arch Linux in a container
+      ansible.builtin.include_tasks: ../tasks/reboot_required.yml
+      vars:
+        ansible_facts:
+          os_family: Archlinux
+          kernel: "6.0.0-test"
+          virtualization_role: guest
+          virtualization_type: lxc
+        reboot_required_modules_dir: /nonexistent/modules
+
+    - name: Check that a container needs no reboot
+      ansible.builtin.assert:
+        that: reboot_required is false
