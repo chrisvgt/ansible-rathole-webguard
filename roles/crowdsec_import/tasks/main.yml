@@ -10,6 +10,11 @@
     fail_msg: "enable_crowdsec_import requires enable_crowdsec: true (the crowdsec role must be applied first)."
     quiet: true
 
+# Restart CrowdSec now if the crowdsec role asked for it: a restart while the
+# import runs invalidates its login
+- name: Apply pending CrowdSec changes before the import
+  ansible.builtin.meta: flush_handlers
+
 - name: Resolve blocklist import machine password
   ansible.builtin.include_tasks: machine_password.yml
 
