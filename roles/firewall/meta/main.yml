@@ -11,6 +11,8 @@ galaxy_info:
       versions: ["bullseye", "bookworm"]
     - name: Ubuntu
       versions: ["focal", "jammy", "noble"]
+    - name: ArchLinux
+      versions: ["all"]
   galaxy_tags:
     - security
     - firewall

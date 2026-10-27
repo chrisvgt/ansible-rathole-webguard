@@ -54,12 +54,20 @@
       ansible.builtin.import_tasks: tasks/global_defaults.yml
       tags: [always]
 
-    - name: Ensure this playbook is only executed on Debian-based systems
+    - name: Ensure this playbook runs on a supported system
       ansible.builtin.assert:
         that:
-          - ansible_facts['os_family'] == "Debian"
-        fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
-        success_msg: "System is Debian-based. Proceeding with the playbook."
+          - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+        fail_msg: "This playbook supports Debian, Ubuntu and Arch Linux, not {{ ansible_facts['distribution'] }}."
+        quiet: true
+
+    # CrowdSec publishes its release archives for x86_64 only
+    - name: Ensure Arch Linux runs on x86_64
+      ansible.builtin.assert:
+        that: ansible_facts['architecture'] == 'x86_64'
+        fail_msg: "Arch Linux is supported on x86_64 only."
+        quiet: true
+      when: ansible_facts['os_family'] == 'Archlinux'
 
     # --- Preflight validation: fail early, before anything is changed ---
     - name: Validate rathole_role
@@ -140,6 +148,20 @@
       when: ansible_facts['os_family'] == "Debian"
       tags: [base]
 
+    # Arch Linux is upgraded as a whole, only here: there is no update timer
+    - name: Upgrade the system (Arch Linux)
+      community.general.pacman:
+        update_cache: true
+        upgrade: true
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Install common system utilities (Arch Linux)
+      community.general.pacman:
+        name: [curl, unzip, git]
+        state: present
+      when: ansible_facts['os_family'] == "Archlinux"
+      tags: [base]
+
     - name: Ensure /usr/local/bin exists
       ansible.builtin.file:
         path: /usr/local/bin
@@ -192,9 +214,7 @@
 
   post_tasks:
     - name: Check if reboot is required after package upgrades
-      ansible.builtin.stat:
-        path: /var/run/reboot-required
-      register: reboot_required_file
+      ansible.builtin.import_tasks: tasks/reboot_required.yml
       tags: [reboot]
 
     # ansible.builtin.reboot already waits until the host is reachable again
@@ -205,17 +225,16 @@
         post_reboot_delay: 10
         connect_timeout: 300
       when:
-        - ansible_facts['os_family'] == "Debian"
         - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
-        - reboot_required_file.stat.exists
+        - reboot_required | bool
       tags: [reboot]
 
     - name: Report pending reboot
       ansible.builtin.debug:
-        msg: "A reboot is required (/var/run/reboot-required exists) but enable_auto_reboot is false."
+        msg: "A reboot is required after package upgrades but enable_auto_reboot is false."
       when:
         - not (enable_auto_reboot | default(true) | bool)
-        - reboot_required_file.stat.exists
+        - reboot_required | bool
       tags: [reboot]
 
     # Temporary download/build files are cleaned up by each role itself
@@ -224,4 +243,12 @@
       ansible.builtin.apt:
         clean: true
       changed_when: false
+      when: ansible_facts['os_family'] == "Debian"
+      tags: [cleanup]
+
+    # pacman keeps every downloaded version; keep only the installed ones
+    - name: Clean up pacman package cache to save disk space
+      ansible.builtin.command: pacman -Sc --noconfirm
+      changed_when: false
+      when: ansible_facts['os_family'] == "Archlinux"
       tags: [cleanup]
