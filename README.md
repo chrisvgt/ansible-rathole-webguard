@@ -29,7 +29,7 @@ A **tuple** is one server (VPS) and one client (home server) connected by one tu
 
 ### Before you start
 
-- A computer with Ansible (`ansible-core`, tested with 2.21) that reaches both hosts over SSH, as a user with `sudo`.
+- A computer with Ansible (`ansible-core`, tested with 2.21) that reaches both hosts over SSH, as `root` or as a user with `sudo`. Python is installed on the hosts if it is missing.
 - A VPS and a home server with a supported OS (see above).
 - For each domain a DNS record that points to the VPS (A, and AAAA if the VPS has IPv6). Without Cloudflare, Caddy needs it before the first run to get its certificates.
 - On the VPS, these ports reachable from the internet: 80/tcp, 443/tcp and 443/udp for Caddy, and the Rathole port (default 2333/tcp). Open them in the provider firewall, or let the playbook manage the host firewall (`enable_firewall: true`, see [Firewall](#firewall)).

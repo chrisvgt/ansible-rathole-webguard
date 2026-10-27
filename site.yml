@@ -1,3 +1,45 @@
+# Minimal server images may lack Python, which Ansible modules need, and sudo.
+# Runs before facts are gathered, with raw commands only.
+- name: Prepare hosts for Ansible
+  hosts: webservers
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Check whether the login user is root
+      ansible.builtin.raw: id -u
+      register: bootstrap_uid
+      changed_when: false
+      check_mode: false # Read-only, safe to run in check mode
+      tags: [always]
+
+    # Logged in as root, become is not needed; without this Ansible would
+    # still call sudo, which minimal images do not have
+    - name: Run as the login user when it is root
+      ansible.builtin.set_fact:
+        ansible_become: false
+      when: bootstrap_uid.stdout | trim == '0'
+      tags: [always]
+
+    - name: Install Python if it is missing
+      ansible.builtin.raw: |
+        command -v python3 >/dev/null 2>&1 && exit 0
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update -qq && apt-get install -y -qq python3 >/dev/null || exit 1
+        elif command -v pacman >/dev/null 2>&1; then
+          # Keyring first, then a full upgrade: Arch does not support partial upgrades
+          pacman -Sy --noconfirm --needed archlinux-keyring >/dev/null &&
+            pacman -Su --noconfirm >/dev/null &&
+            pacman -S --noconfirm --needed python >/dev/null || exit 1
+        else
+          echo "no supported package manager found" >&2
+          exit 1
+        fi
+        echo "installed python"
+      become: "{{ bootstrap_uid.stdout | trim != '0' }}"
+      register: bootstrap_python
+      changed_when: "'installed python' in bootstrap_python.stdout"
+      tags: [always]
+
 - name: Ansible-Rathole-Webguard
   hosts: webservers
   become: true # All tasks in this play will run with root privileges

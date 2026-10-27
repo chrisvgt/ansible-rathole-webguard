@@ -7,7 +7,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-image=webguard-integration:debian12
+image=webguard-integration:debian12-bare
 net=webguard-it
 server=it-server
 client=it-client
@@ -21,11 +21,12 @@ cleanup # Leftovers of an aborted run
 logs=$(mktemp -d)
 trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs to root
 
-# Debian with systemd and what Ansible needs (built once, reused)
+# Debian with systemd only, like a minimal server image: no Python and no
+# sudo, the playbook installs Python itself (built once, reused)
 if ! docker image inspect "$image" >/dev/null 2>&1; then
   docker rm -f it-build >/dev/null 2>&1 || true
   docker run --name it-build debian:12 sh -c \
-    'apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv python3 python3-apt sudo ca-certificates curl >/dev/null'
+    'apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null && rm -rf /var/lib/apt/lists/*'
   docker commit it-build "$image" >/dev/null
   docker rm it-build >/dev/null
 fi
@@ -55,10 +56,6 @@ for host in "$server" "$client"; do
   done
 done
 
-# The service behind the tunnel, on the client
-docker cp tests/integration/app.py "$client:/opt/app.py"
-docker exec "$client" systemd-run --unit it-app python3 /opt/app.py >/dev/null
-
 playbook() {
   ANSIBLE_ROLES_PATH="$PWD/roles" ANSIBLE_FORCE_COLOR=0 \
     ansible-playbook -i tests/integration/hosts.ini site.yml ${extra[@]+"${extra[@]}"} "$@"
@@ -79,6 +76,15 @@ if ! playbook | tee "$logs/run1.log"; then
   echo "FAIL first run (ansible-playbook exit code ${PIPESTATUS[0]})"
   exit 1
 fi
+
+# The service behind the tunnel, on the client. Started after the first run,
+# which installs Python; Rathole connects to it on demand.
+docker cp tests/integration/app.py "$client:/opt/app.py"
+on "$client" 'systemd-run --unit it-app python3 /opt/app.py' >/dev/null
+for _ in $(seq 30); do
+  on "$client" 'curl -s --max-time 2 http://127.0.0.1:8080/' >/dev/null 2>&1 && break
+  sleep 1
+done
 
 server_ip=$(ip_of "$server")
 client_ip=$(ip_of "$client")
