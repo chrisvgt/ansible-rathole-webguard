@@ -7,7 +7,7 @@ db_config:
   flush:
     max_items: {{ crowdsec_db_flush_max_items }}
     max_age: {{ crowdsec_db_flush_max_age }}
-{% if ansible_facts['os_family'] == 'Archlinux' %}
+{% if ansible_facts['os_family'] | default('') == 'Archlinux' %}
 
 # Installed from the release archive, without the package's logrotate config:
 # log to the journal, which is size-limited

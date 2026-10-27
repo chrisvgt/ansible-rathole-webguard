@@ -94,6 +94,9 @@
         for conf in config.yaml profiles.yaml simulation.yaml console.yaml acquis.yaml; do
           [ -e "/etc/crowdsec/$conf" ] || install -m 0644 "config/$conf" /etc/crowdsec/
         done
+        for conf in local_api_credentials.yaml online_api_credentials.yaml; do
+          [ -e "/etc/crowdsec/$conf" ] || install -m 0600 "config/$conf" /etc/crowdsec/
+        done
         [ -e /etc/crowdsec/patterns ] || cp -r config/patterns /etc/crowdsec/patterns
         install -m 0644 config/crowdsec.service /etc/systemd/system/crowdsec.service
       args:
@@ -126,16 +129,25 @@
       when: crowdsec_archive_dir.path is defined
 
 # What the Debian package does on install: credentials for the Local API and
-# the Central API (shared blocklists), hub index and the Linux collection
+# the Central API (shared blocklists), hub index and the Linux collection.
+# The archive's credential files hold no login until these steps ran.
+- name: Check the API credentials
+  ansible.builtin.command:
+    argv: [grep, -l, "^login:", /etc/crowdsec/local_api_credentials.yaml, /etc/crowdsec/online_api_credentials.yaml]
+  register: crowdsec_credentials
+  changed_when: false
+  failed_when: crowdsec_credentials.rc > 1
+  check_mode: false # Read-only, safe to run in check mode
+
 - name: Create the Local API credentials
   ansible.builtin.command: cscli machines add -a --force
-  args:
-    creates: /etc/crowdsec/local_api_credentials.yaml
+  changed_when: true
+  when: "'local_api_credentials' not in crowdsec_credentials.stdout"
 
 - name: Register with the Central API
   ansible.builtin.command: cscli capi register
-  args:
-    creates: /etc/crowdsec/online_api_credentials.yaml
+  changed_when: true
+  when: "'online_api_credentials' not in crowdsec_credentials.stdout"
 
 - name: Download the hub index
   ansible.builtin.command: cscli hub update
