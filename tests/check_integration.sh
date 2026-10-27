@@ -295,7 +295,7 @@ check "the site answers with the new key" "https | grep -q 'hello from the clien
 
 echo "== firewall removed from the running system"
 on "$server" 'nft delete table inet webguard'
-playbook --tags firewall >"$logs/reload.log" 2>&1 || {
+playbook --tags rathole,firewall >"$logs/reload.log" 2>&1 || {
   tail -30 "$logs/reload.log"
   fail=1
 }
