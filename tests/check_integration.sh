@@ -164,6 +164,23 @@ check "blocklist import started after the last CrowdSec restart" \
   "test \$(start_of crowdsec-blocklist-import.service) -gt \$(start_of crowdsec.service)"
 check "blocklist import ran once" \
   "test \$(on $server 'journalctl -u crowdsec-blocklist-import.service --no-pager' | grep -c 'Completed in') -eq 1"
+# The installed programs have the versions of the role defaults
+default_of() { sed -n "s/^$2: \"v\{0,1\}\([^\"]*\)\".*/\1/p" "roles/$1/defaults/main.yml"; }
+has_version() { # host, command, version
+  [[ -n $3 ]] && on "$1" "$2" 2>&1 | grep -qE "(^|[^0-9.])v?${3//./\\.}([^0-9.]|$)"
+}
+version=$(default_of rathole rathole_version)
+check "Rathole $version on the server" "has_version $server '/usr/local/bin/rathole --version' $version"
+check "Rathole $version on the client" "has_version $client '/usr/local/bin/rathole --version' $version"
+version=$(default_of caddy caddy_version)
+check "Caddy $version" "has_version $server '/usr/local/bin/caddy version' $version"
+version=$(default_of go_lang go_lang_version)
+check "Go $version" "has_version $server '/usr/local/go/bin/go version' $version"
+version=$(default_of xcaddy xcaddy_version)
+check "xcaddy $version" "has_version $server '/usr/local/bin/xcaddy --version' $version"
+version=$(default_of crowdsec_import crowdsec_import_version)
+check "blocklist import $version" \
+  "has_version $server '/opt/crowdsec-blocklist-import/bin/crowdsec-blocklist-import --version' $version"
 if [[ -n ${CI:-} ]]; then
   check "swap file is active" "on $server 'swapon --show=NAME --noheadings' | grep -q /swap/swapfile"
 fi
