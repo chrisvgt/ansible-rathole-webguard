@@ -19,7 +19,7 @@
       "customType": "regex",
       "description": "Container images in test scripts, marked with a '# renovate:' comment",
       "managerFilePatterns": ["/^tests/[^/]+\\.sh$/"],
-      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+image=\\S+:(?<currentValue>\\S+)"]
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+[a-z_]*image=\\S+:(?<currentValue>\\S+)"]
     }
   ]
 }

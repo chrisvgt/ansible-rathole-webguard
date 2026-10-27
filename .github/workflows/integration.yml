@@ -13,8 +13,16 @@ concurrency:
 
 jobs:
   integration:
+    name: integration (${{ matrix.server }} server, ${{ matrix.client }} client)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { server: debian, client: debian }
+          - { server: arch, client: debian }
+          - { server: debian, client: arch }
     env:
       TASK_COVERAGE_FILE: ${{ github.workspace }}/task-coverage.txt
       ANSIBLE_CALLBACK_PLUGINS: ${{ github.workspace }}/tests/callback_plugins
@@ -38,13 +46,48 @@ jobs:
           sudo apt-get install -y nftables
           sudo modprobe -a nf_tables nft_ct
 
+      # The other tests do not depend on the system of the hosts
       - name: Tests
+        if: matrix.server == 'debian' && matrix.client == 'debian'
         run: ./tests/run.sh
 
       - name: Full run against a server and a client
+        env:
+          SERVER_OS: ${{ matrix.server }}
+          CLIENT_OS: ${{ matrix.client }}
         run: ./tests/check_integration.sh
 
-      # Also after a failed run, to see what was covered
-      - name: Task coverage (at least 90%)
+      - name: Keep the task coverage
         if: ${{ !cancelled() }}
-        run: python3 tests/coverage.py "$TASK_COVERAGE_FILE" --min 90 --missing
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-coverage-${{ matrix.server }}-${{ matrix.client }}
+          path: task-coverage.txt
+          if-no-files-found: ignore
+
+  # Over all combinations: tasks for one system only run on that system
+  coverage:
+    name: task coverage (at least 90%)
+    needs: integration
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Fetch the task coverage of all combinations
+        uses: actions/download-artifact@v4
+        with:
+          pattern: task-coverage-*
+          path: coverage
+
+      - name: Task coverage (at least 90%)
+        run: |
+          pip install pyyaml
+          cat coverage/*/task-coverage.txt > task-coverage.txt
+          python3 tests/coverage.py task-coverage.txt --min 90 --missing
