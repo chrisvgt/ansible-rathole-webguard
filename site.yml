@@ -99,6 +99,29 @@
         upgrade: true
       when: ansible_facts['os_family'] == "Archlinux"
 
+    # Arch Linux removes the modules of the running kernel when it upgrades
+    # it, so reboot before the roles need modules (nftables)
+    - name: Check whether the upgrade needs a reboot (Arch Linux)
+      ansible.builtin.import_tasks: tasks/reboot_required.yml
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Reboot into the new kernel (Arch Linux)
+      ansible.builtin.reboot:
+        msg: "System rebooting into the new kernel."
+        pre_reboot_delay: 5
+        post_reboot_delay: 10
+        connect_timeout: 300
+      register: arch_reboot
+      when:
+        - ansible_facts['os_family'] == "Archlinux"
+        - enable_auto_reboot | default(true) | bool
+        - reboot_required | bool
+
+    - name: Read the running kernel after the reboot (Arch Linux)
+      ansible.builtin.setup:
+        filter: [ansible_kernel]
+      when: arch_reboot.rebooted | default(false)
+
     - name: Install common system utilities (Arch Linux)
       community.general.pacman:
         name: [curl, unzip, git]
