@@ -192,7 +192,7 @@ coraza_waf {
             "id:100042,phase:2,deny,log,msg:'Path traversal attempt',severity:CRITICAL"
 
         # === Command Injection ===
-        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:;\s*$|`[^`]+`|\$\([^)]+\)|\|\s*$|&&\s*$|>(\s*)?>(\s*)?$|ping\s+-[ntcw]|nslookup\s+|traceroute\s+|wget\s+|curl\s+(?:-o|-O|--output)|bash\s+-c|sh\s+-c|powershell\s+-[ce]|cmd\.exe\s+\/c))" \
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:;\s*$|\x60[^\x60]+\x60|\$\([^)]+\)|\|\s*$|&&\s*$|>(\s*)?>(\s*)?$|ping\s+-[ntcw]|nslookup\s+|traceroute\s+|wget\s+|curl\s+(?:-o|-O|--output)|bash\s+-c|sh\s+-c|powershell\s+-[ce]|cmd\.exe\s+\/c))" \
             "id:100043,phase:2,deny,log,msg:'Command injection attempt',severity:CRITICAL"
 
         # === Remote/Local File Inclusion ===
@@ -240,7 +240,7 @@ coraza_waf {
             "id:100042,phase:2,deny,log,msg:'Path traversal attempt',severity:CRITICAL"
 
         # === Command Injection (aggressive) ===
-        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:;\s*$|`[^`]+`|\$\([^)]+\)|\|\s*$|&&\s*$|>(\s*)?>(\s*)?$|ping\s+-[ntcw]|nslookup\s+|traceroute\s+|wget\s+|curl\s+(?:-o|-O|--output)|bash\s+-c|sh\s+-c|powershell\s+-[ce]|cmd\.exe\s+\/c|kill\s+-\d+|chmod\s+[0-7]+|chown\s+|mkfs|dd\s+if=|/dev/(?:null|zero|random|urandom)))" \
+        SecRule ARGS_NAMES|ARGS "@rx (?i:(?:;\s*$|\x60[^\x60]+\x60|\$\([^)]+\)|\|\s*$|&&\s*$|>(\s*)?>(\s*)?$|ping\s+-[ntcw]|nslookup\s+|traceroute\s+|wget\s+|curl\s+(?:-o|-O|--output)|bash\s+-c|sh\s+-c|powershell\s+-[ce]|cmd\.exe\s+\/c|kill\s+-\d+|chmod\s+[0-7]+|chown\s+|mkfs|dd\s+if=|/dev/(?:null|zero|random|urandom)))" \
             "id:100043,phase:2,deny,log,msg:'Command injection attempt',severity:CRITICAL"
 
         # === Remote/Local File Inclusion ===
