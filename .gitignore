@@ -4,3 +4,5 @@ node_modules
 vault.yml
 .vault_pass*
 __pycache__
+*.log
+/log.txt

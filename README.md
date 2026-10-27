@@ -204,6 +204,8 @@ How Caddy serves the domains depends on `enable_wildcard`:
 | Unknown subdomain                | -                                                  | `404 Service not found`                                          |
 | `example.com`, `a.b.example.com` | One per domain                                     | Own site block (not covered by `*.example.com`)                  |
 
+The base domain is the domain without its first label, so wildcard mode does not suit domains under a two-part suffix such as `example.co.uk` (it would ask for `*.co.uk`); use `enable_wildcard: false` for them.
+
 A service with several domains gets one site per domain, named `<name>_<domain>` (dots replaced by `_`). Site names are used for log files and rate limit zones.
 
 WebSocket upgrades skip rate limiting, WAF and AppSec (they cannot inspect the stream); the CrowdSec IP check still applies.
@@ -330,19 +332,29 @@ The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `Prot
 
 Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be overridden in `group_vars/all.yml`, `group_vars/tunnel_<name>.yml` or `host_vars/<host>.yml`, without editing role code:
 
-| Variable                  | Component                 |
-| ------------------------- | ------------------------- |
-| `caddy_version`           | Caddy (triggers rebuild)  |
-| `go_lang_version`         | Go toolchain              |
-| `xcaddy_version`          | xcaddy                    |
-| `rathole_version`         | Rathole                   |
-| `crowdsec_import_version` | crowdsec-blocklist-import |
+| Variable                            | Component                 |
+| ----------------------------------- | ------------------------- |
+| `caddy_version`                     | Caddy (triggers rebuild)  |
+| `go_lang_version`                   | Go toolchain              |
+| `xcaddy_version`                    | xcaddy                    |
+| `rathole_version`                   | Rathole                   |
+| `crowdsec_import_version`           | crowdsec-blocklist-import |
+| `crowdsec_version`                  | CrowdSec                  |
+| `crowdsec_firewall_bouncer_version` | CrowdSec firewall bouncer |
 
-Then run the playbook again. CrowdSec and system packages are updated by `apt` on every run.
+Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes.
 
 With the [Renovate](https://github.com/apps/renovate) app installed on the repository, `renovate.json` opens a pull request against `develop` whenever one of these versions, a GitHub Action or a pre-commit hook has a new release (weekly, Monday morning). A version set in your own files overrides the role default, so remove such overrides to follow these updates.
 
 ### Upgrading existing hosts
+
+`group_vars/all.yml` was part of the repository in older versions and is now your own, gitignored file (template: `group_vars/all.example.yml`). If you changed it, keep your copy before pulling:
+
+```bash
+cp group_vars/all.yml /tmp/all.yml && git checkout -- group_vars/all.yml
+git pull
+cp /tmp/all.yml group_vars/all.yml
+```
 
 Hosts deployed with an older version of this playbook need a few one-time manual steps on the server:
 
