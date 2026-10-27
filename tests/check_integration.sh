@@ -103,6 +103,10 @@ check() {
 echo "== first run"
 if ! playbook | tee "$logs/run1.log"; then
   echo "FAIL first run (ansible-playbook exit code ${PIPESTATUS[0]})"
+  for host in "$server" "$client"; do
+    echo "--- failed units on $host"
+    on "$host" 'for unit in $(systemctl list-units --failed --plain --no-legend | cut -d" " -f1); do journalctl -u "$unit" --no-pager -n 20; done' || true
+  done
   exit 1
 fi
 
