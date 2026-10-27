@@ -82,9 +82,18 @@
     enabled: true
     daemon_reload: true
 
+# Also when the rules are gone from the running system, e.g. after a rollback
+# or a flush of the whole ruleset
+- name: Check whether the firewall rules are loaded
+  ansible.builtin.command: nft list table inet webguard
+  register: firewall_loaded
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
 # A timer removes the new rules again unless Ansible can reconnect over SSH
 - name: Apply firewall rules
   ansible.builtin.include_tasks: apply.yml
   when:
-    - firewall_rules is changed
+    - firewall_rules is changed or firewall_loaded.rc != 0
     - not ansible_check_mode

@@ -1,7 +1,8 @@
 ---
 # roles/firewall/tasks/apply.yml
-# Load changed rules with a rollback timer: if no new SSH connection is
-# possible, the timer deletes the table again after firewall_rollback_seconds.
+# Load the rules with a rollback timer: if no new SSH connection is possible,
+# the timer deletes the table again after firewall_rollback_seconds and stops
+# loading it at boot.
 
 - name: Remove a leftover rollback timer
   ansible.builtin.systemd_service:
@@ -12,7 +13,8 @@
 - name: Schedule rollback
   ansible.builtin.command: >-
     systemd-run --collect --unit=webguard-firewall-rollback
-    --on-active={{ firewall_rollback_seconds }} nft delete table inet webguard
+    --on-active={{ firewall_rollback_seconds }}
+    sh -c 'nft delete table inet webguard; systemctl disable webguard-firewall'
   changed_when: true
 
 - name: Load firewall rules
@@ -23,8 +25,17 @@
   ansible.builtin.meta: reset_connection
 
 - name: Check that SSH is still reachable
-  ansible.builtin.wait_for_connection:
-    timeout: 30
+  block:
+    - name: Connect over SSH with the new rules
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+  rescue:
+    - name: Report the rollback
+      ansible.builtin.fail:
+        msg: >-
+          No SSH connection with the new firewall rules. They are removed again
+          within {{ firewall_rollback_seconds }} seconds and not loaded at boot.
+          Check firewall_allowed_tcp_ports and the SSH port, then run again.
 
 - name: Cancel rollback
   ansible.builtin.systemd_service:
