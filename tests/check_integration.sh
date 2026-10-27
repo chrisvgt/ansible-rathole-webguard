@@ -293,6 +293,14 @@ check "Caddy uses the new key" "on $server 'grep -q \"api_key $new_key\" /etc/ca
 check "the Local API accepts the new key" "on $server \"curl -s -o /dev/null -w '%{http_code}' -I -H 'X-Api-Key: $new_key' http://127.0.0.1:8080/v1/decisions\" | grep -q 200"
 check "the site answers with the new key" "https | grep -q 'hello from the client'"
 
+echo "== firewall removed from the running system"
+on "$server" 'nft delete table inet webguard'
+playbook --tags rathole,firewall >"$logs/reload.log" 2>&1 || {
+  tail -30 "$logs/reload.log"
+  fail=1
+}
+check "a removed firewall is loaded again" "on $server 'nft list table inet webguard' >/dev/null"
+
 echo "== firewall off"
 playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
   tail -30 "$logs/off.log"
