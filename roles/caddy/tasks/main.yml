@@ -163,7 +163,6 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: "0644"
-  when: caddy_plugins_hash is defined
 
 - name: Create Caddy environment file (secrets)
   ansible.builtin.template:
@@ -207,7 +206,7 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     recurse: true
-  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir | default(caddy_log_dir)] | unique }}"
+  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir] | unique }}"
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
@@ -218,15 +217,12 @@
     mode: "0644"
   notify: Restart Caddy
 
-- name: Reload Systemd daemon to pick up new unit file
-  ansible.builtin.systemd:
-    daemon_reload: true
-
 - name: Enable and start Caddy service
   ansible.builtin.systemd:
     name: caddy
     enabled: true
     state: started
+    daemon_reload: true
 
 # Earlier versions of this role built in /root and never cleaned the build cache
 - name: Remove Go caches left behind by previous Caddy builds
