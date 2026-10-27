@@ -215,6 +215,11 @@ version=$(default_of go_lang go_lang_version)
 check "Go $version" "has_version $server '/usr/local/go/bin/go version' $version"
 version=$(default_of xcaddy xcaddy_version)
 check "xcaddy $version" "has_version $server '/usr/local/bin/xcaddy --version' $version"
+crowdsec_versions() { # label, CrowdSec version, firewall bouncer version
+  check "CrowdSec $2$1" "has_version $server 'crowdsec -version' $2"
+  check "CrowdSec firewall bouncer $3$1" "has_version $server 'crowdsec-firewall-bouncer -V' $3"
+}
+crowdsec_versions "" "$(default_of crowdsec crowdsec_version)" "$(default_of crowdsec crowdsec_firewall_bouncer_version)"
 version=$(default_of crowdsec_import crowdsec_import_version)
 check "blocklist import $version" \
   "has_version $server '/opt/crowdsec-blocklist-import/bin/crowdsec-blocklist-import --version' $version"
@@ -255,6 +260,23 @@ if playbook --check --diff >"$logs/check.log" 2>&1; then echo "ok   --check --di
   grep -E '^(fatal|failed):' -A3 "$logs/check.log" | head -40
   fail=1
 fi
+
+# Versions before the role defaults; also available on the APT repository.
+# Before the key change: that key is only passed with -e, these runs use the
+# stored one.
+echo "== CrowdSec version change"
+playbook -e crowdsec_version=1.8.0 -e crowdsec_firewall_bouncer_version=0.0.34 --tags crowdsec >"$logs/older.log" 2>&1 || {
+  tail -30 "$logs/older.log"
+  fail=1
+}
+crowdsec_versions " after the change to an older version" 1.8.0 0.0.34
+playbook --tags crowdsec >"$logs/newer.log" 2>&1 || {
+  tail -30 "$logs/newer.log"
+  fail=1
+}
+crowdsec_versions " after the update" "$(default_of crowdsec crowdsec_version)" "$(default_of crowdsec crowdsec_firewall_bouncer_version)"
+check "CrowdSec runs after the update" "on $server 'systemctl is-active crowdsec crowdsec-firewall-bouncer'"
+check "the site answers after the update" "https | grep -q 'hello from the client'"
 
 echo "== new Caddy bouncer key"
 new_key=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)

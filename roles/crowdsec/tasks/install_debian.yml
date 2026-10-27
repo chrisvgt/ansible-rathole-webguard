@@ -33,10 +33,19 @@
         path: /tmp/install_crowdsec.sh
         state: absent
 
+- name: Keep CrowdSec at the versions of the playbook
+  ansible.builtin.template:
+    src: apt-preferences.j2
+    dest: /etc/apt/preferences.d/crowdsec
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install CrowdSec agent and iptables bouncer
   ansible.builtin.apt:
     name:
-      - crowdsec
-      - crowdsec-firewall-bouncer-iptables
+      - "crowdsec={{ crowdsec_version }}"
+      - "crowdsec-firewall-bouncer-iptables={{ crowdsec_firewall_bouncer_version }}"
     state: present
+    allow_downgrade: true # The versions of the playbook win
   notify: Restart CrowdSec

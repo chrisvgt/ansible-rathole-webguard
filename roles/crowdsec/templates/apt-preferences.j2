@@ -1,0 +1,12 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/apt-preferences.j2
+# Keeps CrowdSec at the versions of the playbook, also for apt upgrade and
+# unattended-upgrades. Change crowdsec_version to update.
+
+Package: crowdsec
+Pin: version {{ crowdsec_version }}
+Pin-Priority: 1001
+
+Package: crowdsec-firewall-bouncer-iptables
+Pin: version {{ crowdsec_firewall_bouncer_version }}
+Pin-Priority: 1001
