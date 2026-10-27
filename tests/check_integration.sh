@@ -3,15 +3,18 @@
 # Arch Linux with systemd, own network), then checks from the outside: site through the tunnel,
 # CrowdSec bouncer, firewall, Caddy sandbox. A second run must change nothing,
 # a check-mode run must pass, and turning the firewall off must remove it.
+# The playbook runs like on real hosts: through scripts/run-playbook.sh, over
+# SSH with host key checking, as a user with sudo on Debian and as root on Arch
+# Linux.
 # SERVER_OS and CLIENT_OS choose the system of each host: debian (default) or arch.
-# Needs Docker with --privileged, network access and community.docker.
+# Needs Docker with --privileged, network access and ssh.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 server_os=${SERVER_OS:-debian}
 client_os=${CLIENT_OS:-debian}
-debian_image=webguard-integration:debian12-bare
-# Arch Linux as published, with systemd but without Python and sudo
+debian_image=webguard-integration:debian12-ssh
+# Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
 arch_image=archlinux:base-20261018.0.612668
 net=webguard-it
@@ -27,12 +30,13 @@ cleanup # Leftovers of an aborted run
 logs=$(mktemp -d)
 trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs to root
 
-# Debian with systemd only, like a minimal server image: no Python and no
-# sudo, the playbook installs Python itself (built once, reused)
+# Debian like a minimal server image: systemd, sshd and sudo, but no Python,
+# the playbook installs it itself (built once, reused)
 if [[ "$server_os $client_os" == *debian* ]] && ! docker image inspect "$debian_image" >/dev/null 2>&1; then
   docker rm -f it-build >/dev/null 2>&1 || true
-  docker run --name it-build debian:12 sh -c \
-    'apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null && rm -rf /var/lib/apt/lists/*'
+  docker run --name it-build debian:12 sh -c 'apt-get update -qq &&
+    apt-get install -y -qq --no-install-recommends systemd systemd-sysv openssh-server sudo >/dev/null &&
+    rm -rf /var/lib/apt/lists/*'
   docker commit it-build "$debian_image" >/dev/null
   docker rm it-build >/dev/null
 fi
@@ -85,12 +89,45 @@ for pair in "$server:$server_os" "$client:$client_os"; do
     systemctl restart systemd-resolved'
 done
 
-playbook() {
-  ANSIBLE_ROLES_PATH="$PWD/roles" ANSIBLE_FORCE_COLOR=0 \
-    ansible-playbook -i tests/integration/hosts.ini site.yml ${extra[@]+"${extra[@]}"} "$@"
-}
 on() { docker exec "$1" bash -c "$2"; }
 ip_of() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"; }
+
+# SSH access like on real hosts: a key for this run, a user with sudo on
+# Debian and root on Arch Linux. The hosts are reached through an own SSH
+# config, so ~/.ssh/config and known_hosts of this computer are not used.
+ssh-keygen -q -t ed25519 -N '' -C integration -f "$logs/id_ed25519"
+: >"$logs/known_hosts"
+: >"$logs/ssh_config"
+for pair in "$server:$server_os" "$client:$client_os"; do
+  host=${pair%%:*}
+  if [[ ${pair#*:} == arch ]]; then
+    user=root
+    on "$host" 'pacman -Syu --noconfirm --needed openssh >/dev/null && systemctl enable --quiet --now sshd'
+  else
+    user=ansible
+    on "$host" "useradd -m -s /bin/bash $user && echo '$user ALL=(ALL) NOPASSWD: ALL' >/etc/sudoers.d/$user &&
+      chmod 0440 /etc/sudoers.d/$user && systemctl enable --quiet --now ssh"
+  fi
+  home=$(on "$host" "getent passwd $user | cut -d: -f6")
+  on "$host" "install -d -m 0700 -o $user -g $user $home/.ssh"
+  docker cp "$logs/id_ed25519.pub" "$host:$home/.ssh/authorized_keys"
+  on "$host" "chown $user:$user $home/.ssh/authorized_keys && chmod 0600 $home/.ssh/authorized_keys"
+  ip=$(ip_of "$host")
+  for _ in $(seq 30); do
+    keys=$(ssh-keyscan -T 2 "$ip" 2>/dev/null || true)
+    [[ -n $keys ]] && break
+    sleep 1
+  done
+  echo "$keys" >>"$logs/known_hosts"
+  printf 'Host %s\n  HostName %s\n  User %s\n' "$host" "$ip" "$user" >>"$logs/ssh_config"
+done
+printf 'Host *\n  IdentityFile %s\n  IdentitiesOnly yes\n  UserKnownHostsFile %s\n' \
+  "$logs/id_ed25519" "$logs/known_hosts" >>"$logs/ssh_config"
+
+playbook() {
+  ANSIBLE_FORCE_COLOR=0 ANSIBLE_SSH_COMMON_ARGS="-F $logs/ssh_config" \
+    ./scripts/run-playbook.sh --no-vault --inventory tests/integration/hosts.ini ${extra[@]+"${extra[@]}"} "$@"
+}
 
 fail=0
 check() {
@@ -164,6 +201,23 @@ check "blocklist import started after the last CrowdSec restart" \
   "test \$(start_of crowdsec-blocklist-import.service) -gt \$(start_of crowdsec.service)"
 check "blocklist import ran once" \
   "test \$(on $server 'journalctl -u crowdsec-blocklist-import.service --no-pager' | grep -c 'Completed in') -eq 1"
+# The installed programs have the versions of the role defaults
+default_of() { sed -n "s/^$2: \"v\{0,1\}\([^\"]*\)\".*/\1/p" "roles/$1/defaults/main.yml"; }
+has_version() { # host, command, version
+  [[ -n $3 ]] && on "$1" "$2" 2>&1 | grep -qE "(^|[^0-9.])v?${3//./\\.}([^0-9.]|$)"
+}
+version=$(default_of rathole rathole_version)
+check "Rathole $version on the server" "has_version $server '/usr/local/bin/rathole --version' $version"
+check "Rathole $version on the client" "has_version $client '/usr/local/bin/rathole --version' $version"
+version=$(default_of caddy caddy_version)
+check "Caddy $version" "has_version $server '/usr/local/bin/caddy version' $version"
+version=$(default_of go_lang go_lang_version)
+check "Go $version" "has_version $server '/usr/local/go/bin/go version' $version"
+version=$(default_of xcaddy xcaddy_version)
+check "xcaddy $version" "has_version $server '/usr/local/bin/xcaddy --version' $version"
+version=$(default_of crowdsec_import crowdsec_import_version)
+check "blocklist import $version" \
+  "has_version $server '/opt/crowdsec-blocklist-import/bin/crowdsec-blocklist-import --version' $version"
 if [[ -n ${CI:-} ]]; then
   check "swap file is active" "on $server 'swapon --show=NAME --noheadings' | grep -q /swap/swapfile"
 fi
@@ -180,10 +234,16 @@ if ! playbook | tee "$logs/run2.log"; then
   echo "FAIL second run (ansible-playbook exit code ${PIPESTATUS[0]})"
   fail=1
 fi
-changed=$(grep -E "^it-(server|client) +:" "$logs/run2.log" | grep -oE 'changed=[0-9]+' | cut -d= -f2 | awk '{s += $1} END {print s + 0}')
+# Arch Linux is a rolling release: packages published since the first run are
+# a real change of the system upgrade, not of the playbook
+changed_tasks() {
+  awk '/^(TASK|RUNNING HANDLER) \[/ { task = $0 }
+    /^changed: / && task !~ /Upgrade the system \(Arch Linux\)/ { print task }' "$1" | uniq
+}
+changed=$(changed_tasks "$logs/run2.log" | wc -l)
 if [[ $changed -ne 0 ]]; then
   echo "FAIL second run changed $changed task(s):"
-  grep -B1 -E '^changed: ' "$logs/run2.log" | grep -E '^TASK' || true
+  changed_tasks "$logs/run2.log"
   fail=1
 else
   echo "ok   second run changed nothing"

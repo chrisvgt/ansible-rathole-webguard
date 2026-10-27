@@ -34,10 +34,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version-file: .python-version
 
       - name: Install Ansible
-        run: pip install ansible pyyaml
+        run: pip install -r tests/requirements.txt
 
       # The firewall tests run nftables with conntrack in containers, which
       # cannot load kernel modules themselves
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version-file: .python-version
 
       - name: Fetch the task coverage of all combinations
         uses: actions/download-artifact@v4
