@@ -99,7 +99,7 @@
     caddy_plugins_effective: >-
       {{ caddy_plugins
          + (enable_cloudflare | default(false) | bool | ternary(['github.com/caddy-dns/cloudflare'], []))
-         + (enable_crowdsec | default(false) | bool | ternary([
+         + (enable_crowdsec | default(true) | bool | ternary([
               'github.com/hslatman/caddy-crowdsec-bouncer/http',
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'

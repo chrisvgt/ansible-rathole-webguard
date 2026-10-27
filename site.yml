@@ -114,7 +114,7 @@
       register: arch_reboot
       when:
         - ansible_facts['os_family'] == "Archlinux"
-        - enable_auto_reboot | default(true) | bool
+        - enable_auto_reboot | bool
         - reboot_required | bool
 
     - name: Read the running kernel after the reboot (Arch Linux)
@@ -141,7 +141,7 @@
     # Runs first so swap is available before the memory-hungry Caddy build.
     # Set 'enable_system_tuning: false' to skip it (default: true).
     - role: system
-      when: enable_system_tuning | default(true) | bool
+      when: enable_system_tuning | bool
       tags: system
 
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
@@ -192,7 +192,7 @@
         post_reboot_delay: 10
         connect_timeout: 300
       when:
-        - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
+        - enable_auto_reboot | bool # Set to 'false' to only report pending reboots
         - reboot_required | bool
       tags: [reboot]
 
@@ -200,7 +200,7 @@
       ansible.builtin.debug:
         msg: "A reboot is required after package upgrades but enable_auto_reboot is false."
       when:
-        - not (enable_auto_reboot | default(true) | bool)
+        - not (enable_auto_reboot | bool)
         - reboot_required | bool
       tags: [reboot]
 
