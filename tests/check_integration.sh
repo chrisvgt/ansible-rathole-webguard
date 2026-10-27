@@ -3,15 +3,18 @@
 # Arch Linux with systemd, own network), then checks from the outside: site through the tunnel,
 # CrowdSec bouncer, firewall, Caddy sandbox. A second run must change nothing,
 # a check-mode run must pass, and turning the firewall off must remove it.
+# The playbook runs like on real hosts: through scripts/run-playbook.sh, over
+# SSH with host key checking, as a user with sudo on Debian and as root on Arch
+# Linux.
 # SERVER_OS and CLIENT_OS choose the system of each host: debian (default) or arch.
-# Needs Docker with --privileged, network access and community.docker.
+# Needs Docker with --privileged, network access and ssh.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 server_os=${SERVER_OS:-debian}
 client_os=${CLIENT_OS:-debian}
-debian_image=webguard-integration:debian12-bare
-# Arch Linux as published, with systemd but without Python and sudo
+debian_image=webguard-integration:debian12-ssh
+# Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
 arch_image=archlinux:base-20261018.0.612668
 net=webguard-it
@@ -27,12 +30,13 @@ cleanup # Leftovers of an aborted run
 logs=$(mktemp -d)
 trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs to root
 
-# Debian with systemd only, like a minimal server image: no Python and no
-# sudo, the playbook installs Python itself (built once, reused)
+# Debian like a minimal server image: systemd, sshd and sudo, but no Python,
+# the playbook installs it itself (built once, reused)
 if [[ "$server_os $client_os" == *debian* ]] && ! docker image inspect "$debian_image" >/dev/null 2>&1; then
   docker rm -f it-build >/dev/null 2>&1 || true
-  docker run --name it-build debian:12 sh -c \
-    'apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null && rm -rf /var/lib/apt/lists/*'
+  docker run --name it-build debian:12 sh -c 'apt-get update -qq &&
+    apt-get install -y -qq --no-install-recommends systemd systemd-sysv openssh-server sudo >/dev/null &&
+    rm -rf /var/lib/apt/lists/*'
   docker commit it-build "$debian_image" >/dev/null
   docker rm it-build >/dev/null
 fi
@@ -85,12 +89,45 @@ for pair in "$server:$server_os" "$client:$client_os"; do
     systemctl restart systemd-resolved'
 done
 
-playbook() {
-  ANSIBLE_ROLES_PATH="$PWD/roles" ANSIBLE_FORCE_COLOR=0 \
-    ansible-playbook -i tests/integration/hosts.ini site.yml ${extra[@]+"${extra[@]}"} "$@"
-}
 on() { docker exec "$1" bash -c "$2"; }
 ip_of() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"; }
+
+# SSH access like on real hosts: a key for this run, a user with sudo on
+# Debian and root on Arch Linux. The hosts are reached through an own SSH
+# config, so ~/.ssh/config and known_hosts of this computer are not used.
+ssh-keygen -q -t ed25519 -N '' -C integration -f "$logs/id_ed25519"
+: >"$logs/known_hosts"
+: >"$logs/ssh_config"
+for pair in "$server:$server_os" "$client:$client_os"; do
+  host=${pair%%:*}
+  if [[ ${pair#*:} == arch ]]; then
+    user=root
+    on "$host" 'pacman -Syu --noconfirm --needed openssh >/dev/null && systemctl enable --quiet --now sshd'
+  else
+    user=ansible
+    on "$host" "useradd -m -s /bin/bash $user && echo '$user ALL=(ALL) NOPASSWD: ALL' >/etc/sudoers.d/$user &&
+      chmod 0440 /etc/sudoers.d/$user && systemctl enable --quiet --now ssh"
+  fi
+  home=$(on "$host" "getent passwd $user | cut -d: -f6")
+  on "$host" "install -d -m 0700 -o $user -g $user $home/.ssh"
+  docker cp "$logs/id_ed25519.pub" "$host:$home/.ssh/authorized_keys"
+  on "$host" "chown $user:$user $home/.ssh/authorized_keys && chmod 0600 $home/.ssh/authorized_keys"
+  ip=$(ip_of "$host")
+  for _ in $(seq 30); do
+    keys=$(ssh-keyscan -T 2 "$ip" 2>/dev/null || true)
+    [[ -n $keys ]] && break
+    sleep 1
+  done
+  echo "$keys" >>"$logs/known_hosts"
+  printf 'Host %s\n  HostName %s\n  User %s\n' "$host" "$ip" "$user" >>"$logs/ssh_config"
+done
+printf 'Host *\n  IdentityFile %s\n  IdentitiesOnly yes\n  UserKnownHostsFile %s\n' \
+  "$logs/id_ed25519" "$logs/known_hosts" >>"$logs/ssh_config"
+
+playbook() {
+  ANSIBLE_FORCE_COLOR=0 ANSIBLE_SSH_COMMON_ARGS="-F $logs/ssh_config" \
+    ./scripts/run-playbook.sh --no-vault --inventory tests/integration/hosts.ini ${extra[@]+"${extra[@]}"} "$@"
+}
 
 fail=0
 check() {
