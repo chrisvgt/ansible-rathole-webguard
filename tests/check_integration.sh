@@ -184,6 +184,9 @@ check "server services are active" "on $server 'systemctl is-active caddy crowds
 check "client tunnel is active" "on $client 'systemctl is-active rathole'"
 check "site answers through the tunnel" "https | grep -q 'hello from the client'"
 https | grep -q 'hello from the client' || diagnose
+headers=$(on "$client" "curl -sk --max-time 5 --resolve web.test:443:$server_ip https://web.test/headers" || true)
+check "the app sees the client IP, the scheme and the host" \
+  "grep -qx 'X-Forwarded-For: $client_ip' <<<\"\$headers\" && grep -qx 'X-Forwarded-Proto: https' <<<\"\$headers\" && grep -qx 'X-Forwarded-Host: web.test' <<<\"\$headers\""
 check "HSTS is sent" "https -I | grep -qi '^strict-transport-security: max-age=31536000'"
 check "no Server header" "! https -I | grep -qi '^server:'"
 check "Caddy admin API only on its socket" "on $server 'test -S /run/caddy/admin.sock && ! curl -s --max-time 2 http://localhost:2019/config/'"
