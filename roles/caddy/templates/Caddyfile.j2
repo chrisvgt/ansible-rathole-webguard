@@ -200,9 +200,11 @@ coraza_waf {
             "id:100044,phase:2,deny,log,msg:'File inclusion attempt',severity:CRITICAL"
 
         # === Content-Type enforcement for POST/PUT ===
-        SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" "id:100045,phase:1,pass,nolog,t:none,chain"
+        # Disruptive actions only in the first rule of a chain
+        SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" \
+            "id:100045,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING,t:none,chain"
             SecRule REQUEST_HEADERS:Content-Type "!@rx ^(application/x-www-form-urlencoded|multipart/form-data|application/json|application/xml|text/plain|text/xml|application/octet-stream|image/|video/|audio/)" \
-                "id:100046,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING"
+                "t:none"
 
         {% elif effective_mode == 'strict' %}
 
@@ -252,9 +254,11 @@ coraza_waf {
             "id:100050,phase:2,deny,log,msg:'Template injection marker detected',severity:CRITICAL"
 
         # === Content-Type enforcement for POST/PUT ===
-        SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" "id:100045,phase:1,pass,nolog,t:none,chain"
+        # Disruptive actions only in the first rule of a chain
+        SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" \
+            "id:100045,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING,t:none,chain"
             SecRule REQUEST_HEADERS:Content-Type "!@rx ^(application/x-www-form-urlencoded|multipart/form-data|application/json|application/xml|text/plain|text/xml)" \
-                "id:100046,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING"
+                "t:none"
 
         # Argument name length limit disabled due to Coraza regex engine limitations.
         # Length validation is implicit through other rules.
