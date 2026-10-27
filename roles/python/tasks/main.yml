@@ -11,8 +11,9 @@
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
+# python-pipx 1.18 needs filelock but does not depend on it
 - name: Install pipx (Arch Linux)
   community.general.pacman:
-    name: python-pipx
+    name: [python-pipx, python-filelock]
     state: present
   when: ansible_facts['os_family'] == "Archlinux"
