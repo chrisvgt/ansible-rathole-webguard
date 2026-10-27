@@ -13,4 +13,9 @@ db_config:
 # log to the journal, which is size-limited
 common:
   log_media: stdout
+
+# The archive's config runs notification plugins as nobody:nogroup; Arch Linux
+# has no nogroup group
+plugin_config:
+  group: nobody
 {% endif %}

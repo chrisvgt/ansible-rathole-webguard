@@ -15,6 +15,7 @@
       ansible.builtin.assert:
         that:
           - "'log_media: stdout' in local_conf"
+          - "'group: nobody' in local_conf" # Arch Linux has no nogroup for the plugins
           - "'max_items: 5000' in local_conf"
       vars:
         ansible_facts: { os_family: Archlinux }
@@ -22,7 +23,9 @@
 
     - name: Check that Debian keeps the packaged log file
       ansible.builtin.assert:
-        that: "'log_media' not in local_conf"
+        that:
+          - "'log_media' not in local_conf"
+          - "'plugin_config' not in local_conf"
       vars:
         ansible_facts: { os_family: Debian }
         local_conf: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/config.yaml.local.j2') }}"
