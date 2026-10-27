@@ -6,16 +6,13 @@
   ansible.builtin.include_tasks: tunnel.yml
   when: (tunnel_services | default(none)) is not none
 
-- name: Validate Rathole role variables
+# rathole_role itself is checked by tasks/preflight.yml
+- name: Validate the Rathole config
   ansible.builtin.assert:
     that:
-      - rathole_role is defined
-      - rathole_role in ['server', 'client']
       - rathole_role != 'server' or (rathole_server_config | default(none)) is mapping
       - rathole_role != 'client' or (rathole_client_config | default(none)) is mapping
-    fail_msg: >-
-      rathole_role must be 'server' or 'client' and the matching
-      rathole_server_config / rathole_client_config mapping (or tunnel_services) must be defined.
+    fail_msg: "The rathole_server_config / rathole_client_config mapping (or tunnel_services) must be defined."
     quiet: true
 
 - name: Ensure Rathole system group exists
