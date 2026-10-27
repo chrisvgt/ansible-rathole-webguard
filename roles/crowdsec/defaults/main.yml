@@ -48,9 +48,11 @@ crowdsec_session_whitelist_file: /etc/crowdsec/parsers/s02-enrich/local-session-
 # crowdsec_api_key is set
 crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key
 
-# Arch Linux: CrowdSec and its firewall bouncer come from the vendors' release
-# archives (not in the official repositories), checked against the SHA256 that
-# GitHub shows for the asset. A version change replaces only the programs.
+# Versions of CrowdSec and its firewall bouncer. Debian and Ubuntu install
+# them from the CrowdSec APT repository and keep them there with an APT pin.
+# Arch Linux: they come from the vendors' release archives (not in the official
+# repositories), checked against the SHA256 that GitHub shows for the asset. A
+# version change replaces only the programs.
 # renovate: datasource=github-releases depName=crowdsecurity/crowdsec extractVersion=^v(?<version>.+)$
 crowdsec_version: "1.8.1"
 # renovate: datasource=github-releases depName=crowdsecurity/cs-firewall-bouncer extractVersion=^v(?<version>.+)$
