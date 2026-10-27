@@ -14,6 +14,7 @@ rathole_memory_max: "256M" # systemd MemoryMax for the Rathole service (hard mem
 
 # --- Tunnel tuple mode (used when tunnel_services is defined) ---
 rathole_port: 2333 # Tunnel port the client connects to
+rathole_listen_addr: "0.0.0.0:{{ rathole_port }}" # Server bind address of the tunnel
 rathole_transport: # Transport for the tunnel; Noise keys are generated automatically
   type: "noise"
   noise:
