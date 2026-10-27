@@ -12,16 +12,16 @@
     - name: Apply global defaults
       ansible.builtin.include_tasks: "{{ repo_dir }}/tasks/global_defaults.yml"
 
+    - name: Run the preflight checks of site.yml
+      ansible.builtin.include_tasks: "{{ repo_dir }}/tasks/preflight.yml"
+
     - name: Run Rathole derivation
       ansible.builtin.include_role:
         name: rathole
         tasks_from: tunnel
 
-    - name: Load Caddy role constants
-      ansible.builtin.include_vars: "{{ repo_dir }}/roles/caddy/vars/main.yml"
-
-    - name: Run Caddy site derivation
-      ansible.builtin.include_tasks: "{{ repo_dir }}/roles/caddy/tasks/sites.yml"
+    - name: Render and check the Caddyfile
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
       when: rathole_role == 'server'
 
     - name: Check example result
