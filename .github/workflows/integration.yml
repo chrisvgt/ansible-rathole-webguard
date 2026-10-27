@@ -5,6 +5,9 @@ name: Integration
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Weekly: new Arch Linux packages and upstream releases between changes
+  schedule:
+    - cron: "0 4 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -20,9 +23,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { server: debian, client: debian }
-          - { server: arch, client: debian }
-          - { server: debian, client: arch }
+          - { server: debian12, client: debian12 }
+          - { server: debian13, client: debian13 }
+          - { server: arch, client: arch }
+          - { server: arch, client: debian13 }
+          - { server: debian13, client: arch }
     env:
       TASK_COVERAGE_FILE: ${{ github.workspace }}/task-coverage.txt
       ANSIBLE_CALLBACK_PLUGINS: ${{ github.workspace }}/tests/callback_plugins
@@ -45,11 +50,6 @@ jobs:
         run: |
           sudo apt-get install -y nftables
           sudo modprobe -a nf_tables nft_ct
-
-      # The other tests do not depend on the system of the hosts
-      - name: Tests
-        if: matrix.server == 'debian' && matrix.client == 'debian'
-        run: ./tests/run.sh
 
       - name: Full run against a server and a client
         env:
