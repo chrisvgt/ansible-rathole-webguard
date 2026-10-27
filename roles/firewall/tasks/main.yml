@@ -38,16 +38,9 @@
   ansible.builtin.include_tasks: ports.yml
 
 - name: Install nftables
-  ansible.builtin.apt:
+  ansible.builtin.package:
     name: nftables
     state: present
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Install nftables (Arch Linux)
-  community.general.pacman:
-    name: nftables
-    state: present
-  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Ensure nftables include directory exists
   ansible.builtin.file:

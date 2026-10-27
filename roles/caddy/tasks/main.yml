@@ -1,22 +1,12 @@
 ---
 # roles/caddy/tasks/main.yml
 
-# Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is needed
-- name: Install Caddy build dependencies
-  ansible.builtin.apt:
-    name:
-      - git
-      - curl
-      - logrotate
+# Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is
+# needed; git and curl come with the common utilities of site.yml
+- name: Install logrotate
+  ansible.builtin.package:
+    name: logrotate
     state: present
-    update_cache: true
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Install Caddy build dependencies (Arch Linux)
-  community.general.pacman:
-    name: [git, curl, logrotate]
-    state: present
-  when: ansible_facts['os_family'] == "Archlinux"
 
 # Debian starts logrotate from its package; Arch Linux ships the timer disabled
 - name: Enable daily log rotation (Arch Linux)

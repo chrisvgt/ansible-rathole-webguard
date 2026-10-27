@@ -82,16 +82,6 @@
         autoremove: true
       when: ansible_facts['os_family'] == "Debian"
 
-    - name: Install common system utilities (Debian-based systems)
-      ansible.builtin.apt:
-        name:
-          - curl # For downloading files
-          - unzip # For extracting archives
-          - git # For version control and cloning repositories
-        state: present
-      when: ansible_facts['os_family'] == "Debian"
-      tags: [base]
-
     # Arch Linux is upgraded as a whole, only here: there is no update timer
     - name: Upgrade the system (Arch Linux)
       community.general.pacman:
@@ -122,11 +112,13 @@
         filter: [ansible_kernel]
       when: arch_reboot.rebooted | default(false)
 
-    - name: Install common system utilities (Arch Linux)
-      community.general.pacman:
-        name: [curl, unzip, git]
+    - name: Install common system utilities
+      ansible.builtin.package:
+        name:
+          - curl # For downloading files
+          - unzip # For extracting archives
+          - git # For version control and cloning repositories
         state: present
-      when: ansible_facts['os_family'] == "Archlinux"
       tags: [base]
 
     - name: Ensure /usr/local/bin exists
