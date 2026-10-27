@@ -125,6 +125,12 @@ check "blocklist import is scheduled" "on $server 'systemctl is-active crowdsec-
 check "blocklist import ran successfully" "test \"\$(on $server 'systemctl show -p Result --value crowdsec-blocklist-import.service')\" = success"
 on "$server" 'systemctl is-active crowdsec-blocklist-import.timer && test "$(systemctl show -p Result --value crowdsec-blocklist-import.service)" = success' >/dev/null 2>&1 ||
   on "$server" 'systemctl status --no-pager -n 20 crowdsec-blocklist-import.timer crowdsec-blocklist-import.service' || true
+# A CrowdSec restart during the import invalidates its login
+start_of() { on "$server" "systemctl show -p ExecMainStartTimestampMonotonic --value $1"; }
+check "blocklist import started after the last CrowdSec restart" \
+  "test \$(start_of crowdsec-blocklist-import.service) -gt \$(start_of crowdsec.service)"
+check "blocklist import ran once" \
+  "test \$(on $server 'journalctl -u crowdsec-blocklist-import.service --no-pager' | grep -c 'Completed in') -eq 1"
 if [[ -n ${CI:-} ]]; then
   check "swap file is active" "on $server 'swapon --show=NAME --noheadings' | grep -q /swap/swapfile"
 fi
