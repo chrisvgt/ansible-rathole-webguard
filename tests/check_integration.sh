@@ -234,10 +234,16 @@ if ! playbook | tee "$logs/run2.log"; then
   echo "FAIL second run (ansible-playbook exit code ${PIPESTATUS[0]})"
   fail=1
 fi
-changed=$(grep -E "^it-(server|client) +:" "$logs/run2.log" | grep -oE 'changed=[0-9]+' | cut -d= -f2 | awk '{s += $1} END {print s + 0}')
+# Arch Linux is a rolling release: packages published since the first run are
+# a real change of the system upgrade, not of the playbook
+changed_tasks() {
+  awk '/^(TASK|RUNNING HANDLER) \[/ { task = $0 }
+    /^changed: / && task !~ /Upgrade the system \(Arch Linux\)/ { print task }' "$1" | uniq
+}
+changed=$(changed_tasks "$logs/run2.log" | wc -l)
 if [[ $changed -ne 0 ]]; then
   echo "FAIL second run changed $changed task(s):"
-  grep -B1 -E '^changed: ' "$logs/run2.log" | grep -E '^TASK' || true
+  changed_tasks "$logs/run2.log"
   fail=1
 else
   echo "ok   second run changed nothing"
