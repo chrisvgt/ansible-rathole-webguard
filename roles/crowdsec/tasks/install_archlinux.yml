@@ -1,0 +1,246 @@
+---
+# roles/crowdsec/tasks/install_archlinux.yml
+# Arch Linux: CrowdSec and its firewall bouncer are not in the official
+# repositories. They come from the vendors' release archives on GitHub, checked
+# against the SHA256 GitHub shows for the asset. The vendors' install scripts
+# are not run; this file does what the Debian packages do on install, into the
+# paths of the archive's config.yaml, so main.yml works the same on both.
+
+- name: Read the installed CrowdSec version
+  ansible.builtin.command: /usr/local/bin/crowdsec -version
+  register: crowdsec_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Read the installed firewall bouncer version
+  ansible.builtin.command: /usr/local/bin/crowdsec-firewall-bouncer -V
+  register: crowdsec_bouncer_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Decide what to install
+  ansible.builtin.set_fact:
+    crowdsec_archive_installs: >-
+      {{ ([{'repo': 'crowdsecurity/crowdsec', 'version': crowdsec_version,
+            'asset': 'crowdsec-release.tgz', 'name': 'crowdsec'}]
+          if ((((crowdsec_installed_version.stdout | default('')) ~ (crowdsec_installed_version.stderr | default('')))
+              | regex_search('version: v?([0-9.]+)', '\1')) | default([''], true) | first) != crowdsec_version
+          else [])
+         + ([{'repo': 'crowdsecurity/cs-firewall-bouncer', 'version': crowdsec_firewall_bouncer_version,
+              'asset': 'crowdsec-firewall-bouncer-linux-amd64.tgz', 'name': 'bouncer'}]
+          if ((((crowdsec_bouncer_installed_version.stdout | default('')) ~ (crowdsec_bouncer_installed_version.stderr | default('')))
+              | regex_search('version: v?([0-9.]+)', '\1')) | default([''], true) | first) != crowdsec_firewall_bouncer_version
+          else []) }}
+
+- name: Install the release archives
+  when: crowdsec_archive_installs | length > 0
+  block:
+    # On disk, not in /tmp: Arch keeps /tmp in RAM, and the archives are large
+    - name: Create a temporary download directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        suffix: crowdsec
+      register: crowdsec_archive_dir
+
+    - name: Look up the release assets
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/{{ item.repo }}/releases/tags/v{{ item.version }}"
+        headers:
+          Accept: application/vnd.github+json
+      register: crowdsec_releases
+      loop: "{{ crowdsec_archive_installs }}"
+      loop_control:
+        label: "{{ item.repo }} {{ item.version }}"
+
+    - name: Download the release archives
+      ansible.builtin.get_url:
+        url: "{{ asset.browser_download_url }}"
+        dest: "{{ crowdsec_archive_dir.path }}/{{ item.item.name }}.tgz"
+        checksum: "{{ asset.digest }}"
+        mode: "0600"
+      vars:
+        asset: "{{ item.json.assets | selectattr('name', 'equalto', item.item.asset) | first }}"
+      loop: "{{ crowdsec_releases.results }}"
+      loop_control:
+        label: "{{ item.item.asset }}"
+
+    - name: Unpack the release archives
+      ansible.builtin.unarchive:
+        src: "{{ crowdsec_archive_dir.path }}/{{ item.name }}.tgz"
+        dest: "{{ crowdsec_archive_dir.path }}"
+        remote_src: true
+        extra_opts: ["--strip-components=1", "--one-top-level={{ item.name }}"]
+      loop: "{{ crowdsec_archive_installs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # Programs and units are replaced; configuration is only added when missing
+    - name: Install CrowdSec programs, plugins and configuration
+      ansible.builtin.shell: |
+        set -eu
+        cd {{ (crowdsec_archive_dir.path ~ '/crowdsec') | quote }}
+        install -D -m 0755 cmd/crowdsec/crowdsec /usr/local/bin/crowdsec
+        install -D -m 0755 cmd/crowdsec-cli/cscli /usr/local/bin/cscli
+        install -d -m 0755 /usr/local/lib/crowdsec/plugins /etc/crowdsec/notifications /etc/crowdsec/acquis.d /etc/crowdsec/hub /var/lib/crowdsec/data
+        for plugin in cmd/notification-*/notification-*; do
+          install -m 0755 "$plugin" /usr/local/lib/crowdsec/plugins/
+        done
+        for conf in cmd/notification-*/*.yaml; do
+          [ -e "/etc/crowdsec/notifications/$(basename "$conf")" ] || install -m 0600 "$conf" /etc/crowdsec/notifications/
+        done
+        for conf in config.yaml profiles.yaml simulation.yaml console.yaml acquis.yaml; do
+          [ -e "/etc/crowdsec/$conf" ] || install -m 0644 "config/$conf" /etc/crowdsec/
+        done
+        for conf in local_api_credentials.yaml online_api_credentials.yaml; do
+          [ -e "/etc/crowdsec/$conf" ] || install -m 0600 "config/$conf" /etc/crowdsec/
+        done
+        [ -e /etc/crowdsec/patterns ] || cp -r config/patterns /etc/crowdsec/patterns
+        install -m 0644 config/crowdsec.service /etc/systemd/system/crowdsec.service
+      args:
+        executable: /bin/bash
+      changed_when: true
+      notify: Restart CrowdSec
+      when: crowdsec_archive_installs | selectattr('name', 'equalto', 'crowdsec') | list | length > 0
+
+    - name: Install the firewall bouncer program and unit
+      ansible.builtin.shell: |
+        set -eu
+        cd {{ (crowdsec_archive_dir.path ~ '/bouncer') | quote }}
+        install -D -m 0755 crowdsec-firewall-bouncer /usr/local/bin/crowdsec-firewall-bouncer
+        install -d -m 0755 /etc/crowdsec/bouncers
+        [ -e /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml ] ||
+          install -m 0600 config/crowdsec-firewall-bouncer.yaml /etc/crowdsec/bouncers/
+        sed -e 's#${BIN}#/usr/local/bin/crowdsec-firewall-bouncer#g' -e 's#${CFG}#/etc/crowdsec/bouncers#g' \
+          config/crowdsec-firewall-bouncer.service >/etc/systemd/system/crowdsec-firewall-bouncer.service
+      args:
+        executable: /bin/bash
+      changed_when: true
+      notify: Restart CrowdSec firewall bouncer
+      when: crowdsec_archive_installs | selectattr('name', 'equalto', 'bouncer') | list | length > 0
+
+  always:
+    - name: Remove the temporary download directory
+      ansible.builtin.file:
+        path: "{{ crowdsec_archive_dir.path }}"
+        state: absent
+      when: crowdsec_archive_dir.path is defined
+
+# What the Debian package does on install: credentials for the Local API and
+# the Central API (shared blocklists), hub index and the Linux collection.
+# The archive's credential files hold no login until these steps ran.
+- name: Check the API credentials
+  ansible.builtin.command:
+    argv: [grep, -l, "^login:", /etc/crowdsec/local_api_credentials.yaml, /etc/crowdsec/online_api_credentials.yaml]
+  register: crowdsec_credentials
+  changed_when: false
+  failed_when: crowdsec_credentials.rc > 1
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Create the Local API credentials
+  ansible.builtin.command: cscli machines add -a --force
+  changed_when: true
+  when: "'local_api_credentials' not in crowdsec_credentials.stdout"
+
+- name: Register with the Central API
+  ansible.builtin.command: cscli capi register
+  changed_when: true
+  when: "'online_api_credentials' not in crowdsec_credentials.stdout"
+
+- name: Download the hub index
+  ansible.builtin.command: cscli hub update
+  args:
+    creates: /etc/crowdsec/hub/.index.json
+
+- name: Check installed CrowdSec collections (Arch Linux)
+  ansible.builtin.command: cscli collections list -o raw
+  register: crowdsec_arch_collections
+  changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+# sshd and syslog scenarios, like the Debian package
+- name: Install the Linux collection
+  ansible.builtin.command: cscli collections install crowdsecurity/linux
+  changed_when: true
+  notify: Restart CrowdSec
+  when: "'crowdsecurity/linux' not in crowdsec_arch_collections.stdout"
+
+- name: Read sshd logs from the journal
+  ansible.builtin.template:
+    src: acquis-sshd-journal.yaml.j2
+    dest: /etc/crowdsec/acquis.d/sshd.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
+
+- name: Install the daily hub update units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [crowdsec-hubupdate.service, crowdsec-hubupdate.timer]
+
+# The firewall bouncer needs a running Local API
+- name: Start CrowdSec
+  ansible.builtin.systemd_service:
+    name: crowdsec
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# The bouncer works in nftables mode and logs to the journal; its key is
+# created once, as the Debian package does
+- name: Set the firewall bouncer to nftables and the journal
+  ansible.builtin.lineinfile:
+    path: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+    regexp: "^{{ item.key }}:"
+    line: "{{ item.key }}: {{ item.value }}"
+  loop:
+    - { key: mode, value: nftables }
+    - { key: log_mode, value: stdout }
+  notify: Restart CrowdSec firewall bouncer
+
+- name: Check for the firewall bouncer key
+  ansible.builtin.command:
+    argv: [grep, -qF, "api_key: ${API_KEY}", /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml]
+  register: crowdsec_bouncer_key_missing
+  changed_when: false
+  failed_when: crowdsec_bouncer_key_missing.rc > 1
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Register the firewall bouncer
+  when: crowdsec_bouncer_key_missing.rc == 0
+  block:
+    # Left over from an interrupted run
+    - name: Remove an earlier firewall bouncer registration
+      ansible.builtin.command:
+        argv: [cscli, bouncers, delete, firewall-bouncer]
+      changed_when: false
+      failed_when: false
+
+    - name: Create the firewall bouncer key
+      ansible.builtin.command:
+        argv: [cscli, bouncers, add, firewall-bouncer, -o, raw]
+      register: crowdsec_firewall_bouncer_key
+      changed_when: true
+      no_log: true
+
+    - name: Store the firewall bouncer key
+      ansible.builtin.lineinfile:
+        path: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+        regexp: "^api_key:"
+        line: "api_key: {{ crowdsec_firewall_bouncer_key.stdout | trim }}"
+      no_log: true
+      notify: Restart CrowdSec firewall bouncer
+
+- name: Start the firewall bouncer
+  ansible.builtin.systemd_service:
+    name: crowdsec-firewall-bouncer
+    state: started
+    enabled: true
+    daemon_reload: true

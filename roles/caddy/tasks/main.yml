@@ -10,6 +10,21 @@
       - logrotate
     state: present
     update_cache: true
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Install Caddy build dependencies (Arch Linux)
+  community.general.pacman:
+    name: [git, curl, logrotate]
+    state: present
+  when: ansible_facts['os_family'] == "Archlinux"
+
+# Debian starts logrotate from its package; Arch Linux ships the timer disabled
+- name: Enable daily log rotation (Arch Linux)
+  ansible.builtin.systemd_service:
+    name: logrotate.timer
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Create Caddy system group
   ansible.builtin.group:

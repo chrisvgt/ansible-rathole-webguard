@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# Full run of site.yml against a server and a client container (Debian 12 with
-# systemd, own network), then checks from the outside: site through the tunnel,
+# Full run of site.yml against a server and a client container (Debian 12 or
+# Arch Linux with systemd, own network), then checks from the outside: site through the tunnel,
 # CrowdSec bouncer, firewall, Caddy sandbox. A second run must change nothing,
 # a check-mode run must pass, and turning the firewall off must remove it.
+# SERVER_OS and CLIENT_OS choose the system of each host: debian (default) or arch.
 # Needs Docker with --privileged, network access and community.docker.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-image=webguard-integration:debian12-bare
+server_os=${SERVER_OS:-debian}
+client_os=${CLIENT_OS:-debian}
+debian_image=webguard-integration:debian12-bare
+# Arch Linux as published, with systemd but without Python and sudo
+# renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
+arch_image=archlinux:base-20261018.0.612668
 net=webguard-it
 server=it-server
 client=it-client
@@ -23,11 +29,11 @@ trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs 
 
 # Debian with systemd only, like a minimal server image: no Python and no
 # sudo, the playbook installs Python itself (built once, reused)
-if ! docker image inspect "$image" >/dev/null 2>&1; then
+if [[ "$server_os $client_os" == *debian* ]] && ! docker image inspect "$debian_image" >/dev/null 2>&1; then
   docker rm -f it-build >/dev/null 2>&1 || true
   docker run --name it-build debian:12 sh -c \
     'apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null && rm -rf /var/lib/apt/lists/*'
-  docker commit it-build "$image" >/dev/null
+  docker commit it-build "$debian_image" >/dev/null
   docker rm it-build >/dev/null
 fi
 
@@ -43,17 +49,40 @@ if [[ -n ${CI:-} ]]; then
     -e system_swap_file=/swap/swapfile -e system_swap_size=64M)
 fi
 
+image_for() {
+  case $1 in
+    debian) echo "$debian_image" ;;
+    arch) echo "$arch_image" ;;
+    *)
+      echo "unknown OS: $1 (debian or arch)" >&2
+      exit 2
+      ;;
+  esac
+}
+server_image=$(image_for "$server_os")
+client_image=$(image_for "$client_os")
+echo "== server: $server_os, client: $client_os"
+
 docker network create "$net" >/dev/null
 docker run -d --name "$server" --hostname "$server" --network "$net" --privileged \
-  --tmpfs /run --tmpfs /run/lock ${mounts[@]+"${mounts[@]}"} "$image" /lib/systemd/systemd >/dev/null
+  --tmpfs /run --tmpfs /run/lock ${mounts[@]+"${mounts[@]}"} "$server_image" /lib/systemd/systemd >/dev/null
 docker run -d --name "$client" --hostname "$client" --network "$net" --privileged \
-  --tmpfs /run --tmpfs /run/lock "$image" /lib/systemd/systemd >/dev/null
+  --tmpfs /run --tmpfs /run/lock "$client_image" /lib/systemd/systemd >/dev/null
 for host in "$server" "$client"; do
   for _ in $(seq 60); do
     state=$(docker exec "$host" systemctl is-system-running 2>/dev/null || true)
     [[ $state == running || $state == degraded ]] && break
     sleep 1
   done
+done
+
+# Test network only: Arch Linux resolves names with systemd-resolved, which
+# does not know Docker's DNS for the container names (it-server)
+for pair in "$server:$server_os" "$client:$client_os"; do
+  [[ ${pair#*:} == arch ]] || continue
+  docker exec "${pair%%:*}" sh -c 'mkdir -p /etc/systemd/resolved.conf.d &&
+    printf "[Resolve]\nDNS=127.0.0.11\nResolveUnicastSingleLabel=yes\n" >/etc/systemd/resolved.conf.d/docker.conf &&
+    systemctl restart systemd-resolved'
 done
 
 playbook() {
@@ -74,6 +103,10 @@ check() {
 echo "== first run"
 if ! playbook | tee "$logs/run1.log"; then
   echo "FAIL first run (ansible-playbook exit code ${PIPESTATUS[0]})"
+  for host in "$server" "$client"; do
+    echo "--- failed units on $host"
+    on "$host" 'for unit in $(systemctl list-units --failed --plain --no-legend | cut -d" " -f1); do journalctl -u "$unit" --no-pager -n 20; done' || true
+  done
   exit 1
 fi
 

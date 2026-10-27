@@ -84,8 +84,12 @@
 
 # --- Automatic security updates ---
 
+# Debian and Ubuntu only: Arch Linux has no separate security updates, it is
+# upgraded as a whole by the playbook run
 - name: Configure unattended-upgrades
-  when: system_unattended_upgrades | bool
+  when:
+    - system_unattended_upgrades | bool
+    - ansible_facts['os_family'] == "Debian"
   block:
     - name: Install unattended-upgrades
       ansible.builtin.apt:

@@ -1,0 +1,8 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/acquis-sshd-journal.yaml.j2
+# Arch Linux has no /var/log/auth.log: read sshd from the journal
+source: journalctl
+journalctl_filter:
+  - "_SYSTEMD_UNIT=sshd.service"
+labels:
+  type: syslog
