@@ -9,7 +9,7 @@ Ansible playbook that publishes services from a home network through a small VPS
 - **CrowdSec** (optional, on by default) blocks bad IPs and inspects requests (AppSec).
 - **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates and blocklist import are opt-in.
 
-Supported: Debian (bullseye, bookworm) and Ubuntu (focal, jammy, noble) on x86_64, arm64 and armv6/armv7. The playbook stops on other OS families. Arch Linux support may follow later.
+Supported: Debian (bullseye, bookworm) and Ubuntu (focal, jammy, noble) on x86_64, arm64 and armv6/armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
 
 Target server size: 2 vCPU, 2 GB RAM, about 10 GB disk. See [Resource footprint](#resource-footprint).
 
@@ -160,7 +160,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 | `enable_crowdsec_import` | `false`       | Hourly import of public blocklists into CrowdSec. Requires `enable_crowdsec`                      |
 | `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file, automatic security updates                |
 | `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip                   |
-| `enable_auto_reboot`     | `true`        | Reboot only if `/var/run/reboot-required` exists. `false` only reports a pending reboot           |
+| `enable_auto_reboot`     | `true`        | Reboot only if package upgrades require it. `false` only reports a pending reboot                 |
 
 Without `group_vars/all.yml` these defaults apply. Flags can also be set per tuple in `group_vars/tunnel_<name>.yml` or per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
 
@@ -214,25 +214,37 @@ Configurations from older versions keep working: `rathole_server_config` / `rath
 
 ### Small host tuning (`system` role)
 
-| Variable                        | Default     | Effect                                                                                                 |
-| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
-| `system_journald_max_use`       | `200M`      | Cap for persistent journal logs                                                                        |
-| `system_swap_enabled`           | `false`     | Create and enable a swap file                                                                          |
-| `system_swap_file`              | `/swapfile` | Swap file path                                                                                         |
-| `system_swap_size`              | `1G`        | Swap size (not resized once created)                                                                   |
-| `system_swappiness`             | `10`        | `vm.swappiness`, set only when swap is enabled                                                         |
-| `system_unattended_upgrades`    | `true`      | Install security updates daily with `unattended-upgrades`; `false` leaves the host's setting untouched |
-| `system_unattended_reboot`      | `false`     | Reboot automatically when such an update requires it                                                   |
-| `system_unattended_reboot_time` | `04:00`     | Time of that reboot                                                                                    |
+| Variable                        | Default     | Effect                                                                                                                |
+| ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `system_journald_max_use`       | `200M`      | Cap for persistent journal logs                                                                                       |
+| `system_swap_enabled`           | `false`     | Create and enable a swap file                                                                                         |
+| `system_swap_file`              | `/swapfile` | Swap file path                                                                                                        |
+| `system_swap_size`              | `1G`        | Swap size (not resized once created)                                                                                  |
+| `system_swappiness`             | `10`        | `vm.swappiness`, set only when swap is enabled                                                                        |
+| `system_unattended_upgrades`    | `true`      | Debian/Ubuntu: install security updates daily with `unattended-upgrades`; `false` leaves the host's setting untouched |
+| `system_unattended_reboot`      | `false`     | Reboot automatically when such an update requires it                                                                  |
+| `system_unattended_reboot_time` | `04:00`     | Time of that reboot                                                                                                   |
 
 The role runs before Caddy, so swap is available for the Caddy build.
 
+## Arch Linux
+
+Server and client can run Arch Linux (x86_64), mixed with Debian or Ubuntu. The configuration files are the same.
+
+- **Login**: as `root` with an SSH key works without `sudo`. A fresh install needs nothing else; Python is installed by the playbook.
+- **Packages** come from the official repositories, not from the AUR. CrowdSec and its firewall bouncer are not in the official repositories: they are installed from the vendors' release archives on GitHub, checked against the SHA256 that GitHub shows. Their versions are set in `roles/crowdsec/defaults/main.yml` (`crowdsec_version`, `crowdsec_firewall_bouncer_version`) and updated on the next run.
+- **Updates**: there are no automatic updates. Arch Linux has no separate security updates and an unattended full upgrade can need manual steps, so each playbook run upgrades the whole system (`pacman -Syu`). Run it regularly.
+- **Logs**: CrowdSec and the firewall bouncer log to the journal, which the `system` role limits in size.
+- Needs the `community.general` collection on the Ansible computer (part of the `ansible` package; with `ansible-core` only: `ansible-galaxy collection install community.general`).
+
+Moving the VPS to another system: install the new system, keep the inventory entry, run the playbook. The server creates new tunnel keys, tokens and the bouncer key and passes them to the client in the same run; Caddy requests new certificates. Only a CrowdSec Console enrollment has to be repeated.
+
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian-based OS, `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
-2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`.
+1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
+2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`; on Arch Linux `pacman -Syu`.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
-4. **Reboot** if `/var/run/reboot-required` exists and `enable_auto_reboot` is true.
+4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.
 
 Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./scripts/run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
 
@@ -269,7 +281,7 @@ Audit logs (relevant events only, no bodies) are written to `/var/log/caddy/cora
 
 ## CrowdSec
 
-With `enable_crowdsec: true` the server gets the CrowdSec engine, the iptables firewall bouncer, the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. The database is flushed (5000 alerts, 7 days) and the service is limited to 400 MB RAM.
+With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall bouncer (iptables; nftables on Arch Linux), the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. The database is flushed (5000 alerts, 7 days) and the service is limited to 400 MB RAM.
 
 Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (`login`, `sign-in`, `auth`, `token`); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
 
