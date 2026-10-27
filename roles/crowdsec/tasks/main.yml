@@ -11,38 +11,7 @@
     fail_msg: "Required CrowdSec variables (LAPI ip/port) are missing or empty."
   when: enable_crowdsec | default(true) | bool
 
-## Repository and Package Installation
-
-- name: Ensure curl is installed
-  ansible.builtin.apt:
-    name: curl
-    state: present
-
-- name: Check for the CrowdSec APT repository
-  ansible.builtin.stat:
-    path: /etc/apt/sources.list.d/crowdsec_crowdsec.list
-  register: crowdsec_apt_repo
-
-# Only on the first run: the script is downloaded, run and removed again
-- name: Add the CrowdSec APT repository
-  when: not crowdsec_apt_repo.stat.exists
-  block:
-    - name: Download CrowdSec APT install script
-      ansible.builtin.get_url:
-        url: https://install.crowdsec.net
-        dest: /tmp/install_crowdsec.sh
-        mode: "0755"
-
-    - name: Add CrowdSec APT repository via script
-      ansible.builtin.command: /bin/bash /tmp/install_crowdsec.sh
-      args:
-        creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
-
-  always:
-    - name: Remove the CrowdSec APT install script
-      ansible.builtin.file:
-        path: /tmp/install_crowdsec.sh
-        state: absent
+## Installation
 
 - name: Ensure CrowdSec data directory exists
   ansible.builtin.file:
@@ -52,13 +21,9 @@
     group: root
     mode: "0755"
 
-- name: Install CrowdSec agent and iptables bouncer
-  ansible.builtin.apt:
-    name:
-      - crowdsec
-      - crowdsec-firewall-bouncer-iptables
-    state: present
-  notify: Restart CrowdSec
+# Debian/Ubuntu: APT packages; Arch Linux: the vendors' release archives
+- name: Install CrowdSec
+  ansible.builtin.include_tasks: "install_{{ ansible_facts['os_family'] | lower }}.yml"
 
 ## Resource Limits (small hosts)
 

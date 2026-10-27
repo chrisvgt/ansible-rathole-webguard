@@ -1,0 +1,54 @@
+---
+# tests/test_crowdsec_arch_render.yml
+# On Arch Linux CrowdSec comes from the release archives, without the files of
+# the Debian package: logs go to the journal (no logrotate config), hub updates
+# need their own timer, and sshd logs are read from the journal (no auth.log).
+
+- name: Render CrowdSec files for Arch Linux
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Load CrowdSec role defaults
+      ansible.builtin.include_vars: ../roles/crowdsec/defaults/main.yml
+
+    - name: Check that CrowdSec logs to the journal on Arch Linux
+      ansible.builtin.assert:
+        that:
+          - "'log_media: stdout' in local_conf"
+          - "'max_items: 5000' in local_conf"
+      vars:
+        ansible_facts: { os_family: Archlinux }
+        local_conf: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/config.yaml.local.j2') }}"
+
+    - name: Check that Debian keeps the packaged log file
+      ansible.builtin.assert:
+        that: "'log_media' not in local_conf"
+      vars:
+        ansible_facts: { os_family: Debian }
+        local_conf: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/config.yaml.local.j2') }}"
+
+    - name: Check the hub update service
+      ansible.builtin.assert:
+        that:
+          - "'cscli --error hub update' in unit"
+          - "'cscli --error hub upgrade' in unit"
+          - "'systemctl reload crowdsec' in unit"
+      vars:
+        unit: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/crowdsec-hubupdate.service.j2') }}"
+
+    - name: Check the hub update timer
+      ansible.builtin.assert:
+        that:
+          - "'OnCalendar=daily' in timer"
+          - "'Persistent=true' in timer"
+      vars:
+        timer: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/crowdsec-hubupdate.timer.j2') }}"
+
+    - name: Check that sshd logs are read from the journal
+      ansible.builtin.assert:
+        that:
+          - "'source: journalctl' in acquis"
+          - "'_SYSTEMD_UNIT=sshd.service' in acquis"
+          - "'type: syslog' in acquis"
+      vars:
+        acquis: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/acquis-sshd-journal.yaml.j2') }}"
