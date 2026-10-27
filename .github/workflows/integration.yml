@@ -37,7 +37,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install Ansible
-        run: pip install ansible pyyaml
+        run: pip install -r tests/requirements.txt
 
       # The firewall tests run nftables with conntrack in containers, which
       # cannot load kernel modules themselves
