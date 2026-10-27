@@ -51,6 +51,12 @@ jobs:
           sudo apt-get install -y nftables
           sudo modprobe -a nf_tables nft_ct
 
+      # The other tests do not depend on the system of the hosts; here for
+      # the task coverage of the modes the full run does not use
+      - name: Tests
+        if: matrix.server == 'debian13' && matrix.client == 'debian13'
+        run: ./tests/run.sh
+
       - name: Full run against a server and a client
         env:
           SERVER_OS: ${{ matrix.server }}
