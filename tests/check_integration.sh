@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Full run of site.yml against a server and a client container (Debian 12 or
-# Arch Linux with systemd, own network), then checks from the outside: site through the tunnel,
-# CrowdSec bouncer, firewall, Caddy sandbox. A second run must change nothing,
-# a check-mode run must pass, and turning the firewall off must remove it.
+# Full run of site.yml against a server and a client container (Debian 12,
+# Debian 13 or Arch Linux with systemd, own network), then checks from the
+# outside: site through the tunnel, CrowdSec bouncer, firewall, Caddy sandbox.
+# A second run must change nothing, a check-mode run must pass, and turning the
+# firewall off must remove it.
 # The playbook runs like on real hosts: through scripts/run-playbook.sh, over
 # SSH with host key checking, as a user with sudo on Debian and as root on Arch
 # Linux.
-# SERVER_OS and CLIENT_OS choose the system of each host: debian (default) or arch.
+# SERVER_OS and CLIENT_OS choose the system of each host: debian13 (default),
+# debian12 or arch.
 # Needs Docker with --privileged, network access and ssh.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-server_os=${SERVER_OS:-debian}
-client_os=${CLIENT_OS:-debian}
-debian_image=webguard-integration:debian12-ssh
+server_os=${SERVER_OS:-debian13}
+client_os=${CLIENT_OS:-debian13}
 # Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
 arch_image=archlinux:base-20261018.0.612668
@@ -31,15 +32,19 @@ logs=$(mktemp -d)
 trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs to root
 
 # Debian like a minimal server image: systemd, sshd and sudo, but no Python,
-# the playbook installs it itself (built once, reused)
-if [[ "$server_os $client_os" == *debian* ]] && ! docker image inspect "$debian_image" >/dev/null 2>&1; then
-  docker rm -f it-build >/dev/null 2>&1 || true
-  docker run --name it-build debian:12 sh -c 'apt-get update -qq &&
-    apt-get install -y -qq --no-install-recommends systemd systemd-sysv openssh-server sudo >/dev/null &&
-    rm -rf /var/lib/apt/lists/*'
-  docker commit it-build "$debian_image" >/dev/null
-  docker rm it-build >/dev/null
-fi
+# the playbook installs it itself (built once per release, reused)
+debian_image() { # release
+  local image=webguard-integration:debian$1-ssh
+  if ! docker image inspect "$image" >/dev/null 2>&1; then
+    docker rm -f it-build >/dev/null 2>&1 || true
+    docker run --name it-build "debian:$1" sh -c 'apt-get update -qq &&
+      apt-get install -y -qq --no-install-recommends systemd systemd-sysv openssh-server sudo >/dev/null &&
+      rm -rf /var/lib/apt/lists/*' >&2 || return
+    docker commit it-build "$image" >/dev/null || return
+    docker rm it-build >/dev/null
+  fi
+  echo "$image"
+}
 
 # Swap needs a real filesystem (not overlayfs) and changes the host kernel, so
 # it is only tested in CI, where the host is a throwaway VM
@@ -55,10 +60,10 @@ fi
 
 image_for() {
   case $1 in
-    debian) echo "$debian_image" ;;
+    debian12 | debian13) debian_image "${1#debian}" ;;
     arch) echo "$arch_image" ;;
     *)
-      echo "unknown OS: $1 (debian or arch)" >&2
+      echo "unknown OS: $1 (debian12, debian13 or arch)" >&2
       exit 2
       ;;
   esac
