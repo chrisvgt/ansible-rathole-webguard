@@ -223,7 +223,7 @@ version=$(default_of go_lang go_lang_version)
 check "Go $version" "has_version $server '/usr/local/go/bin/go version' $version"
 version=$(default_of xcaddy xcaddy_version)
 check "xcaddy $version" "has_version $server '/usr/local/bin/xcaddy --version' $version"
-check "no download leftovers" "on $server '! ls -d /tmp/xcaddy* /tmp/go*.tar.gz /var/tmp/ansible.* 2>/dev/null | grep -q .'"
+check "no download leftovers" "on $server '! ls -d /tmp/go*.tar.gz /tmp/xcaddy_temp.tar.gz /var/tmp/ansible.* 2>/dev/null | grep -q .'"
 check "Go is not set up for every login shell" "on $server '! test -e /etc/profile.d/go_env.sh'"
 crowdsec_versions() { # label, CrowdSec version, firewall bouncer version
   check "CrowdSec $2$1" "has_version $server 'crowdsec -version' $2"
