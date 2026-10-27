@@ -28,6 +28,13 @@ crowdsec_login_bf_capacity: 5 # Failed logins tolerated before a ban
 crowdsec_login_bf_leakspeed: "1m" # One failed login is forgotten per interval
 crowdsec_login_bf_file: /etc/crowdsec/scenarios/local-login-bf.yaml
 
+# Hub collections: Caddy logs (incl. failed logins) and the AppSec rules
+crowdsec_collections:
+  - crowdsecurity/caddy
+  - crowdsecurity/appsec-virtual-patching
+  - crowdsecurity/appsec-generic-rules
+  - crowdsecurity/http-cve
+
 # Hub whitelists for common self-hosted apps. Each only skips known harmless
 # requests of its app (missing thumbnails, WebDAV sync, ...), so they are safe
 # to install even if the app is not used. Only official crowdsecurity items
