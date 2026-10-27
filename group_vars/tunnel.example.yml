@@ -29,7 +29,7 @@ tunnel_id: home
 #             without a domain that must be reachable directly (VPN, games).
 # domain:     one domain or a list. Without a domain the service is tunnel-only (no Caddy site).
 # type:       tcp (default) or udp; token, nodelay, retry_interval are optional Rathole settings.
-# All other keys are Caddy site options, see "Per-site options" in the README:
+# All other keys are Caddy site options, see "Services" in the README:
 #   coraza_mode: off | minimal | recommended | moderate | strict
 #   stream: true, disable_appsec: true, cache_paths: "...", rate_limit_events: 500, ...
 #   log_file, log_roll_size, ... only apply with enable_wildcard: false

@@ -3,17 +3,17 @@
 
 # --- System maintenance (defaults shown, uncomment to change) ---
 # apt_upgrade_mode: "safe" # apt upgrade on every run: safe | full | dist | yes | no (no = skip)
-# enable_auto_reboot: true # Reboot only if /var/run/reboot-required exists; false = only report it
+# enable_auto_reboot: true # Reboot when package upgrades need it (new kernel); false = only report it
 # enable_system_tuning: true # system role: journald size limit, optional swap file, security updates
 
 # Global toggle for ratelimit
 enable_rate_limit: true
 
 # Global toggle for Cloudflare DNS challenges
-enable_cloudflare: false # Set to 'false' to disable Cloudflare DNS and its Caddy plugin
+enable_cloudflare: false # 'true' uses Cloudflare DNS for certificates and builds its Caddy plugin
 
 # Global toggle for Wildcard support, requires Cloudflare
-# true: Caddy serves wildcard_sites, false: Caddy serves caddy_sites
+# true: one wildcard certificate per base domain, false: one per domain
 enable_wildcard: false
 
 # Global toggle for CrowdSec integration
