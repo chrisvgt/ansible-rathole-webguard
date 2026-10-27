@@ -76,6 +76,15 @@ for host in "$server" "$client"; do
   done
 done
 
+# Test network only: Arch Linux resolves names with systemd-resolved, which
+# does not know Docker's DNS for the container names (it-server)
+for pair in "$server:$server_os" "$client:$client_os"; do
+  [[ ${pair#*:} == arch ]] || continue
+  docker exec "${pair%%:*}" sh -c 'mkdir -p /etc/systemd/resolved.conf.d &&
+    printf "[Resolve]\nDNS=127.0.0.11\nResolveUnicastSingleLabel=yes\n" >/etc/systemd/resolved.conf.d/docker.conf &&
+    systemctl restart systemd-resolved'
+done
+
 playbook() {
   ANSIBLE_ROLES_PATH="$PWD/roles" ANSIBLE_FORCE_COLOR=0 \
     ansible-playbook -i tests/integration/hosts.ini site.yml ${extra[@]+"${extra[@]}"} "$@"
