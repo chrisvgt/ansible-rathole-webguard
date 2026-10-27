@@ -261,17 +261,9 @@ if playbook --check --diff >"$logs/check.log" 2>&1; then echo "ok   --check --di
   fail=1
 fi
 
-echo "== new Caddy bouncer key"
-new_key=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)
-playbook -e "crowdsec_api_key=$new_key" --tags caddy,crowdsec >"$logs/key.log" 2>&1 || {
-  tail -30 "$logs/key.log"
-  fail=1
-}
-check "Caddy uses the new key" "on $server 'grep -q \"api_key $new_key\" /etc/caddy/Caddyfile'"
-check "the Local API accepts the new key" "on $server \"curl -s -o /dev/null -w '%{http_code}' -I -H 'X-Api-Key: $new_key' http://127.0.0.1:8080/v1/decisions\" | grep -q 200"
-check "the site answers with the new key" "https | grep -q 'hello from the client'"
-
-# Versions before the role defaults; also available on the APT repository
+# Versions before the role defaults; also available on the APT repository.
+# Before the key change: that key is only passed with -e, these runs use the
+# stored one.
 echo "== CrowdSec version change"
 playbook -e crowdsec_version=1.8.0 -e crowdsec_firewall_bouncer_version=0.0.34 --tags crowdsec >"$logs/older.log" 2>&1 || {
   tail -30 "$logs/older.log"
@@ -285,6 +277,16 @@ playbook --tags crowdsec >"$logs/newer.log" 2>&1 || {
 crowdsec_versions " after the update" "$(default_of crowdsec crowdsec_version)" "$(default_of crowdsec crowdsec_firewall_bouncer_version)"
 check "CrowdSec runs after the update" "on $server 'systemctl is-active crowdsec crowdsec-firewall-bouncer'"
 check "the site answers after the update" "https | grep -q 'hello from the client'"
+
+echo "== new Caddy bouncer key"
+new_key=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)
+playbook -e "crowdsec_api_key=$new_key" --tags caddy,crowdsec >"$logs/key.log" 2>&1 || {
+  tail -30 "$logs/key.log"
+  fail=1
+}
+check "Caddy uses the new key" "on $server 'grep -q \"api_key $new_key\" /etc/caddy/Caddyfile'"
+check "the Local API accepts the new key" "on $server \"curl -s -o /dev/null -w '%{http_code}' -I -H 'X-Api-Key: $new_key' http://127.0.0.1:8080/v1/decisions\" | grep -q 200"
+check "the site answers with the new key" "https | grep -q 'hello from the client'"
 
 echo "== firewall off"
 playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
