@@ -291,9 +291,6 @@ handle @{{ ws }} {
     {% endif %}
     reverse_proxy localhost:{{ port }} {
         header_up X-Request-ID {http.request.id}
-        header_up X-Forwarded-For {http.request.remote.host}
-        header_up X-Forwarded-Proto {http.request.scheme}
-        header_up X-Forwarded-Host {http.request.host}
         {% if site.stream | default(false) %}
         flush_interval -1
         {% endif %}
@@ -356,9 +353,6 @@ handle {
     {% endif %}
     reverse_proxy localhost:{{ port }} {
         header_up X-Request-ID {http.request.id}
-        header_up X-Forwarded-For {http.request.remote.host}
-        header_up X-Forwarded-Proto {http.request.scheme}
-        header_up X-Forwarded-Host {http.request.host}
         {% if site.stream | default(false) %}
         flush_interval -1
         {% endif %}
