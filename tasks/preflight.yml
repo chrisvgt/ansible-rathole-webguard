@@ -1,0 +1,58 @@
+---
+# tasks/preflight.yml
+# Checks of the configuration, before anything is changed. Imported by site.yml
+# and run by tests/examples.yml against the example files.
+
+- name: Validate rathole_role
+  ansible.builtin.assert:
+    that:
+      - rathole_role is defined
+      - rathole_role in ['server', 'client']
+    fail_msg: "rathole_role must be set to 'server' or 'client' for every host (in inventory.ini or host_vars)."
+    quiet: true
+
+- name: Validate that wildcard support has Cloudflare enabled
+  ansible.builtin.assert:
+    that: enable_cloudflare | default(false) | bool
+    fail_msg: "enable_wildcard requires enable_cloudflare: true (wildcard certificates use the Cloudflare DNS challenge)."
+    quiet: true
+  when:
+    - rathole_role == 'server'
+    - enable_wildcard | default(false) | bool
+
+- name: Validate Cloudflare API token
+  ansible.builtin.assert:
+    that:
+      - cloudflare_api_token is defined
+      - cloudflare_api_token | string | length > 0
+    fail_msg: "enable_cloudflare is true, but cloudflare_api_token is undefined or empty."
+    quiet: true
+  when:
+    - rathole_role == 'server'
+    - enable_cloudflare | default(false) | bool
+
+- name: Validate that the server has sites in traditional mode
+  ansible.builtin.assert:
+    that: >-
+      (caddy_sites | default([]) | length > 0)
+      or (tunnel_services | default([], true) | map(attribute='domain', default='') | select | list | length > 0)
+    fail_msg: "enable_wildcard is false, so caddy_sites or a tunnel_services entry with a domain is required."
+    quiet: true
+  when:
+    - rathole_role == 'server'
+    - not (enable_wildcard | bool)
+
+- name: Validate tunnel tuple settings before changing anything
+  ansible.builtin.import_role:
+    name: rathole
+    tasks_from: tunnel_validate
+  when: (tunnel_services | default(none)) is not none
+
+- name: Validate that CrowdSec import has CrowdSec enabled
+  ansible.builtin.assert:
+    that: enable_crowdsec | default(false) | bool
+    fail_msg: "enable_crowdsec_import requires enable_crowdsec: true."
+    quiet: true
+  when:
+    - rathole_role == 'server'
+    - enable_crowdsec_import | default(false) | bool

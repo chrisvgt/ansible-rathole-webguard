@@ -392,6 +392,7 @@ sudo journalctl -u crowdsec-blocklist-import.service
 │   └── tunnel.example.yml      # Copy to tunnel_<name>.yml: one tuple
 ├── host_vars/                  # Optional per-host overrides
 ├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
+├── tasks/preflight.yml         # Configuration checks, also run on the examples
 ├── tests/                      # Derivation tests (tests/run.sh)
 ├── roles/
 │   ├── system/                 # journald limit, optional swap, security updates
