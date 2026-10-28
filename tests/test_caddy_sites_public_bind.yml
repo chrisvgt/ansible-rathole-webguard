@@ -1,0 +1,27 @@
+---
+# tests/test_caddy_sites_public_bind.yml
+# A service with a domain and a public bind_addr is also reachable past Caddy:
+# the run goes on, with a warning
+
+- name: Warn about domains with a public bind_addr
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    tunnel_services:
+      - { name: web, domain: web.example.com, local_addr: "127.0.0.1:3000" }
+      - { name: local, domain: local.example.com, local_addr: "127.0.0.1:3001", bind_addr: "127.0.0.1:13001" }
+      - { name: public, domain: public.example.com, local_addr: "127.0.0.1:3002", bind_addr: "0.0.0.0:3002" }
+      - { name: vpn, local_addr: "127.0.0.1:51820", bind_addr: "0.0.0.0:51820", type: udp }
+  tasks:
+    - name: Load Caddy role constants
+      ansible.builtin.include_vars: ../roles/caddy/vars/main.yml
+
+    - name: Run site derivation
+      ansible.builtin.include_tasks: ../roles/caddy/tasks/sites.yml
+
+    - name: Check warned services
+      ansible.builtin.assert:
+        that:
+          - caddy_public_domain_services == ['public']
+          - caddy_effective_sites | map(attribute='name') | list == ['web', 'local', 'public']

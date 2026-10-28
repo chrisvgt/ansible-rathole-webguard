@@ -179,7 +179,7 @@ Each entry in `tunnel_services`:
 | `type`                               | no       | `tcp` (default) or `udp`                                                                             |
 | `token`, `nodelay`, `retry_interval` | no       | Rathole settings for this service                                                                    |
 
-Keep `bind_addr` on `127.0.0.1` for web services, so they are only reachable through Caddy. Use `0.0.0.0:<port>` only for tunnel-only services that must be reachable directly (VPN, game servers). The same port may be used once for `tcp` and once for `udp`. Ports the server needs itself are rejected: 80 and 443 (Caddy), the Rathole port, SSH and, with CrowdSec, 8080, 7422 and 6060. For an app on port 80 or 8080 at home, set a free port on the server, e.g. `bind_addr: 127.0.0.1:18080`.
+Keep `bind_addr` on `127.0.0.1` for web services, so they are only reachable through Caddy. Use `0.0.0.0:<port>` only for tunnel-only services that must be reachable directly (VPN, game servers): they need no `domain`, only a DNS record; the run warns about a service with both. The same port may be used once for `tcp` and once for `udp`. Ports the server needs itself are rejected: 80 and 443 (Caddy), the Rathole port, SSH and, with CrowdSec, 8080, 7422 and 6060. For an app on port 80 or 8080 at home, set a free port on the server, e.g. `bind_addr: 127.0.0.1:18080`.
 
 All other keys are Caddy site options:
 
