@@ -260,8 +260,10 @@ else
 fi
 
 echo "== check mode"
-# A new ntfy token changes its file, so --diff would show it
-if playbook --check --diff -e ntfy_auth_token=LEAKCHECK-NTFY >"$logs/check.log" 2>&1; then echo "ok   --check --diff passes"; else
+# A new ntfy token changes its file, so --diff would show it. From a file:
+# run-playbook.sh prints its command line.
+echo 'ntfy_auth_token: LEAKCHECK-NTFY' >"$logs/ntfy.yml"
+if playbook --check --diff -e "@$logs/ntfy.yml" >"$logs/check.log" 2>&1; then echo "ok   --check --diff passes"; else
   echo "FAIL --check --diff"
   grep -E '^(fatal|failed):' -A3 "$logs/check.log" | head -40
   fail=1
