@@ -136,8 +136,10 @@ playbook() {
 }
 
 fail=0
+# Without pipefail: grep -q stops reading at the first match, and the writer
+# then fails with SIGPIPE although the check passed
 check() {
-  if eval "$2" >/dev/null 2>&1; then echo "ok   $1"; else
+  if (set +o pipefail; eval "$2") >/dev/null 2>&1; then echo "ok   $1"; else
     echo "FAIL $1"
     fail=1
   fi
