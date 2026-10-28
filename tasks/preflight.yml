@@ -13,12 +13,12 @@
 
 - name: Validate that wildcard support has Cloudflare enabled
   ansible.builtin.assert:
-    that: enable_cloudflare | default(false) | bool
+    that: enable_cloudflare | bool
     fail_msg: "enable_wildcard requires enable_cloudflare: true (wildcard certificates use the Cloudflare DNS challenge)."
     quiet: true
   when:
     - rathole_role == 'server'
-    - enable_wildcard | default(false) | bool
+    - enable_wildcard | bool
 
 - name: Validate Cloudflare API token
   ansible.builtin.assert:
@@ -29,7 +29,7 @@
     quiet: true
   when:
     - rathole_role == 'server'
-    - enable_cloudflare | default(false) | bool
+    - enable_cloudflare | bool
 
 - name: Validate that the server has sites in traditional mode
   ansible.builtin.assert:
@@ -50,9 +50,9 @@
 
 - name: Validate that CrowdSec import has CrowdSec enabled
   ansible.builtin.assert:
-    that: enable_crowdsec | default(false) | bool
+    that: enable_crowdsec | bool
     fail_msg: "enable_crowdsec_import requires enable_crowdsec: true."
     quiet: true
   when:
     - rathole_role == 'server'
-    - enable_crowdsec_import | default(false) | bool
+    - enable_crowdsec_import | bool

@@ -46,8 +46,11 @@
         - { src: login-bf.yaml.j2, dest: "scenarios/{{ crowdsec_login_bf_file | basename }}" }
         - { src: session-whitelist.yaml.j2, dest: "parsers/s02-enrich/{{ crowdsec_session_whitelist_file | basename }}" }
 
-    - name: List the hub whitelists the role installs
+    - name: List the hub items the role installs
       ansible.builtin.copy:
-        content: "{{ crowdsec_hub_whitelists | join('\n') }}\n"
-        dest: "{{ out_dir }}/../hub_whitelists.txt"
+        content: "{{ item.names | join('\n') }}\n"
+        dest: "{{ out_dir }}/../{{ item.file }}"
         mode: "0644"
+      loop:
+        - { file: collections.txt, names: "{{ crowdsec_collections }}" }
+        - { file: hub_whitelists.txt, names: "{{ crowdsec_hub_whitelists }}" }
