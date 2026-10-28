@@ -23,6 +23,8 @@
           - "'policy drop;' in rules"
           - "'tcp dport { 22, 80, 443, 7000 } accept' in rules"
           - "'udp dport { 443 } accept' in rules"
+          # DHCPv6 replies do not match an outgoing connection
+          - "'ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept' in rules"
       vars:
         rules: "{{ lookup('file', rendered.dest) }}"
 
