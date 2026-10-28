@@ -161,6 +161,10 @@
   ansible.builtin.command: cscli hub update
   args:
     creates: /etc/crowdsec/hub/.index.json
+  register: crowdsec_hub_index
+  until: crowdsec_hub_index is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
 
 - name: Check installed CrowdSec collections (Arch Linux)
   ansible.builtin.command: cscli collections list -o raw
@@ -171,7 +175,11 @@
 # sshd and syslog scenarios, like the Debian package
 - name: Install the Linux collection
   ansible.builtin.command: cscli collections install crowdsecurity/linux
+  register: crowdsec_linux_collection
   changed_when: true
+  until: crowdsec_linux_collection is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
   notify: Restart CrowdSec
   when: "'crowdsecurity/linux' not in crowdsec_arch_collections.stdout"
 
