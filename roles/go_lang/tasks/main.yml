@@ -24,53 +24,46 @@
   changed_when: false
   check_mode: false # Read-only, safe to run in check mode
 
-- name: Set installed Go version fact
-  ansible.builtin.set_fact:
-    go_lang_installed_go_version: "{{ go_lang_version_check.stdout | regex_search('go[0-9.]+') | default('') }}"
-  when: go_lang_version_check.rc == 0
+# On disk, not in /tmp: Arch keeps /tmp in RAM, and the archive is large.
+# Removed again also when a step fails.
+- name: Install Go
+  when: ('go' ~ go_lang_version ~ ' ') not in go_lang_version_check.stdout | default('')
+  block:
+    - name: Create a temporary download directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        suffix: go
+      register: go_lang_tmp_dir
 
-- name: Check if Go tarball version matches installed version
-  ansible.builtin.set_fact:
-    go_lang_version_match: "{{ go_lang_installed_go_version | regex_replace('^go', '') == go_lang_version }}"
-  when: go_lang_installed_go_version is defined and go_lang_installed_go_version | length > 0
+    - name: Download the Go archive
+      ansible.builtin.get_url:
+        url: "{{ go_lang_download_url }}"
+        dest: "{{ go_lang_tmp_dir.path }}/{{ go_lang_archive_name }}"
+        checksum: "sha256:{{ go_lang_download_url }}.sha256"
+        mode: "0644"
 
-- name: Ensure Go tarball is downloaded if not installed or version mismatch
-  ansible.builtin.get_url:
-    url: "{{ go_lang_download_url }}"
-    dest: "/tmp/{{ go_lang_archive_name }}"
-    mode: "0644"
-  when: go_lang_version_check.rc != 0 or not go_lang_version_match | default(false)
+    - name: Remove the previous Go installation
+      ansible.builtin.file:
+        path: "{{ go_lang_install_path }}/go"
+        state: absent
 
-- name: Remove existing Go installation directory (if present)
+    - name: Unpack Go
+      ansible.builtin.unarchive:
+        src: "{{ go_lang_tmp_dir.path }}/{{ go_lang_archive_name }}"
+        dest: "{{ go_lang_install_path }}"
+        remote_src: true
+      when: not ansible_check_mode # Archive is only downloaded in a real run
+
+  always:
+    - name: Remove the temporary download directory
+      ansible.builtin.file:
+        path: "{{ go_lang_tmp_dir.path }}"
+        state: absent
+      when: go_lang_tmp_dir.path is defined
+
+# Earlier versions set up Go for every login shell; the Caddy build sets its own PATH
+- name: Remove the Go login profile
   ansible.builtin.file:
-    path: "{{ go_lang_install_path }}/go"
+    path: /etc/profile.d/go_env.sh
     state: absent
-  when: go_lang_version_check.rc != 0 or not go_lang_version_match | default(false)
-
-- name: Extract Go tarball to installation path
-  ansible.builtin.unarchive:
-    src: "/tmp/{{ go_lang_archive_name }}"
-    dest: "{{ go_lang_install_path }}"
-    remote_src: true
-    creates: "{{ go_lang_install_path }}/go/bin/go"
-    mode: "0755"
-  when:
-    - go_lang_version_check.rc != 0 or not go_lang_version_match | default(false)
-    - not ansible_check_mode # Tarball is only downloaded in a real run
-
-- name: Configure Go environment variables for all users
-  ansible.builtin.blockinfile:
-    path: "/etc/profile.d/go_env.sh"
-    create: true
-    mode: "0644"
-    block: |
-      export GOROOT={{ go_lang_install_path }}/go
-      export GOPATH=$HOME/go
-      export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
-    marker: "# {mark} ANSIBLE MANAGED BLOCK for Go environment variables"
-
-- name: Clean up temporary Go files
-  ansible.builtin.file:
-    path: "/tmp/{{ go_lang_archive_name }}"
-    state: absent
-  when: go_lang_archive_name is defined

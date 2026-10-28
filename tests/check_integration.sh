@@ -142,6 +142,9 @@ check() {
   fi
 }
 
+# Left behind by an interrupted earlier run: must not be installed
+on "$server" 'printf "#!/bin/sh\necho v0.0.1\n" >/tmp/xcaddy && chmod +x /tmp/xcaddy'
+
 echo "== first run"
 if ! playbook | tee "$logs/run1.log"; then
   echo "FAIL first run (ansible-playbook exit code ${PIPESTATUS[0]})"
@@ -223,6 +226,8 @@ version=$(default_of go_lang go_lang_version)
 check "Go $version" "has_version $server '/usr/local/go/bin/go version' $version"
 version=$(default_of xcaddy xcaddy_version)
 check "xcaddy $version" "has_version $server '/usr/local/bin/xcaddy --version' $version"
+check "no download leftovers" "on $server '! ls -d /tmp/go*.tar.gz /tmp/xcaddy_temp.tar.gz /var/tmp/ansible.* 2>/dev/null | grep -q .'"
+check "Go is not set up for every login shell" "on $server '! test -e /etc/profile.d/go_env.sh'"
 crowdsec_versions() { # label, CrowdSec version, firewall bouncer version
   check "CrowdSec $2$1" "has_version $server 'crowdsec -version' $2"
   check "CrowdSec firewall bouncer $3$1" "has_version $server 'crowdsec-firewall-bouncer -V' $3"
