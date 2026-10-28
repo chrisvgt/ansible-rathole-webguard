@@ -1,8 +1,10 @@
 name: Integration
 
 "on":
+  # Changes reach develop through pull requests, which already ran this, and
+  # the release pull request runs it again; a push run there would repeat it
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main, develop]
   # Weekly: new Arch Linux packages and upstream releases between changes
