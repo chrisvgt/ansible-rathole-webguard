@@ -20,6 +20,17 @@
     fail_msg: "Every service in tunnel_services needs a unique name and a local_addr."
     quiet: true
 
+# Without bind_addr a service listens on loopback, on the port of its local_addr
+- name: Determine the bind address of each service
+  ansible.builtin.set_fact:
+    rathole_tunnel_binds: >-
+      {%- set ns = namespace(out={}) -%}
+      {%- for s in tunnel_services -%}
+        {%- set ns.out = ns.out | combine({s.name: s.bind_addr
+                                            | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', '')))}) -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
 - name: Ensure both Noise keys are set or none
   ansible.builtin.assert:
     that: (rathole_noise_private_key is defined) == (rathole_noise_public_key is defined)
@@ -61,7 +72,7 @@
       {%- set any_addr = ['0.0.0.0', '::', '[::]'] -%}
       {%- set ns = namespace(seen=[], out=[]) -%}
       {%- for s in tunnel_services -%}
-        {%- set bind = s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', ''))) -%}
+        {%- set bind = rathole_tunnel_binds[s.name] -%}
         {%- set b = {'name': s.name, 'host': bind | regex_replace(':[^:]*$', ''),
                      'port': bind | regex_replace('^.*:', ''), 'type': s.type | default('tcp')} -%}
         {%- for o in ns.seen if o.port == b.port and o.type == b.type
@@ -90,7 +101,7 @@
            {'port': '80', 'type': 'tcp', 'by': 'Caddy'},
            {'port': '443', 'type': 'tcp', 'by': 'Caddy'},
            {'port': '443', 'type': 'udp', 'by': 'Caddy'},
-           {'port': (rathole_listen_addr | default('0.0.0.0:' ~ rathole_port)) | string | regex_replace('^.*:', ''),
+           {'port': rathole_listen_addr | regex_replace('^.*:', ''),
             'type': 'tcp', 'by': 'Rathole'},
            {'port': rathole_tunnel_server_vars.ansible_port | default(22) | string, 'type': 'tcp', 'by': 'SSH'},
          ]
@@ -102,8 +113,7 @@
     rathole_tunnel_reserved_conflicts: >-
       {%- set ns = namespace(out=[]) -%}
       {%- for s in tunnel_services -%}
-        {%- set bind = s.bind_addr | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', ''))) -%}
-        {%- set port = bind | regex_replace('^.*:', '') -%}
+        {%- set port = rathole_tunnel_binds[s.name] | regex_replace('^.*:', '') -%}
         {%- for r in rathole_tunnel_reserved if r.port == port and r.type == (s.type | default('tcp')) -%}
           {%- set ns.out = ns.out + [s.name ~ ' (' ~ port ~ '/' ~ r.type ~ ', ' ~ r.by ~ ')'] -%}
         {%- endfor -%}

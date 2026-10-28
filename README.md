@@ -9,7 +9,7 @@ Ansible playbook that publishes services from a home network through a small VPS
 - **CrowdSec** (optional, on by default) blocks bad IPs and inspects requests (AppSec).
 - **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates and blocklist import are opt-in.
 
-Supported: Debian (bullseye, bookworm, trixie) and Ubuntu (focal, jammy, noble) on x86_64, arm64 and armv6/armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
+Supported: Debian 12 and 13 and Ubuntu 22.04 and 24.04 LTS on x86_64, arm64 and armv6/armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
 
 Target server size: 2 vCPU, 2 GB RAM, about 10 GB disk. See [Resource footprint](#resource-footprint).
 
@@ -179,7 +179,7 @@ Each entry in `tunnel_services`:
 | `type`                               | no       | `tcp` (default) or `udp`                                                                             |
 | `token`, `nodelay`, `retry_interval` | no       | Rathole settings for this service                                                                    |
 
-Keep `bind_addr` on `127.0.0.1` for web services, so they are only reachable through Caddy. Use `0.0.0.0:<port>` only for tunnel-only services that must be reachable directly (VPN, game servers). The same port may be used once for `tcp` and once for `udp`. Ports the server needs itself are rejected: 80 and 443 (Caddy), the Rathole port, SSH and, with CrowdSec, 8080, 7422 and 6060. For an app on port 80 or 8080 at home, set a free port on the server, e.g. `bind_addr: 127.0.0.1:18080`.
+Keep `bind_addr` on `127.0.0.1` for web services, so they are only reachable through Caddy. Use `0.0.0.0:<port>` only for tunnel-only services that must be reachable directly (VPN, game servers): they need no `domain`, only a DNS record; the run warns about a service with both. The same port may be used once for `tcp` and once for `udp`. Ports the server needs itself are rejected: 80 and 443 (Caddy), the Rathole port, SSH and, with CrowdSec, 8080, 7422 and 6060. For an app on port 80 or 8080 at home, set a free port on the server, e.g. `bind_addr: 127.0.0.1:18080`.
 
 All other keys are Caddy site options:
 
@@ -303,7 +303,7 @@ With `enable_firewall: true` the server drops all incoming connections except:
 
 Use it if the provider firewall is not used or not trusted. The home server (client) is not touched. The rules live in their own nftables table (`inet webguard`, file `/etc/nftables.d/webguard.nft`), loaded at boot by `webguard-firewall.service`, so the CrowdSec bouncer keeps working. When the rules change, or are no longer loaded, a timer removes them again after `firewall_rollback_seconds` (120) unless Ansible can open a new SSH connection, and they are then not loaded at boot either, so a mistake does not lock you out.
 
-To remove the firewall, set `enable_firewall: false` and run the playbook: it deletes the table, the boot unit and the rules file. The ICMP rule uses protocol numbers, so minimal images without `netbase` (`/etc/protocols`) work too. On container VPS (LXC, OpenVZ) without their own kernel, nftables may not be available; the rules are checked with `nft -c` before anything is loaded.
+To remove the firewall, set `enable_firewall: false` and run the playbook: it deletes the table, the boot unit and the rules file. ICMP, ICMPv6 and DHCPv6 replies are always allowed, so the VPS keeps its IPv6 address. The ICMP rule uses protocol numbers, so minimal images without `netbase` (`/etc/protocols`) work too. On container VPS (LXC, OpenVZ) without their own kernel, nftables may not be available; the rules are checked with `nft -c` before anything is loaded.
 
 ## Rathole
 

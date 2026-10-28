@@ -1,22 +1,12 @@
 ---
 # roles/caddy/tasks/main.yml
 
-# Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is needed
-- name: Install Caddy build dependencies
-  ansible.builtin.apt:
-    name:
-      - git
-      - curl
-      - logrotate
+# Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is
+# needed; git and curl come with the common utilities of site.yml
+- name: Install logrotate
+  ansible.builtin.package:
+    name: logrotate
     state: present
-    update_cache: true
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Install Caddy build dependencies (Arch Linux)
-  community.general.pacman:
-    name: [git, curl, logrotate]
-    state: present
-  when: ansible_facts['os_family'] == "Archlinux"
 
 # Debian starts logrotate from its package; Arch Linux ships the timer disabled
 - name: Enable daily log rotation (Arch Linux)
@@ -99,7 +89,7 @@
     caddy_plugins_effective: >-
       {{ caddy_plugins
          + (enable_cloudflare | default(false) | bool | ternary(['github.com/caddy-dns/cloudflare'], []))
-         + (enable_crowdsec | default(false) | bool | ternary([
+         + (enable_crowdsec | default(true) | bool | ternary([
               'github.com/hslatman/caddy-crowdsec-bouncer/http',
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
@@ -173,7 +163,6 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: "0644"
-  when: caddy_plugins_hash is defined
 
 - name: Create Caddy environment file (secrets)
   ansible.builtin.template:
@@ -217,7 +206,7 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     recurse: true
-  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir | default(caddy_log_dir)] | unique }}"
+  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir] | unique }}"
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
@@ -228,15 +217,12 @@
     mode: "0644"
   notify: Restart Caddy
 
-- name: Reload Systemd daemon to pick up new unit file
-  ansible.builtin.systemd:
-    daemon_reload: true
-
 - name: Enable and start Caddy service
   ansible.builtin.systemd:
     name: caddy
     enabled: true
     state: started
+    daemon_reload: true
 
 # Earlier versions of this role built in /root and never cleaned the build cache
 - name: Remove Go caches left behind by previous Caddy builds

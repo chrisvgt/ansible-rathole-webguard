@@ -20,6 +20,18 @@
         {%- endfor -%}
       {%- endfor -%}
       {{ ns.out }}
+    caddy_public_domain_services: >-
+      {{ tunnel_services | selectattr('domain', 'defined') | selectattr('domain')
+         | selectattr('bind_addr', 'defined') | rejectattr('bind_addr', 'match', '(127\.|localhost:|\[::1\]:)')
+         | map(attribute='name') | list }}
+
+- name: Warn about domains with a public bind_addr
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: reachable past Caddy (no TLS, WAF or CrowdSec) through a public bind_addr:
+      {{ caddy_public_domain_services | join(', ') }}. Keep bind_addr on 127.0.0.1 for services with a
+      domain; a VPN or game server needs no domain, only a DNS record.
+  when: caddy_public_domain_services | length > 0
 
 - name: Use traditional site blocks
   ansible.builtin.set_fact:

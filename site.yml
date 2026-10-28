@@ -24,6 +24,8 @@
       ansible.builtin.raw: |
         command -v python3 >/dev/null 2>&1 && exit 0
         if command -v apt-get >/dev/null 2>&1; then
+          # No prompts (e.g. tzdata on Ubuntu): raw runs with a terminal and would wait
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq && apt-get install -y -qq python3 >/dev/null || exit 1
         elif command -v pacman >/dev/null 2>&1; then
           # Keyring first, then a full upgrade: Arch does not support partial upgrades
@@ -82,16 +84,6 @@
         autoremove: true
       when: ansible_facts['os_family'] == "Debian"
 
-    - name: Install common system utilities (Debian-based systems)
-      ansible.builtin.apt:
-        name:
-          - curl # For downloading files
-          - unzip # For extracting archives
-          - git # For version control and cloning repositories
-        state: present
-      when: ansible_facts['os_family'] == "Debian"
-      tags: [base]
-
     # Arch Linux is upgraded as a whole, only here: there is no update timer
     - name: Upgrade the system (Arch Linux)
       community.general.pacman:
@@ -114,7 +106,7 @@
       register: arch_reboot
       when:
         - ansible_facts['os_family'] == "Archlinux"
-        - enable_auto_reboot | default(true) | bool
+        - enable_auto_reboot | bool
         - reboot_required | bool
 
     - name: Read the running kernel after the reboot (Arch Linux)
@@ -122,11 +114,13 @@
         filter: [ansible_kernel]
       when: arch_reboot.rebooted | default(false)
 
-    - name: Install common system utilities (Arch Linux)
-      community.general.pacman:
-        name: [curl, unzip, git]
+    - name: Install common system utilities
+      ansible.builtin.package:
+        name:
+          - curl # For downloading files
+          - unzip # For extracting archives
+          - git # For version control and cloning repositories
         state: present
-      when: ansible_facts['os_family'] == "Archlinux"
       tags: [base]
 
     - name: Ensure /usr/local/bin exists
@@ -141,7 +135,7 @@
     # Runs first so swap is available before the memory-hungry Caddy build.
     # Set 'enable_system_tuning: false' to skip it (default: true).
     - role: system
-      when: enable_system_tuning | default(true) | bool
+      when: enable_system_tuning | bool
       tags: system
 
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
@@ -192,7 +186,7 @@
         post_reboot_delay: 10
         connect_timeout: 300
       when:
-        - enable_auto_reboot | default(true) | bool # Set to 'false' to only report pending reboots
+        - enable_auto_reboot | bool # Set to 'false' to only report pending reboots
         - reboot_required | bool
       tags: [reboot]
 
@@ -200,7 +194,7 @@
       ansible.builtin.debug:
         msg: "A reboot is required after package upgrades but enable_auto_reboot is false."
       when:
-        - not (enable_auto_reboot | default(true) | bool)
+        - not (enable_auto_reboot | bool)
         - reboot_required | bool
       tags: [reboot]
 

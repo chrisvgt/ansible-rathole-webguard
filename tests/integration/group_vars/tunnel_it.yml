@@ -10,6 +10,9 @@ tunnel_services:
     type: udp
     local_addr: 127.0.0.1:51820
     bind_addr: 0.0.0.0:51820
+  # No app behind them: only validated by Caddy, with the larger Coraza rule sets
+  - { name: moderate, domain: moderate.test, local_addr: "127.0.0.1:8081", coraza_mode: moderate }
+  - { name: strict, domain: strict.test, local_addr: "127.0.0.1:8082", coraza_mode: strict }
 
 duration_expr: true
 

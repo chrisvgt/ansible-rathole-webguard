@@ -83,6 +83,8 @@
     that:
       - brace_depth == [0, 0]
       - caddyfile | regex_findall('`') | length is even
+      # A backtick inside the directives would end them early
+      - caddyfile | regex_findall('directives `[^`]*`') | reject('search', '\n\s*`$') | list == []
       - caddyfile_outside_directives is not search('[{](?:[{]|[%]|[#])')
       - order_targets_unknown == []
       - site_blocks | sort == expected_blocks | sort

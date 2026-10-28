@@ -11,8 +11,6 @@ image=crowdsecurity/crowdsec:v1.8.1
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 ansible-playbook -i localhost, tests/crowdsec_render.yml -e "out_dir=$work/etc" >/dev/null
-# Same collections as the role installs
-sed -n 's/^ *ansible.builtin.command: cscli collections install \([^ ]*\)$/\1/p' roles/crowdsec/tasks/main.yml >"$work/collections.txt"
 cp tests/crowdsec_container.sh "$work/"
 chmod -R a+rX "$work"
 

@@ -28,6 +28,8 @@ jobs:
           - { server: arch, client: arch }
           - { server: arch, client: debian13 }
           - { server: debian13, client: arch }
+          - { server: ubuntu2404, client: ubuntu2204 }
+          - { server: ubuntu2204, client: ubuntu2404 }
     env:
       TASK_COVERAGE_FILE: ${{ github.workspace }}/task-coverage.txt
       ANSIBLE_CALLBACK_PLUGINS: ${{ github.workspace }}/tests/callback_plugins

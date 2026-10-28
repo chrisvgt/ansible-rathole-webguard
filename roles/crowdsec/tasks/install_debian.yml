@@ -2,11 +2,6 @@
 # roles/crowdsec/tasks/install_debian.yml
 # Debian and Ubuntu: CrowdSec and the iptables bouncer from the CrowdSec APT repository
 
-- name: Ensure curl is installed
-  ansible.builtin.apt:
-    name: curl
-    state: present
-
 - name: Check for the CrowdSec APT repository
   ansible.builtin.stat:
     path: /etc/apt/sources.list.d/crowdsec_crowdsec.list

@@ -3,13 +3,6 @@
 
 # --- CrowdSec Blocklist Import Role: Installation and Configuration ---
 
-- name: Ensure CrowdSec is enabled (required by the blocklist import)
-  ansible.builtin.assert:
-    that:
-      - enable_crowdsec | default(true) | bool
-    fail_msg: "enable_crowdsec_import requires enable_crowdsec: true (the crowdsec role must be applied first)."
-    quiet: true
-
 # Restart CrowdSec now if the crowdsec role asked for it: a restart while the
 # import runs invalidates its login
 - name: Apply pending CrowdSec changes before the import
