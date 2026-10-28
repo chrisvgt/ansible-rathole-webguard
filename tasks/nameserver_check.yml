@@ -1,0 +1,21 @@
+---
+# tasks/nameserver_check.yml
+# Caddy and its Go build resolve names only through /etc/resolv.conf. Without a
+# nameserver line they ask localhost:53 and fail, although other programs work
+# through systemd-resolved.
+
+- name: Read the resolver configuration
+  ansible.builtin.slurp:
+    src: "{{ nameserver_check_file | default('/etc/resolv.conf') }}"
+  register: nameserver_check_resolv_conf
+  failed_when: false
+
+- name: Ensure the server has a nameserver for Caddy
+  ansible.builtin.assert:
+    that: (nameserver_check_resolv_conf.content | default('') | b64decode) is search('(?m)^\s*nameserver\s+\S')
+    fail_msg: >-
+      {{ nameserver_check_file | default('/etc/resolv.conf') }} lists no nameserver, so Caddy cannot
+      resolve names. With systemd-resolved, link it to /run/systemd/resolve/stub-resolv.conf and keep
+      other tools from overwriting it, e.g. add 'nohook resolv.conf' to /etc/dhcpcd.conf and restart
+      dhcpcd and systemd-resolved.
+    quiet: true
