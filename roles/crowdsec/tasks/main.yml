@@ -77,6 +77,9 @@
   register: crowdsec_cscli_hub_update_output
   changed_when: "'Nothing to do' not in crowdsec_cscli_hub_update_output.stdout"
   failed_when: crowdsec_cscli_hub_update_output.rc != 0
+  until: crowdsec_cscli_hub_update_output is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
 
 # Includes base-http-scenarios collection, caddy-logs parser
 - name: Check installed CrowdSec collections
@@ -89,7 +92,11 @@
 - name: Install CrowdSec collections
   ansible.builtin.command:
     argv: [cscli, collections, install, "{{ item }}"]
+  register: crowdsec_collection_install
   changed_when: true
+  until: crowdsec_collection_install is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
   notify: Restart CrowdSec
   loop: "{{ crowdsec_collections }}"
   when: item not in (crowdsec_cscli_collections_list.stdout | default(''))
@@ -264,7 +271,11 @@
 - name: Install hub parsers
   ansible.builtin.command:
     argv: [cscli, parsers, install, "{{ item }}"]
+  register: crowdsec_parser_install
   changed_when: true
+  until: crowdsec_parser_install is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
   notify: Restart CrowdSec
   loop: "{{ crowdsec_hub_whitelists + (['crowdsecurity/geoip-enrich'] if ntfy_enabled | default(false) | bool else []) }}"
   when: item not in (crowdsec_cscli_parsers_list.stdout | default(''))
