@@ -1,0 +1,21 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/config.yaml.local.j2
+# Merged over /etc/crowdsec/config.yaml
+
+db_config:
+  use_wal: {{ crowdsec_db_use_wal | bool | lower }}
+  flush:
+    max_items: {{ crowdsec_db_flush_max_items }}
+    max_age: {{ crowdsec_db_flush_max_age }}
+{% if ansible_facts['os_family'] | default('') == 'Archlinux' %}
+
+# Installed from the release archive, without the package's logrotate config:
+# log to the journal, which is size-limited
+common:
+  log_media: stdout
+
+# The archive's config runs notification plugins as nobody:nogroup; Arch Linux
+# has no nogroup group
+plugin_config:
+  group: nobody
+{% endif %}

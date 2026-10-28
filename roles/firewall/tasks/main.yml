@@ -1,0 +1,92 @@
+---
+# roles/firewall/tasks/main.yml
+# nftables input filter for the server. Uses its own table, so other rules
+# (e.g. the CrowdSec bouncer) are not touched.
+
+- name: Remove the firewall when it is turned off
+  ansible.builtin.include_tasks: disable.yml
+  when: not enable_firewall | default(false) | bool
+
+- name: Stop here when the firewall is turned off
+  ansible.builtin.meta: end_role
+  when: not enable_firewall | default(false) | bool
+
+- name: Ensure the Rathole server config is known
+  ansible.builtin.assert:
+    that: rathole_server_config is defined
+    fail_msg: "The firewall opens the ports from the Rathole server config; run it together with the rathole role."
+    quiet: true
+
+- name: Read the ports sshd listens on
+  ansible.builtin.command: sshd -T
+  register: firewall_sshd_config
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+# Without become: sudo drops SSH_CONNECTION. Its last field is the port this
+# run is connected on, however the inventory or ~/.ssh/config sets it.
+- name: Read the port of the current SSH connection
+  ansible.builtin.command: printenv SSH_CONNECTION
+  become: false
+  register: firewall_ssh_connection
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Determine ports to open
+  ansible.builtin.include_tasks: ports.yml
+
+- name: Install nftables
+  ansible.builtin.package:
+    name: nftables
+    state: present
+
+- name: Ensure nftables include directory exists
+  ansible.builtin.file:
+    path: "{{ firewall_rules_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write firewall rules
+  ansible.builtin.template:
+    src: webguard.nft.j2
+    dest: "{{ firewall_rules_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  register: firewall_rules
+
+- name: Install boot unit for the firewall rules
+  ansible.builtin.template:
+    src: webguard-firewall.service.j2
+    dest: /etc/systemd/system/webguard-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+
+# Only enabled: the rules are loaded below, with a rollback timer
+- name: Enable firewall rules at boot
+  ansible.builtin.systemd_service:
+    name: webguard-firewall
+    enabled: true
+    daemon_reload: true
+
+# Also when the rules are gone from the running system, e.g. after a rollback
+# or a flush of the whole ruleset
+- name: Check whether the firewall rules are loaded
+  ansible.builtin.command: nft list table inet webguard
+  register: firewall_loaded
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+# A timer removes the new rules again unless Ansible can reconnect over SSH
+- name: Apply firewall rules
+  ansible.builtin.include_tasks: apply.yml
+  when:
+    - firewall_rules is changed or firewall_loaded.rc != 0
+    - not ansible_check_mode

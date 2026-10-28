@@ -1,0 +1,46 @@
+---
+# roles/crowdsec/tasks/install_debian.yml
+# Debian and Ubuntu: CrowdSec and the iptables bouncer from the CrowdSec APT repository
+
+- name: Check for the CrowdSec APT repository
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+  register: crowdsec_apt_repo
+
+# Only on the first run: the script is downloaded, run and removed again
+- name: Add the CrowdSec APT repository
+  when: not crowdsec_apt_repo.stat.exists
+  block:
+    - name: Download CrowdSec APT install script
+      ansible.builtin.get_url:
+        url: https://install.crowdsec.net
+        dest: /tmp/install_crowdsec.sh
+        mode: "0755"
+
+    - name: Add CrowdSec APT repository via script
+      ansible.builtin.command: /bin/bash /tmp/install_crowdsec.sh
+      args:
+        creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+
+  always:
+    - name: Remove the CrowdSec APT install script
+      ansible.builtin.file:
+        path: /tmp/install_crowdsec.sh
+        state: absent
+
+- name: Keep CrowdSec at the versions of the playbook
+  ansible.builtin.template:
+    src: apt-preferences.j2
+    dest: /etc/apt/preferences.d/crowdsec
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install CrowdSec agent and iptables bouncer
+  ansible.builtin.apt:
+    name:
+      - "crowdsec={{ crowdsec_version }}"
+      - "crowdsec-firewall-bouncer-iptables={{ crowdsec_firewall_bouncer_version }}"
+    state: present
+    allow_downgrade: true # The versions of the playbook win
+  notify: Restart CrowdSec

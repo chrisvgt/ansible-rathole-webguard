@@ -1,0 +1,19 @@
+---
+# tests/leak_check.yml
+# Run by tests/run.sh with -v: secret values must not appear in the output
+
+- name: Derive config with secrets
+  hosts: tunnel_test
+  gather_facts: false
+  vars:
+    tunnel_services:
+      - { name: web, local_addr: "127.0.0.1:80", token: LEAKCHECK-SERVICE-TOKEN }
+    rathole_noise_private_key: LEAKCHECK-PRIVATE
+    rathole_noise_public_key: LEAKCHECK-PUBLIC
+    rathole_default_token: LEAKCHECK-DEFAULT
+  tasks:
+    - name: Run tunnel derivation and secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: "{{ item }}"
+      loop: [tunnel, secrets]

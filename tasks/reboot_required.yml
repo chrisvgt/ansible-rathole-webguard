@@ -1,0 +1,24 @@
+---
+# tasks/reboot_required.yml
+# Sets reboot_required after package upgrades. Debian and Ubuntu flag it with a
+# file; Arch Linux removes the modules of the running kernel when it upgrades
+# the kernel, so the running kernel's module directory is missing. Containers
+# run the host's kernel and never have its modules: no reboot there.
+
+- name: Check for the reboot flag
+  ansible.builtin.stat:
+    path: >-
+      {{ reboot_required_debian_file | default('/var/run/reboot-required')
+         if ansible_facts['os_family'] == 'Debian'
+         else reboot_required_modules_dir | default('/usr/lib/modules/' ~ ansible_facts['kernel']) }}
+  register: reboot_required_flag
+
+- name: Decide whether a reboot is required
+  ansible.builtin.set_fact:
+    reboot_required: >-
+      {{ reboot_required_flag.stat.exists
+         if ansible_facts['os_family'] == 'Debian'
+         else not reboot_required_flag.stat.exists
+              and not (ansible_facts['virtualization_role'] | default('') == 'guest'
+                       and ansible_facts['virtualization_type'] | default('')
+                           in ['lxc', 'openvz', 'docker', 'podman', 'container', 'systemd-nspawn']) }}

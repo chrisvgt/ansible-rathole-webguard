@@ -1,18 +1,19 @@
+---
 # roles/python/tasks/main.yml
 
 # --- Python Role: Python and pipx ---
+# pipx runs as root with its own PIPX_HOME (see crowdsec_import), so no user
+# PATH setup is needed; that also works without ansible_user in the inventory.
 
 - name: Install pipx via distribution package manager (preferred method)
   ansible.builtin.apt:
     name: pipx
     state: present
-  become: true
-  when: ansible_facts["os_family"] == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
-- name: Enable pipx for the default user (ensure PATH)
-  ansible.builtin.shell: pipx ensurepath
-  args:
-    executable: /bin/bash
-  become: true
-  become_user: "{{ ansible_user }}"
-  changed_when: false
+# python-pipx 1.18 needs filelock but does not depend on it
+- name: Install pipx (Arch Linux)
+  community.general.pacman:
+    name: [python-pipx, python-filelock]
+    state: present
+  when: ansible_facts['os_family'] == "Archlinux"

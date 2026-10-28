@@ -1,0 +1,36 @@
+---
+# tests/test_rathole_tunnel_remote_addr.yml
+# The client's remote_addr for a server with an IPv6 address or without ansible_host
+
+- name: Add tuples with special server addresses
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Add hosts
+      ansible.builtin.add_host:
+        name: "{{ item.name }}"
+        ansible_connection: local
+        tunnel_id: "{{ item.tunnel_id }}"
+        rathole_role: "{{ item.role }}"
+        tunnel_services: [{ name: web, local_addr: "127.0.0.1:3000" }]
+        expected_remote_addr: "{{ item.expected | default(omit) }}"
+        ansible_host: "{{ item.ansible_host | default(omit) }}"
+      loop:
+        - { name: v6-srv, tunnel_id: v6, role: server, ansible_host: "2001:db8::1" }
+        - { name: v6-cli, tunnel_id: v6, role: client, expected: "[2001:db8::1]:2333" }
+        - { name: vps.example.net, tunnel_id: noaddr, role: server }
+        - { name: noaddr-cli, tunnel_id: noaddr, role: client, expected: "vps.example.net:2333" }
+
+- name: Derive remote_addr
+  hosts: v6-cli:noaddr-cli
+  gather_facts: false
+  tasks:
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check remote_addr
+      ansible.builtin.assert:
+        that: rathole_client_config.remote_addr == expected_remote_addr
+        fail_msg: "{{ rathole_client_config.remote_addr }} != {{ expected_remote_addr }}"

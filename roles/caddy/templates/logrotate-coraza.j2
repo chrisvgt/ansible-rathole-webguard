@@ -1,0 +1,14 @@
+# File Managed by Ansible
+# roles/caddy/templates/logrotate-coraza.j2
+
+# Coraza keeps the audit log open, so copytruncate is used instead of
+# signalling Caddy. su is required because the directory is owned by Caddy.
+{{ caddy_coraza_audit_log_dir }}/*.log {
+    su {{ caddy_user }} {{ caddy_group }}
+    size {{ caddy_coraza_audit_log_max_size }}
+    rotate {{ caddy_coraza_audit_log_rotate }}
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

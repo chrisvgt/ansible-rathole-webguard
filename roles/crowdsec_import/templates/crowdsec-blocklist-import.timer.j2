@@ -1,10 +1,15 @@
+# File Managed by Ansible
+# roles/crowdsec_import/templates/crowdsec-blocklist-import.timer.j2
+
 [Unit]
 Description=Run CrowdSec blocklist import every hour
 Documentation=https://github.com/wolffcatskyy/crowdsec-blocklist-import
 
+# Calendar based: starting the timer does not run the import, the playbook
+# runs it once after changes (OnBootSec would fire at once on a running host)
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=1h
+OnCalendar=hourly
+RandomizedDelaySec=10min
 AccuracySec=1min
 
 [Install]

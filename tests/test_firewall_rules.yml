@@ -1,0 +1,67 @@
+---
+# tests/test_firewall_rules.yml
+# The rendered ruleset is valid nftables syntax and only touches its own table
+
+- name: Render firewall rules
+  hosts: srv
+  gather_facts: false
+  vars:
+    firewall_tcp_ports: [22, 80, 443, 7000]
+    firewall_udp_ports: [443]
+  tasks:
+    - name: Render ruleset
+      ansible.builtin.template:
+        src: ../roles/firewall/templates/webguard.nft.j2
+        dest: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/webguard-test.nft"
+        mode: "0600"
+      register: rendered
+
+    - name: Check rules
+      ansible.builtin.assert:
+        that:
+          - "'flush ruleset' not in rules"
+          - "'policy drop;' in rules"
+          - "'tcp dport { 22, 80, 443, 7000 } accept' in rules"
+          - "'udp dport { 443 } accept' in rules"
+          # DHCPv6 replies do not match an outgoing connection
+          - "'ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept' in rules"
+      vars:
+        rules: "{{ lookup('file', rendered.dest) }}"
+
+    # nft needs CAP_NET_ADMIN and the conntrack module even for a dry run: sudo
+    # in CI, a user namespace locally if the module is loaded, otherwise skipped
+    - name: Check syntax with nft
+      ansible.builtin.shell: |
+        set -o pipefail
+        probe='table inet probe { chain input { type filter hook input priority filter; ct state established accept; }; }'
+        if sudo -n nft --version >/dev/null 2>&1; then
+          sudo -n nft -c -f "{{ rendered.dest }}"
+        elif echo "$probe" | unshare -rn nft -c -f - 2>/dev/null; then
+          unshare -rn nft -c -f "{{ rendered.dest }}"
+        else
+          echo "skipped: nft check needs root or a loaded nf_conntrack module"
+        fi
+      args:
+        executable: /bin/bash
+      register: nft_check
+      changed_when: false
+
+    - name: Report skipped syntax check
+      ansible.builtin.debug:
+        msg: "{{ nft_check.stdout }}"
+      when: nft_check.stdout is search('skipped')
+
+    - name: Remove rendered file
+      ansible.builtin.file:
+        path: "{{ rendered.dest }}"
+        state: absent
+
+    # Own boot unit instead of nftables.service, whose config flushes all rules
+    - name: Check boot unit
+      ansible.builtin.assert:
+        that:
+          - "'ExecStart=/usr/sbin/nft -f /etc/nftables.d/webguard.nft' in unit"
+          - "'flush' not in unit"
+      vars:
+        firewall_rules_file: /etc/nftables.d/webguard.nft
+        unit: "{{ lookup('ansible.builtin.template', '../roles/firewall/templates/webguard-firewall.service.j2') }}"

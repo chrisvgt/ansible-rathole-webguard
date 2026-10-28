@@ -1,0 +1,22 @@
+---
+# roles/system/meta/main.yml
+
+galaxy_info:
+  author: chrisvgt
+  description: Basic tuning for small hosts (journald size limit, optional swap file, security updates)
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions: ["bookworm", "trixie"]
+    - name: Ubuntu
+      versions: ["jammy", "noble"]
+    - name: ArchLinux
+      versions: ["all"]
+  galaxy_tags:
+    - system
+    - journald
+    - swap
+    - updates
+
+dependencies: []

@@ -1,14 +1,20 @@
+---
 # roles/caddy/tasks/main.yml
 
-- name: Install Caddy build dependencies
-  ansible.builtin.apt:
-    name:
-      - git
-      - build-essential
-      - apt-transport-https
-      - curl
+# Caddy is built with CGO_ENABLED=0, so no C toolchain (build-essential) is
+# needed; git and curl come with the common utilities of site.yml
+- name: Install logrotate
+  ansible.builtin.package:
+    name: logrotate
     state: present
-    update_cache: true
+
+# Debian starts logrotate from its package; Arch Linux ships the timer disabled
+- name: Enable daily log rotation (Arch Linux)
+  ansible.builtin.systemd_service:
+    name: logrotate.timer
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Create Caddy system group
   ansible.builtin.group:
@@ -29,18 +35,19 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: "{{ caddy_user }}"
+    owner: "{{ item.owner | default(caddy_user) }}"
     group: "{{ caddy_group }}"
     mode: "{{ item.mode }}"
-    recurse: "{{ item.recurse | default(false) }}"
   loop:
+    # Config holds secrets: Caddy may read it but not modify it
     - path: "{{ caddy_config_dir }}"
-      mode: "0755"
+      owner: root
+      mode: "0750"
+    # Not recursive: Caddy manages permissions of its TLS keys/certs itself
     - path: "{{ caddy_data_dir }}"
-      mode: "0775"
-      recurse: true
+      mode: "0750"
     - path: "{{ caddy_data_dir }}/caddy"
-      mode: "0775"
+      mode: "0750"
     - path: "{{ caddy_log_dir }}"
       mode: "0755"
 
@@ -50,24 +57,45 @@
   register: caddy_version_check
   failed_when: false
   changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
-- name: Determine if Coraza plugin needs to be built
+- name: Build Caddy site lists
+  ansible.builtin.include_tasks: sites.yml
+
+# Own subdirectory so CrowdSec's /var/log/caddy/*.log acquisition glob does
+# not parse the multi-line audit log format.
+- name: Determine Coraza audit log directory
   ansible.builtin.set_fact:
-    caddy_coraza_needed: >-
-      {{ (enable_coraza_waf | default(false)) }}
+    caddy_coraza_audit_log_dir: "{{ coraza_audit_log_dir | default(caddy_log_dir ~ '/coraza') }}"
+
+- name: Ensure Coraza audit log directory exists
+  ansible.builtin.file:
+    path: "{{ caddy_coraza_audit_log_dir }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: "0750"
+
+- name: Configure logrotate for Coraza audit logs
+  ansible.builtin.template:
+    src: logrotate-coraza.j2
+    dest: "/etc/logrotate.d/caddy-coraza"
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Build final Caddy plugin list
   ansible.builtin.set_fact:
     caddy_plugins_effective: >-
-      {{ (caddy_plugins | default([]))
-         + (enable_cloudflare | default(false) | ternary(['github.com/caddy-dns/cloudflare'], []))
-         + (enable_crowdsec | default(false) | ternary([
+      {{ caddy_plugins
+         + (enable_cloudflare | default(false) | bool | ternary(['github.com/caddy-dns/cloudflare'], []))
+         + (enable_crowdsec | default(true) | bool | ternary([
               'github.com/hslatman/caddy-crowdsec-bouncer/http',
               'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
               'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
             ], []))
-         + (caddy_coraza_needed | default(false) | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
-         + (enable_rate_limit | default(true) | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
+         + (caddy_coraza_needed | bool | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
+         + (enable_rate_limit | default(true) | bool | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
 
 - name: Compute hash of effective Caddy plugins
   ansible.builtin.set_fact:
@@ -80,25 +108,46 @@
   failed_when: false
   changed_when: false
 
-- name: Build Caddy with specified plugins using xcaddy
-  ansible.builtin.command:
-    cmd: >-
-      /usr/local/bin/xcaddy build v{{ caddy_version }}
-      --output {{ caddy_install_path }}
-      {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
-  environment:
-    PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_facts['env'].PATH }}"
-    GOPATH: "/root/go"
-    # Speed up Go build with parallel compilation
-    GOMAXPROCS: "{{ ansible_facts['processor_cores'] | default(4) }}"
-    GOFLAGS: "-mod=mod -v"
-  notify: Restart Caddy Service
-  changed_when: true
+# Only rebuild when the Caddy version or the plugin list changed. All Go
+# caches live in caddy_build_dir and are removed afterwards, even on failure.
+- name: Build Caddy with xcaddy
   when: >-
-    ((caddy_version_check.stdout | default('') | regex_search('v([0-9.]+)', '\\1') | default(''))
+    ((caddy_version_check.stdout | default('') | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') | default('', true))
     != (caddy_version | string))
     or
     ((caddy_plugins_hash_prev.content | default('') | b64decode | trim) != caddy_plugins_hash)
+  block:
+    - name: Create temporary Caddy build directory
+      ansible.builtin.file:
+        path: "{{ caddy_build_dir }}/tmp"
+        state: directory
+        mode: "0700"
+
+    - name: Build Caddy with specified plugins using xcaddy
+      ansible.builtin.command:
+        cmd: >-
+          /usr/local/bin/xcaddy build v{{ caddy_version }}
+          --output {{ caddy_install_path }}
+          {% for plugin in caddy_plugins_effective %} --with {{ plugin }}{% endfor %}
+      environment:
+        PATH: "{{ (go_lang_install_path | default('/usr/local')) ~ '/go/bin' }}:{{ ansible_facts['env'].PATH }}"
+        # All plugins are pure Go: static binary, no C toolchain required
+        CGO_ENABLED: "0"
+        # Keep module cache, build cache and temp files out of /root and /tmp
+        GOPATH: "{{ caddy_build_dir }}/go"
+        GOCACHE: "{{ caddy_build_dir }}/cache"
+        TMPDIR: "{{ caddy_build_dir }}/tmp"
+        # Limit parallel compile jobs and GC headroom so small hosts don't run out of memory
+        GOFLAGS: "-mod=mod -p={{ caddy_build_jobs }}"
+        GOGC: "{{ caddy_build_gogc }}"
+      notify: Restart Caddy
+      changed_when: true
+
+  always:
+    - name: Remove temporary Caddy build directory
+      ansible.builtin.file:
+        path: "{{ caddy_build_dir }}"
+        state: absent
 
 - name: Set Caddy binary permissions
   ansible.builtin.file:
@@ -114,70 +163,73 @@
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
     mode: "0644"
-  when: caddy_plugins_hash is defined
 
+- name: Create Caddy environment file (secrets)
+  ansible.builtin.template:
+    src: caddy.env.j2
+    dest: "{{ caddy_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart Caddy
+
+# Caddy runs before the crowdsec role, so the bouncer key is resolved here first
+- name: Resolve CrowdSec bouncer key
+  ansible.builtin.include_role:
+    name: crowdsec
+    tasks_from: bouncer_key
+  when: enable_crowdsec | bool
+
+# lstrip_blocks removes the indentation in front of Jinja tags so the rendered
+# Caddyfile stays readable without running `caddy fmt` afterwards.
+# The Caddyfile holds the CrowdSec API key, so it is only readable by root and
+# the Caddy group. Set caddy_no_log: false to see validation errors.
 - name: Create Caddyfile from template
   ansible.builtin.template:
-    src: "templates/Caddyfile.j2"
+    src: Caddyfile.j2
     dest: "{{ caddy_config_file }}"
+    owner: root
+    group: "{{ caddy_group }}"
+    mode: "0640"
+    lstrip_blocks: true
+    validate: "{{ caddy_install_path }} validate --adapter caddyfile --envfile {{ caddy_env_file }} --config %s"
+  no_log: "{{ caddy_no_log | bool }}"
+  notify: Reload Caddy
+
+# `caddy validate` runs as root and creates missing log files owned by root,
+# which the caddy user could not open afterwards.
+- name: Ensure Caddy log files belong to the Caddy user
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
     owner: "{{ caddy_user }}"
     group: "{{ caddy_group }}"
-    mode: "0644"
-  notify: Restart Caddy Service
-
-- name: Format Caddyfile for readability
-  ansible.builtin.command:
-    cmd: "{{ caddy_install_path }} fmt --overwrite {{ caddy_config_file }}"
-  environment:
-    ANSIBLE_REMOTE_TEMP: "/tmp"
-  register: caddy_fmt_result
-  changed_when: caddy_fmt_result.stdout | length > 0
-  notify: Restart Caddy Service
+    recurse: true
+  loop: "{{ [caddy_log_dir, caddy_coraza_audit_log_dir] | unique }}"
 
 - name: Create Caddy Systemd unit file
   ansible.builtin.template:
-    src: "templates/caddy.service.j2"
+    src: caddy.service.j2
     dest: "/etc/systemd/system/caddy.service"
     owner: root
     group: root
     mode: "0644"
-  become: true
-  notify: Restart Caddy Service
-
-- name: Reload Systemd daemon to pick up new unit file
-  ansible.builtin.systemd:
-    daemon_reload: true
-  become: true
+  notify: Restart Caddy
 
 - name: Enable and start Caddy service
   ansible.builtin.systemd:
     name: caddy
     enabled: true
     state: started
-  become: true
+    daemon_reload: true
 
-- name: Clean up temporary Caddy build files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "/tmp/caddy_build"
-    - "/tmp/caddy_plugins"
-  changed_when: false
-
-- name: Remove Caddy build dependencies (apt packages) to save disk space
-  ansible.builtin.apt:
-    name:
-      - build-essential
-      - apt-transport-https
-    state: absent
-    purge: true
-    autoremove: true
-
-- name: Clean up Go module cache used for Caddy build
+# Earlier versions of this role built in /root and never cleaned the build cache
+- name: Remove Go caches left behind by previous Caddy builds
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
     - "/root/go/pkg/mod"
     - "/root/go/bin"
+    - "/root/.cache/go-build"

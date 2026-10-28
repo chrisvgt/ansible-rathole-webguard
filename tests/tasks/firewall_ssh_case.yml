@@ -1,0 +1,12 @@
+---
+# tests/tasks/firewall_ssh_case.yml
+# One case of tests/test_firewall_ports.yml: derive the ports and compare
+
+- name: Run port derivation
+  ansible.builtin.include_tasks: ../../roles/firewall/tasks/ports.yml
+
+- name: "Check ports: {{ case.name }}"
+  ansible.builtin.assert:
+    that: firewall_tcp_ports == case.expected
+    fail_msg: "{{ case.name }}: tcp {{ firewall_tcp_ports }}, expected {{ case.expected }}"
+    quiet: true

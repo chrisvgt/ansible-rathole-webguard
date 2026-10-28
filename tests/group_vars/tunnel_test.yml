@@ -1,0 +1,26 @@
+---
+# tests/group_vars/tunnel_test.yml
+
+tunnel_id: test
+
+tunnel_services:
+  - name: web
+    domain: web.example.com
+    local_addr: 127.0.0.1:2368
+    coraza_mode: minimal
+  - name: shop
+    domain:
+      - shop.example.com
+      - shop.example.org
+    local_addr: 192.168.1.10:3000
+    stream: true
+  - name: apex
+    domain: example.com
+    local_addr: 127.0.0.1:8070
+  - name: game-tcp
+    local_addr: 127.0.0.1:30000
+    bind_addr: 0.0.0.0:30000
+  - name: game-udp
+    type: udp
+    local_addr: 127.0.0.1:30000
+    bind_addr: 0.0.0.0:30000

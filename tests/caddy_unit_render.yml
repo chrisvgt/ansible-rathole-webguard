@@ -1,0 +1,35 @@
+---
+# tests/caddy_unit_render.yml
+# Renders the caddy role's systemd unit into out_dir for
+# tests/check_caddy_systemd.sh. Not run on its own.
+
+- name: Render Caddy unit
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    role_dir: "{{ playbook_dir }}/../roles/caddy"
+  tasks:
+    - name: Load Caddy defaults and vars
+      ansible.builtin.include_vars: "{{ role_dir }}/{{ item }}/main.yml"
+      loop: [defaults, vars]
+
+    - name: Render unit
+      ansible.builtin.template:
+        src: "{{ role_dir }}/templates/caddy.service.j2"
+        dest: "{{ out_dir }}/caddy.service"
+        mode: "0644"
+      vars:
+        caddy_coraza_audit_log_dir: "{{ caddy_log_dir }}/coraza"
+
+    - name: Write paths for the container script
+      ansible.builtin.copy:
+        content: |
+          install_path={{ caddy_install_path }}
+          config_file={{ caddy_config_file }}
+          env_file={{ caddy_env_file }}
+          data_dir={{ caddy_data_dir }}
+          log_dir={{ caddy_log_dir }}
+          admin_socket={{ caddy_admin_socket }}
+        dest: "{{ out_dir }}/paths.sh"
+        mode: "0644"

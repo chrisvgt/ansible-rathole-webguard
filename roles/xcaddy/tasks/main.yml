@@ -1,4 +1,10 @@
+---
 # roles/xcaddy/tasks/main.yml
+
+- name: Ensure xcaddy supports this platform
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] in xcaddy_arch_map
+    fail_msg: "Unsupported platform for xcaddy: {{ ansible_facts['system'] }}/{{ ansible_facts['architecture'] }}"
 
 - name: Ensure xcaddy installation path exists
   ansible.builtin.file:
@@ -10,57 +16,53 @@
   ansible.builtin.command:
     cmd: "{{ xcaddy_install_path }}/xcaddy --version"
   register: xcaddy_version_check
-  ignore_errors: true
+  failed_when: false
   changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
-- name: Set xcaddy version changed flag
-  ansible.builtin.set_fact:
-    xcaddy_version_changed: >-
-      {{ xcaddy_version_check.stdout is not defined
-         or xcaddy_version_check.rc != 0
-         or not (xcaddy_version_check.stdout.split()[0] | regex_replace('^v', '') == xcaddy_version) }}
+# In a new directory each time, removed again also when a step fails
+- name: Install xcaddy
+  when: (xcaddy_version_check.stdout | default('')).split()[:1] != ['v' ~ xcaddy_version]
+  block:
+    - name: Create a temporary download directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        suffix: xcaddy
+      register: xcaddy_tmp_dir
 
-- name: Display xcaddy version change message
-  ansible.builtin.debug:
-    msg: >
-      Current xcaddy version: {{ xcaddy_version_check.stdout | default('not installed') }}.
-      Target version: {{ xcaddy_version }}.
-      Version changed: {{ xcaddy_version_changed }}.
+    - name: Download the xcaddy archive
+      ansible.builtin.get_url:
+        url: "{{ xcaddy_download_url }}"
+        dest: "{{ xcaddy_tmp_dir.path }}/{{ xcaddy_download_url | basename }}"
+        checksum: "sha512:{{ xcaddy_checksums_url }}"
+        mode: "0644"
+      register: xcaddy_download_result
+      until: xcaddy_download_result is succeeded
+      retries: 5
+      delay: 2 # Retry download up to 5 times with a 2-second delay
 
-- name: Download xcaddy tarball if version has changed
-  ansible.builtin.get_url:
-    url: "{{ xcaddy_download_url }}"
-    dest: "/tmp/xcaddy_temp.tar.gz"
-    mode: "0644"
-  when: xcaddy_version_changed
-  register: xcaddy_download_result
-  until: xcaddy_download_result is succeeded
-  retries: 5
-  delay: 2 # Retry download up to 5 times with a 2-second delay
+    - name: Unpack xcaddy
+      ansible.builtin.unarchive:
+        src: "{{ xcaddy_tmp_dir.path }}/{{ xcaddy_download_url | basename }}"
+        dest: "{{ xcaddy_tmp_dir.path }}"
+        include: [xcaddy]
+        remote_src: true
+      when: not ansible_check_mode # Archive is only downloaded in a real run
 
-- name: Extract xcaddy binary from tarball
-  ansible.builtin.unarchive:
-    src: "/tmp/xcaddy_temp.tar.gz"
-    dest: "/tmp/"
-    remote_src: true
-    creates: "/tmp/xcaddy" # Idempotent: only extract if binary doesn't exist
-  when: xcaddy_version_changed
+    - name: Install the xcaddy binary
+      ansible.builtin.copy:
+        src: "{{ xcaddy_tmp_dir.path }}/xcaddy"
+        dest: "{{ xcaddy_install_path }}/xcaddy"
+        owner: root
+        group: root
+        mode: "0755"
+        remote_src: true
+      when: not ansible_check_mode
 
-- name: Move xcaddy to installation directory
-  ansible.builtin.copy:
-    src: "/tmp/xcaddy"
-    dest: "{{ xcaddy_install_path }}/xcaddy"
-    owner: root
-    group: root
-    mode: "0755" # Make executable
-    remote_src: true # Source is on the remote host (downloaded to /tmp)
-  when: xcaddy_version_changed
-
-- name: Clean up xcaddy temporary files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  with_items:
-    - "/tmp/xcaddy_temp.tar.gz"
-    - "/tmp/xcaddy"
-  when: xcaddy_version_changed
+  always:
+    - name: Remove the temporary download directory
+      ansible.builtin.file:
+        path: "{{ xcaddy_tmp_dir.path }}"
+        state: absent
+      when: xcaddy_tmp_dir.path is defined

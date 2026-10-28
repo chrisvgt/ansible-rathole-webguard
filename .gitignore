@@ -1,3 +1,8 @@
 inventory.ini
 node_modules
 .ansible
+vault.yml
+.vault_pass*
+__pycache__
+*.log
+/log.txt

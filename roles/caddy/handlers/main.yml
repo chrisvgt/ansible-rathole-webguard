@@ -1,9 +1,19 @@
+---
 # roles/caddy/handlers/main.yml
 
 # --- Handlers for Caddy Service ---
+# Handlers run in the order defined here: Restart must stay before Reload. A
+# reload talks to the admin API at the address in the new Caddyfile, which only
+# exists after a restart when that address changed (e.g. TCP -> socket).
 
-- name: Restart Caddy Service
+- name: Restart Caddy
   ansible.builtin.systemd:
     name: caddy
     state: restarted
     daemon_reload: true # Ensure systemd reloads Caddy's unit file if it changed
+
+# Graceful config reload (no dropped connections) for Caddyfile changes
+- name: Reload Caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded

@@ -1,0 +1,56 @@
+---
+# tests/crowdsec_render.yml
+# Renders the crowdsec role's config files into out_dir (same layout as
+# /etc/crowdsec) for tests/check_crowdsec_docker.sh. Not run on its own.
+
+- name: Render CrowdSec configuration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    role_dir: "{{ playbook_dir }}/../roles/crowdsec"
+    duration_expr: true
+    ntfy_enabled: true
+    ntfy_server: ntfy.example.com
+    ntfy_topic: test
+    dynamic_whitelist_enabled: true
+    dynamic_ddns_hostnames: [home.example.test]
+  tasks:
+    - name: Load CrowdSec defaults
+      ansible.builtin.include_vars: "{{ role_dir }}/defaults/main.yml"
+
+    # set_fact, because include_vars beats play vars
+    - name: Use a free AppSec port on the test host (shared network)
+      ansible.builtin.set_fact:
+        crowdsec_appsec_port: "17422"
+
+    - name: Create directories
+      ansible.builtin.file:
+        path: "{{ out_dir }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [acquis.d, notifications, parsers/s02-enrich, postoverflows/s01-whitelist, scenarios]
+
+    - name: Render templates
+      ansible.builtin.template:
+        src: "{{ role_dir }}/templates/{{ item.src }}"
+        dest: "{{ out_dir }}/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - { src: caddy.yaml.j2, dest: acquis.d/caddy.yaml }
+        - { src: appsec.yaml.j2, dest: acquis.d/appsec.yaml }
+        - { src: config.yaml.local.j2, dest: config.yaml.local }
+        - { src: profiles.yaml.j2, dest: profiles.yaml }
+        - { src: ntfy.yaml.j2, dest: notifications/ntfy.yaml }
+        - { src: 01-my-dynamic-whitelist.yaml.j2, dest: postoverflows/s01-whitelist/01-my-dynamic-whitelist.yaml }
+        - { src: login-bf.yaml.j2, dest: "scenarios/{{ crowdsec_login_bf_file | basename }}" }
+        - { src: session-whitelist.yaml.j2, dest: "parsers/s02-enrich/{{ crowdsec_session_whitelist_file | basename }}" }
+
+    - name: List the hub items the role installs
+      ansible.builtin.copy:
+        content: "{{ item.names | join('\n') }}\n"
+        dest: "{{ out_dir }}/../{{ item.file }}"
+        mode: "0644"
+      loop:
+        - { file: collections.txt, names: "{{ crowdsec_collections }}" }
+        - { file: hub_whitelists.txt, names: "{{ crowdsec_hub_whitelists }}" }

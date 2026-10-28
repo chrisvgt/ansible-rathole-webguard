@@ -1,0 +1,6 @@
+// File Managed by Ansible
+// roles/system/templates/20auto-upgrades.j2
+
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";

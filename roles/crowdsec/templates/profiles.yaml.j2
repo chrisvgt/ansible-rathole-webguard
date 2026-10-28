@@ -1,5 +1,5 @@
 # File Managed by Ansible
-# /roles/crowdsec/templates/profiles.yaml.j2
+# roles/crowdsec/templates/profiles.yaml.j2
 
 name: default_ip_remediation
 #debug: true
@@ -8,10 +8,10 @@ filters:
 decisions:
  - type: ban
    duration: 4h
-{% if duration_expr %}
+{% if duration_expr | default(false) | bool %}
 duration_expr: Sprintf('%dh', (GetDecisionsCount(Alert.GetValue()) + 1) * 4)
 {% endif %}
-{% if ntfy_enabled %}
+{% if ntfy_enabled | default(false) | bool %}
 notifications:
    - ntfy
 {% endif %}
@@ -24,10 +24,10 @@ filters:
 decisions:
  - type: ban
    duration: 4h
-{% if duration_expr %}
+{% if duration_expr | default(false) | bool %}
 duration_expr: Sprintf('%dh', (GetDecisionsCount(Alert.GetValue()) + 1) * 4)
 {% endif %}
-{% if ntfy_enabled %}
+{% if ntfy_enabled | default(false) | bool %}
 notifications:
    - ntfy
 {% endif %}

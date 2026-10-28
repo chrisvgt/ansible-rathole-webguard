@@ -1,0 +1,82 @@
+---
+# tests/firewall_systemd.yml
+# Applies the firewall role in a systemd container (own network namespace) for
+# tests/check_firewall_systemd.sh, then turns it off again. Not run on its own.
+
+- name: Enable the firewall
+  hosts: fw
+  gather_facts: true # The role picks the package manager by OS family
+  vars:
+    enable_firewall: true
+    rathole_server_config:
+      listen_addr: 0.0.0.0:2333
+      services:
+        - { name: web, bind_addr: "127.0.0.1:3000" }
+        - { name: vpn, bind_addr: "0.0.0.0:51820", type: udp } # Passed through, no Caddy
+  tasks:
+    - name: Apply the firewall role
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Read the loaded rules
+      ansible.builtin.command: nft list table inet webguard
+      register: test_rules
+      changed_when: false
+
+    - name: Read the boot unit state
+      ansible.builtin.systemd_service:
+        name: webguard-firewall
+      register: test_unit
+
+    - name: Read the rollback timer state
+      ansible.builtin.systemd_service:
+        name: webguard-firewall-rollback.timer
+      register: test_rollback
+      failed_when: false
+
+    - name: Check the firewall is active
+      ansible.builtin.assert:
+        that:
+          - "'policy drop' in test_rules.stdout"
+          - "'tcp dport { 22, 80, 443, 2333 } accept' in test_rules.stdout"
+          - "'udp dport { 443, 51820 } accept' in test_rules.stdout"
+          - "'3000' not in test_rules.stdout"
+          - test_unit.status.UnitFileState == 'enabled'
+          - test_rollback.status.ActiveState | default('inactive') != 'active'
+        fail_msg: "{{ test_rules.stdout }} | boot unit {{ test_unit.status.UnitFileState }} | rollback {{ test_rollback.status.ActiveState | default('none') }}"
+
+- name: Disable the firewall
+  hosts: fw
+  gather_facts: true # The role picks the package manager by OS family
+  vars:
+    enable_firewall: false
+  tasks:
+    - name: Apply the firewall role
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Read the loaded tables
+      ansible.builtin.command: nft list tables
+      register: test_tables
+      changed_when: false
+
+    - name: Look for leftover files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/etc/systemd/system/webguard-firewall.service, /etc/nftables.d/webguard.nft]
+      register: test_files
+
+    - name: Check the firewall is gone
+      ansible.builtin.assert:
+        that:
+          - "'webguard' not in test_tables.stdout"
+          - test_files.results | selectattr('stat.exists') | list == []
+        fail_msg: "tables: {{ test_tables.stdout }} | files: {{ test_files.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+
+    - name: Apply the firewall role again
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Check a second run without the firewall works
+      ansible.builtin.assert:
+        that: true

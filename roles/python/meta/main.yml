@@ -1,0 +1,20 @@
+---
+# roles/python/meta/main.yml
+
+galaxy_info:
+  author: chrisvgt
+  description: Install pipx for Python-based tooling
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions: ["bookworm", "trixie"]
+    - name: Ubuntu
+      versions: ["jammy", "noble"]
+    - name: ArchLinux
+      versions: ["all"]
+  galaxy_tags:
+    - python
+    - pipx
+
+dependencies: []

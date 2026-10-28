@@ -1,0 +1,66 @@
+---
+# roles/crowdsec/defaults/main.yml
+
+# LAPI/AppSec endpoints and ticker interval are also used by the caddy and
+# crowdsec_import roles (with the same fallback values). Set them in
+# group_vars/all.yml to change them for all roles at once.
+crowdsec_lapi_ip: "127.0.0.1" # IP address for the Local API (LAPI)
+crowdsec_lapi_port: "8080" # Port for the Local API (LAPI)
+crowdsec_ticker_interval: "15s" # Interval for CrowdSec's ticker to process logs
+crowdsec_appsec_ip: "127.0.0.1" # IP address for the AppSec component
+crowdsec_appsec_port: "7422" # Port for the AppSec component
+crowdsec_appsec_timeout: "10s" # Timeout for AppSec inspection (global, applies to all sites)
+
+# Database (SQLite) size limits, written to /etc/crowdsec/config.yaml.local
+crowdsec_db_use_wal: true # Write-ahead log: fewer locks and less I/O on small disks
+crowdsec_db_flush_max_items: 5000 # Keep at most this many alerts
+crowdsec_db_flush_max_age: "7d" # Delete alerts older than this
+
+# systemd memory limits for the crowdsec service (MemoryHigh throttles, MemoryMax kills)
+crowdsec_memory_high: "300M"
+crowdsec_memory_max: "400M"
+
+# Failed login detection (see README): repeated failed POSTs to login-like paths
+crowdsec_login_detection: true
+crowdsec_login_path_pattern: "(?i)(log[-_]?in|sign[-_]?in|auth|token)" # Matched against the path without query
+crowdsec_login_fail_status: [400, 401, 403] # Responses that count as a failed login
+crowdsec_login_bf_capacity: 5 # Failed logins tolerated before a ban
+crowdsec_login_bf_leakspeed: "1m" # One failed login is forgotten per interval
+crowdsec_login_bf_file: /etc/crowdsec/scenarios/local-login-bf.yaml
+
+# Hub collections: Caddy logs (incl. failed logins) and the AppSec rules
+crowdsec_collections:
+  - crowdsecurity/caddy
+  - crowdsecurity/appsec-virtual-patching
+  - crowdsecurity/appsec-generic-rules
+  - crowdsecurity/http-cve
+
+# Hub whitelists for common self-hosted apps. Each only skips known harmless
+# requests of its app (missing thumbnails, WebDAV sync, ...), so they are safe
+# to install even if the app is not used. Only official crowdsecurity items
+# with upstream hub tests and a generic HTTP filter (works with Caddy logs);
+# crowdsec-hubupdate.timer keeps them up to date when apps change.
+crowdsec_hub_whitelists:
+  - crowdsecurity/nextcloud-whitelist
+  - crowdsecurity/jellyfin-whitelist
+  - crowdsecurity/jellyseerr-whitelist
+  - crowdsecurity/overseerr-whitelist
+  - crowdsecurity/calibre-web-whitelist
+  - crowdsecurity/actual-budget-whitelist
+  - crowdsecurity/rocketchat-whitelist
+  - crowdsecurity/zammad-whitelist
+crowdsec_session_whitelist_file: /etc/crowdsec/parsers/s02-enrich/local-session-whitelist.yaml
+
+# Caddy bouncer key: generated on the first run and stored here, unless
+# crowdsec_api_key is set
+crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key
+
+# Versions of CrowdSec and its firewall bouncer. Debian and Ubuntu install
+# them from the CrowdSec APT repository and keep them there with an APT pin.
+# Arch Linux: they come from the vendors' release archives (not in the official
+# repositories), checked against the SHA256 that GitHub shows for the asset. A
+# version change replaces only the programs.
+# renovate: datasource=github-releases depName=crowdsecurity/crowdsec extractVersion=^v(?<version>.+)$
+crowdsec_version: "1.8.1"
+# renovate: datasource=github-releases depName=crowdsecurity/cs-firewall-bouncer extractVersion=^v(?<version>.+)$
+crowdsec_firewall_bouncer_version: "0.0.36"

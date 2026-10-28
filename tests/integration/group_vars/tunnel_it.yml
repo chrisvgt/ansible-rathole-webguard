@@ -1,0 +1,24 @@
+---
+tunnel_id: it
+
+tunnel_services:
+  - name: web
+    domain: web.test
+    local_addr: 127.0.0.1:8080
+    bind_addr: 127.0.0.1:18080 # 8080 is the CrowdSec Local API on the server
+  - name: vpn # Passed through without Caddy, like WireGuard
+    type: udp
+    local_addr: 127.0.0.1:51820
+    bind_addr: 0.0.0.0:51820
+  # No app behind them: only validated by Caddy, with the larger Coraza rule sets
+  - { name: moderate, domain: moderate.test, local_addr: "127.0.0.1:8081", coraza_mode: moderate }
+  - { name: strict, domain: strict.test, local_addr: "127.0.0.1:8082", coraza_mode: strict }
+
+duration_expr: true
+
+# Optional CrowdSec features, so their tasks run too
+dynamic_whitelist_enabled: true
+dynamic_ddns_hostnames: [localhost]
+ntfy_enabled: true
+ntfy_server: ntfy.invalid # Notifications fail quietly, nothing leaves the test
+ntfy_topic: integration

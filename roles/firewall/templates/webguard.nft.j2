@@ -1,0 +1,28 @@
+#!/usr/sbin/nft -f
+# File Managed by Ansible
+# roles/firewall/templates/webguard.nft.j2
+# Own table, replaced as a whole: other rules (e.g. the CrowdSec bouncer) stay untouched
+
+table inet webguard
+delete table inet webguard
+
+table inet webguard {
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    ct state established,related accept
+    ct state invalid drop
+    iifname "lo" accept
+    # ICMP (1) and ICMPv6 (58) as numbers: names need /etc/protocols, which
+    # minimal images without netbase lack
+    meta l4proto { 1, 58 } accept
+    # DHCPv6 replies answer a multicast request, so conntrack does not match them
+    ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+{% if firewall_tcp_ports %}
+    tcp dport { {{ firewall_tcp_ports | join(', ') }} } accept
+{% endif %}
+{% if firewall_udp_ports %}
+    udp dport { {{ firewall_udp_ports | join(', ') }} } accept
+{% endif %}
+  }
+}

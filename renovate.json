@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "baseBranchPatterns": ["develop"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Berlin",
+  "ignorePaths": ["**/node_modules/**", "**/bower_components/**", "**/vendor/**"],
+  "pre-commit": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tool versions in role defaults, marked with a '# renovate:' comment",
+      "managerFilePatterns": ["/^roles/[^/]+/defaults/main\\.yml$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s+[a-z_]+_version: \"(?<currentValue>[^\"]+)\""]
+    },
+    {
+      "customType": "regex",
+      "description": "Container images in test scripts, marked with a '# renovate:' comment",
+      "managerFilePatterns": ["/^tests/[^/]+\\.sh$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+[a-z_]*image=\\S+:(?<currentValue>\\S+)"]
+    }
+  ]
+}

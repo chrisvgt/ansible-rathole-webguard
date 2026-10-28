@@ -1,0 +1,14 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/crowdsec-hubupdate.service.j2
+# Arch Linux: on Debian the crowdsec package ships this unit
+
+[Unit]
+Description=Update CrowdSec hub items
+After=network-online.target crowdsec.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cscli --error hub update
+ExecStart=/usr/local/bin/cscli --error hub upgrade
+ExecStartPost=/usr/bin/systemctl reload crowdsec

@@ -1,0 +1,28 @@
+---
+# tests/test_rathole_tunnel_rejects_duplicate_name.yml
+# duplicate service names
+
+- name: Reject duplicate service names
+  hosts: srv
+  gather_facts: false
+  vars:
+    tunnel_services:
+      - { name: web, local_addr: "127.0.0.1:80" }
+      - { name: web, local_addr: "127.0.0.1:81" }
+  tasks:
+    - name: Run tunnel derivation
+      block:
+        - name: Run tunnel derivation
+          ansible.builtin.include_role:
+            name: rathole
+            tasks_from: tunnel
+      rescue:
+        - name: Remember failure message
+          ansible.builtin.set_fact:
+            rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+    - name: Check that the configuration was rejected
+      ansible.builtin.assert:
+        that:
+          - rejected_msg is defined
+          - "'unique name' in rejected_msg"

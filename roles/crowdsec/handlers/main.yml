@@ -1,9 +1,17 @@
+---
 # roles/crowdsec/handlers/main.yml
 
-# --- Handlers for Crowdsec Service ---
+# --- Handlers for CrowdSec Service ---
 
-- name: Restart Crowdsec Service
+- name: Restart CrowdSec
   ansible.builtin.systemd:
     name: crowdsec
+    state: restarted
+    daemon_reload: true
+
+# Arch Linux only: on Debian the package restarts it on upgrades
+- name: Restart CrowdSec firewall bouncer
+  ansible.builtin.systemd:
+    name: crowdsec-firewall-bouncer
     state: restarted
     daemon_reload: true

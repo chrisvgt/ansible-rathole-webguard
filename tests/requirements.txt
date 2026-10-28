@@ -1,0 +1,2 @@
+# Ansible version the CI tests run with, kept current by Renovate
+ansible==14.5.0

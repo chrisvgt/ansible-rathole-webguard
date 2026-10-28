@@ -1,0 +1,29 @@
+---
+# tests/test_caddy_sites_wildcard.yml
+# Wildcard mode: services grouped by base domain, apex domains get their own block
+
+- name: Derive Caddy sites in wildcard mode
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: true
+  tasks:
+    # Only the derivation; including the role would also run its dependencies
+    - name: Load Caddy role constants
+      ansible.builtin.include_vars: ../roles/caddy/vars/main.yml
+
+    - name: Run site derivation
+      ansible.builtin.include_tasks: ../roles/caddy/tasks/sites.yml
+
+    - name: Check derived wildcard groups
+      ansible.builtin.assert:
+        that:
+          - caddy_effective_wildcard_sites | map(attribute='domain') | list == ['*.example.com', '*.example.org']
+          - caddy_effective_wildcard_sites[0].sites | map(attribute='name') | list == ['web', 'shop_shop_example_com']
+          - caddy_effective_wildcard_sites[0].sites | map(attribute='subdomain') | list == ['web', 'shop']
+          - caddy_effective_wildcard_sites[0].sites[0].port | int == 2368
+          - caddy_effective_wildcard_sites[0].sites[0].coraza_mode == 'minimal'
+          - caddy_effective_wildcard_sites[1].sites | map(attribute='name') | list == ['shop_shop_example_org']
+          - caddy_effective_extra_sites | map(attribute='domain') | list == ['example.com']
+          - caddy_effective_extra_sites[0].local_port | int == 8070
+          - caddy_effective_sites == []

@@ -1,3 +1,4 @@
+---
 # roles/crowdsec/tasks/main.yml
 
 # --- CrowdSec Role: Installation and Configuration ---
@@ -8,26 +9,8 @@
       - crowdsec_lapi_ip | default('') != ''
       - crowdsec_lapi_port | default('') != ''
     fail_msg: "Required CrowdSec variables (LAPI ip/port) are missing or empty."
-  when: enable_crowdsec | default(true)
 
-## Repository and Package Installation
-
-- name: Ensure curl is installed
-  ansible.builtin.apt:
-    name: curl
-    state: present
-
-- name: Download CrowdSec APT install script
-  ansible.builtin.get_url:
-    url: https://install.crowdsec.net
-    dest: /tmp/install_crowdsec.sh
-    mode: "0755"
-
-- name: Add CrowdSec APT repository via script
-  ansible.builtin.shell: set -o pipefail && /bin/bash /tmp/install_crowdsec.sh
-  args:
-    executable: /bin/bash
-    creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+## Installation
 
 - name: Ensure CrowdSec data directory exists
   ansible.builtin.file:
@@ -37,13 +20,38 @@
     group: root
     mode: "0755"
 
-- name: Install CrowdSec agent and iptables bouncer
-  ansible.builtin.apt:
-    name:
-      - crowdsec
-      - crowdsec-firewall-bouncer-iptables
-    state: present
-  notify: Restart Crowdsec Service
+# Debian/Ubuntu: APT packages; Arch Linux: the vendors' release archives
+- name: Install CrowdSec
+  ansible.builtin.include_tasks: "install_{{ ansible_facts['os_family'] | lower }}.yml"
+
+## Resource Limits (small hosts)
+
+# Merged by CrowdSec over the packaged config.yaml, so package upgrades keep working
+- name: Configure CrowdSec database flushing
+  ansible.builtin.template:
+    src: config.yaml.local.j2
+    dest: /etc/crowdsec/config.yaml.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
+
+- name: Ensure CrowdSec systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/crowdsec.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Limit CrowdSec memory usage
+  ansible.builtin.template:
+    src: crowdsec-memory.conf.j2
+    dest: /etc/systemd/system/crowdsec.service.d/memory.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
 
 ## Post-Installation and Service Management
 
@@ -54,23 +62,26 @@
     enabled: true
     daemon_reload: true
 
-# TODO:
-# - name: Wait for CrowdSec Local API to be ready
-#   ansible.builtin.wait_for:
-#     port: "{{ crowdsec_lapi_port }}"
-#     host: "{{ crowdsec_lapi_ip }}"
-#     timeout: 60
-#     delay: 5
-#   delegate_to: localhost
-#   become: false
+# Shipped with the package: daily `cscli hub update` + `hub upgrade` + reload,
+# so collections and app whitelists follow upstream changes
+- name: Ensure daily CrowdSec hub updates are enabled
+  ansible.builtin.systemd:
+    name: crowdsec-hubupdate.timer
+    state: started
+    enabled: true
 
 ## CrowdSec Hub Content Installation
 
+# Only refreshes the index, which changes upstream at any time; installed
+# items are not touched, so a second run stays without changes
 - name: Update CrowdSec Hub
   ansible.builtin.command: cscli hub update
   register: crowdsec_cscli_hub_update_output
-  changed_when: "'Nothing to do' not in crowdsec_cscli_hub_update_output.stdout"
+  changed_when: false
   failed_when: crowdsec_cscli_hub_update_output.rc != 0
+  until: crowdsec_cscli_hub_update_output is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
 
 # Includes base-http-scenarios collection, caddy-logs parser
 - name: Check installed CrowdSec collections
@@ -78,36 +89,33 @@
   register: crowdsec_cscli_collections_list
   changed_when: false
   failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
-- name: Install CrowdSecurity Caddy collection
-  ansible.builtin.command: cscli collections install crowdsecurity/caddy
-  register: crowdsec_cscli_caddy_collection_output
-  changed_when: "'Successfully installed' in crowdsec_cscli_caddy_collection_output.stdout or 'Upgraded' in crowdsec_cscli_caddy_collection_output.stdout"
-  failed_when: "(crowdsec_cscli_caddy_collection_output.rc != 0 and 'already installed' not in crowdsec_cscli_caddy_collection_output.stderr and 'already enabled' not in crowdsec_cscli_caddy_collection_output.stdout)"
-  when: "'crowdsecurity/caddy' not in (crowdsec_cscli_collections_list.stdout | default(''))"
+- name: Install CrowdSec collections
+  ansible.builtin.command:
+    argv: [cscli, collections, install, "{{ item }}"]
+  register: crowdsec_collection_install
+  changed_when: true
+  until: crowdsec_collection_install is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
+  notify: Restart CrowdSec
+  loop: "{{ crowdsec_collections }}"
+  when: item not in (crowdsec_cscli_collections_list.stdout | default(''))
 
-## CrowdSec AppSec Setup
+# Failed login detection relies on these scenarios from crowdsecurity/caddy
+- name: Check installed CrowdSec scenarios
+  ansible.builtin.command: cscli scenarios list -o json
+  register: crowdsec_cscli_scenarios_list
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
-- name: Install CrowdSec AppSec virtual patching collection
-  ansible.builtin.command: cscli collections install crowdsecurity/appsec-virtual-patching
-  register: crowdsec_cscli_appsec_virtual_patching_output
-  changed_when: "'Successfully installed' in crowdsec_cscli_appsec_virtual_patching_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_virtual_patching_output.stdout"
-  failed_when: "(crowdsec_cscli_appsec_virtual_patching_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_virtual_patching_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_virtual_patching_output.stdout)"
-  when: "'crowdsecurity/appsec-virtual-patching' not in (crowdsec_cscli_collections_list.stdout | default(''))"
-
-- name: Install CrowdSec AppSec generic rules collection
-  ansible.builtin.command: cscli collections install crowdsecurity/appsec-generic-rules
-  register: crowdsec_cscli_appsec_generic_rules_output
-  changed_when: "'Successfully installed' in crowdsec_cscli_appsec_generic_rules_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_generic_rules_output.stdout"
-  failed_when: "(crowdsec_cscli_appsec_generic_rules_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_generic_rules_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_generic_rules_output.stdout)"
-  when: "'crowdsecurity/appsec-generic-rules' not in (crowdsec_cscli_collections_list.stdout | default(''))"
-
-- name: Install CrowdSec AppSec HTTP CVE collection
-  ansible.builtin.command: cscli collections install crowdsecurity/http-cve
-  register: crowdsec_cscli_appsec_http_cve_output
-  changed_when: "'Successfully installed' in crowdsec_cscli_appsec_http_cve_output.stdout or 'Upgraded' in crowdsec_cscli_appsec_http_cve_output.stdout"
-  failed_when: "(crowdsec_cscli_appsec_http_cve_output.rc != 0 and 'already installed' not in crowdsec_cscli_appsec_http_cve_output.stderr and 'already enabled' not in crowdsec_cscli_appsec_http_cve_output.stdout)"
-  when: "'crowdsecurity/http-cve' not in (crowdsec_cscli_collections_list.stdout | default(''))"
+- name: Check HTTP brute force scenarios are installed
+  ansible.builtin.assert:
+    that: "'crowdsecurity/http-generic-bf' in crowdsec_cscli_scenarios_list.stdout"
+    fail_msg: "crowdsecurity/http-generic-bf is missing, failed logins are not detected. Run: cscli collections install crowdsecurity/caddy"
+  when: crowdsec_cscli_scenarios_list.rc == 0
 
 - name: Configure CrowdSec to listen for AppSec requests
   ansible.builtin.template:
@@ -116,7 +124,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
 ## CrowdSec Console and Bouncer Management
 
@@ -125,6 +133,7 @@
   register: crowdsec_cscli_console_status
   changed_when: false
   failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Enroll CrowdSec engine with the Console
   ansible.builtin.command: "cscli console enroll --enable context {{ crowdsec_enrollment_key }}"
@@ -132,28 +141,61 @@
   changed_when: "'Successfully enrolled with the Console' in crowdsec_console_enroll_output.stdout"
   failed_when: "crowdsec_console_enroll_output.rc != 0 and 'already enrolled' not in crowdsec_console_enroll_output.stderr and 'You are already enrolled' not in crowdsec_console_enroll_output.stdout"
   when:
-    - enable_crowdsec | default(true)
     - crowdsec_enrollment_key is defined and (crowdsec_enrollment_key | length > 0)
     - crowdsec_cscli_console_status.rc == 0
     - (crowdsec_cscli_console_status.stdout | from_json).get('status', '') != 'ENROLLED'
+
+- name: Resolve Caddy bouncer key
+  ansible.builtin.include_tasks: bouncer_key.yml
 
 - name: Check if Caddy bouncer is already registered
   ansible.builtin.command: cscli bouncers list -o json
   register: crowdsec_cscli_bouncers_list
   changed_when: false
   failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Determine whether the Caddy bouncer exists
+  ansible.builtin.set_fact:
+    crowdsec_caddy_bouncer_exists: >-
+      {{ crowdsec_cscli_bouncers_list.rc == 0 and 'caddy-bouncer' in
+         (crowdsec_cscli_bouncers_list.stdout | from_json | default([], true) | map(attribute='name') | list) }}
+
+# CrowdSec cannot show a bouncer's key, so ask the LAPI whether it accepts ours:
+# 200 means valid, 403 means the bouncer was registered with another key.
+# HEAD leaves the bouncer's IP, version and last pull untouched.
+# Retried because the LAPI may still be starting.
+- name: Check the Caddy bouncer key against the Local API
+  ansible.builtin.uri:
+    url: "http://{{ crowdsec_lapi_ip }}:{{ crowdsec_lapi_port }}/v1/decisions"
+    method: HEAD
+    headers:
+      X-Api-Key: "{{ crowdsec_bouncer_key }}"
+    status_code: [200, 403]
+  register: crowdsec_bouncer_key_check
+  until: crowdsec_bouncer_key_check.status in [200, 403]
+  retries: 10
+  delay: 3
+  no_log: true
+  check_mode: false # Read-only, safe to run in check mode
+  when: crowdsec_caddy_bouncer_exists | bool
+
+- name: Remove Caddy bouncer registered with another key
+  ansible.builtin.command:
+    argv: [cscli, bouncers, delete, caddy-bouncer]
+  changed_when: true
+  when:
+    - crowdsec_caddy_bouncer_exists | bool
+    - crowdsec_bouncer_key_check.status == 403
 
 - name: Register Caddy bouncer with CrowdSec Local API
-  ansible.builtin.command: "cscli bouncers add caddy-bouncer -k {{ crowdsec_api_key }}"
-  when:
-    - enable_crowdsec | default(true)
-    - "'caddy-bouncer' not in crowdsec_cscli_bouncers_list.stdout"
-    - crowdsec_cscli_bouncers_list.rc == 0
-    - crowdsec_api_key is defined
-    - crowdsec_api_key | length > 0
-  register: crowdsec_bouncer_registration_output
-  changed_when: crowdsec_bouncer_registration_output.rc == 0
-  failed_when: crowdsec_bouncer_registration_output.rc != 0 and 'already exists' not in crowdsec_bouncer_registration_output.stderr
+  ansible.builtin.command:
+    argv: [cscli, bouncers, add, caddy-bouncer, -k, "{{ crowdsec_bouncer_key }}"]
+  no_log: true
+  when: >-
+    crowdsec_cscli_bouncers_list.rc == 0
+    and (not crowdsec_caddy_bouncer_exists | bool or crowdsec_bouncer_key_check.status == 403)
+  changed_when: true
 
 - name: Configure CrowdSec to monitor Caddy access logs
   ansible.builtin.template:
@@ -162,56 +204,28 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
+  notify: Restart CrowdSec
 
-## CrowdSec Blocklist Import Machine Setup
-
-- name: Create CrowdSec machine for blocklist-import (idempotent)
-  ansible.builtin.command: "cscli machines add {{ crowdsec_machine_id | default('blocklist-import') }} --password '{{ crowdsec_machine_password }}' --force"
-  register: crowdsec_machine_creation
-  changed_when: "'Machine created successfully' in crowdsec_machine_creation.stdout or 'Machine updated successfully' in crowdsec_machine_creation.stdout"
-  failed_when: false
-  notify: Restart Crowdsec Service
-  when: enable_crowdsec_import | default(false)
-
-- name: Check if blocklist-import bouncer already exists
-  ansible.builtin.command: "cscli bouncers list -o json"
-  register: crowdsec_cscli_bouncers_list
-  changed_when: false
-  failed_when: false
-  when: enable_crowdsec_import | default(false)
-
-- name: Create CrowdSec bouncer for blocklist-import
-  ansible.builtin.command: "cscli bouncers add {{ crowdsec_machine_id | default('blocklist-import') }} -o raw"
-  register: crowdsec_bouncer_creation
-  changed_when: "'Bouncer created successfully' in crowdsec_bouncer_creation.stdout"
-  failed_when: false
-  notify: Restart Crowdsec Service
-  when:
-    - enable_crowdsec_import | default(false) | bool
-    - crowdsec_cscli_bouncers_list.rc == 0
-    - crowdsec_machine_id | default('blocklist-import') not in crowdsec_cscli_bouncers_list.stdout
-
-- name: Store blocklist-import bouncer API key
-  ansible.builtin.set_fact:
-    crowdsec_blocklist_import_bouncer_key: "{{ crowdsec_bouncer_creation.stdout | default('') | trim }}"
-  when:
-    - enable_crowdsec_import | default(false)
-    - crowdsec_bouncer_creation is defined
-    - crowdsec_bouncer_creation.stdout is defined
-    - crowdsec_bouncer_creation.stdout | length > 0
-
-- name: Persist blocklist-import bouncer API key to file
-  ansible.builtin.copy:
-    content: "{{ crowdsec_blocklist_import_bouncer_key }}\n"
-    dest: /etc/crowdsec/blocklist-import.bouncer.key
+# The apps run on the client, so their own logs are out of reach; failed
+# logins are recognised in the Caddy access log by path and status instead
+- name: Configure failed login detection
+  ansible.builtin.template:
+    src: login-bf.yaml.j2
+    dest: "{{ crowdsec_login_bf_file }}"
     owner: root
     group: root
-    mode: "0600"
-  when:
-    - enable_crowdsec_import | default(false)
-    - crowdsec_blocklist_import_bouncer_key is defined
-    - crowdsec_blocklist_import_bouncer_key | length > 0
+    mode: "0644"
+  notify: Restart CrowdSec
+  when: crowdsec_login_detection | bool
+
+- name: Remove failed login detection
+  ansible.builtin.file:
+    path: "{{ crowdsec_login_bf_file }}"
+    state: absent
+  notify: Restart CrowdSec
+  when: not crowdsec_login_detection | bool
+
+# The machine and bouncer for the blocklist import are managed by the crowdsec_import role
 
 ## CrowdSec Ntfy and Profile Configuration
 
@@ -222,40 +236,60 @@
     owner: root
     group: root
     mode: "0755"
-  when: ntfy_enabled | default(false)
+  when: ntfy_enabled | default(false) | bool
 
 - name: Create Ntfy notification configuration file
   ansible.builtin.template:
-    src: "templates/ntfy.yaml.j2"
+    src: ntfy.yaml.j2
     dest: /etc/crowdsec/notifications/ntfy.yaml
     owner: root
     group: root
-    mode: "0644"
-  notify: Restart Crowdsec Service
-  when: ntfy_enabled | default(false)
+    mode: "0600" # May contain the Ntfy auth token
+  diff: false
+  notify: Restart CrowdSec
+  when: ntfy_enabled | default(false) | bool
 
-- name: Install GeoIP enrichment parser (if Ntfy enabled)
-  ansible.builtin.command:
-    cmd: cscli parsers install crowdsecurity/geoip-enrich
-  register: crowdsec_geoip_install_output
-  changed_when: "'Successfully installed' in crowdsec_geoip_install_output.stdout or 'Upgraded' in crowdsec_geoip_install_output.stdout"
-  failed_when: "(crowdsec_geoip_install_output.rc != 0 and 'already installed' not in crowdsec_geoip_install_output.stderr and 'already enabled' not in crowdsec_geoip_install_output.stdout)"
-  notify: Restart Crowdsec Service
-  when:
-    - ntfy_enabled | default(false)
-    - "'crowdsecurity/geoip-enrich' not in (crowdsec_cscli_hub_update_output.stdout | default(''))"
+- name: Check installed CrowdSec parsers
+  ansible.builtin.command: cscli parsers list -o json
+  register: crowdsec_cscli_parsers_list
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
 
 - name: Create/update CrowdSec profiles.yaml for Ntfy or dynamic blocking
   ansible.builtin.template:
-    src: "templates/profiles.yaml.j2"
+    src: profiles.yaml.j2
     dest: /etc/crowdsec/profiles.yaml
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
-  when: (ntfy_enabled | default(false)) or (duration_expr | default(false))
+  notify: Restart CrowdSec
+  when: (ntfy_enabled | default(false) | bool) or (duration_expr | default(false) | bool)
 
-  ## CrowdSec Whitelist Configuration
+## CrowdSec Whitelist Configuration
+
+# The whitelists keep normal use of Nextcloud, Jellyfin, Seerr, ... from getting
+# users banned; GeoIP adds the country to the Ntfy notifications
+- name: Install hub parsers
+  ansible.builtin.command:
+    argv: [cscli, parsers, install, "{{ item }}"]
+  register: crowdsec_parser_install
+  changed_when: true
+  until: crowdsec_parser_install is succeeded
+  retries: 3
+  delay: 5 # The hub CDN drops a connection now and then
+  notify: Restart CrowdSec
+  loop: "{{ crowdsec_hub_whitelists + (['crowdsecurity/geoip-enrich'] if ntfy_enabled | default(false) | bool else []) }}"
+  when: item not in (crowdsec_cscli_parsers_list.stdout | default(''))
+
+- name: Ignore expired sessions outside login paths
+  ansible.builtin.template:
+    src: session-whitelist.yaml.j2
+    dest: "{{ crowdsec_session_whitelist_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
 
 - name: Ensure CrowdSec postoverflow whitelist directory exists
   ansible.builtin.file:
@@ -264,19 +298,14 @@
     owner: root
     group: root
     mode: "0755"
-  when: dynamic_whitelist_enabled | default(false)
+  when: dynamic_whitelist_enabled | default(false) | bool
 
 - name: Add dynamic IPs to CrowdSec postoverflow whitelist
   ansible.builtin.template:
-    src: 01-my-dynamic-whitelist.yaml.j2 # This template will now handle multiple hostnames
+    src: 01-my-dynamic-whitelist.yaml.j2
     dest: /etc/crowdsec/postoverflows/s01-whitelist/01-my-dynamic-whitelist.yaml
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Crowdsec Service
-  when: dynamic_whitelist_enabled | default(false)
-
-- name: Clean up temporary CrowdSec files
-  ansible.builtin.file:
-    path: "/tmp/install_crowdsec.sh"
-    state: absent
+  notify: Restart CrowdSec
+  when: dynamic_whitelist_enabled | default(false) | bool

@@ -1,0 +1,13 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/crowdsec-hubupdate.timer.j2
+
+[Unit]
+Description=Daily CrowdSec hub update
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

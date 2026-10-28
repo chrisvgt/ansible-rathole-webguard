@@ -1,4 +1,6 @@
 ---
+# roles/caddy/meta/main.yml
+
 galaxy_info:
   author: chrisvgt
   description: Install and configure Caddy with optional plugins (Cloudflare, CrowdSec)
@@ -6,9 +8,11 @@ galaxy_info:
   min_ansible_version: "2.14"
   platforms:
     - name: Debian
-      versions: ["bullseye", "bookworm"]
+      versions: ["bookworm", "trixie"]
     - name: Ubuntu
-      versions: ["focal", "jammy", "noble"]
+      versions: ["jammy", "noble"]
+    - name: ArchLinux
+      versions: ["all"]
   galaxy_tags:
     - caddy
     - http

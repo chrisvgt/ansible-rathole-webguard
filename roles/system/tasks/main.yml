@@ -1,0 +1,113 @@
+---
+# roles/system/tasks/main.yml
+
+# --- Journald: cap persistent log size ---
+
+- name: Ensure journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Limit journald disk usage
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/size.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Journald
+
+# --- Optional swap file ---
+
+- name: Configure swap file
+  when: system_swap_enabled | bool
+  block:
+    - name: Check whether the swap file exists
+      ansible.builtin.stat:
+        path: "{{ system_swap_file }}"
+      register: system_swap_stat
+
+    - name: Allocate swap file
+      ansible.builtin.command: "fallocate -l {{ system_swap_size }} {{ system_swap_file }}"
+      when: not system_swap_stat.stat.exists
+      changed_when: true
+
+    - name: Ensure swap file permissions
+      ansible.builtin.file:
+        path: "{{ system_swap_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+      when: system_swap_stat.stat.exists or not ansible_check_mode
+
+    - name: Check swap file signature
+      ansible.builtin.command: "blkid -p -s TYPE -o value {{ system_swap_file }}"
+      register: system_swap_type
+      changed_when: false
+      check_mode: false # Read-only, safe to run in check mode
+      failed_when: false
+
+    - name: Format swap file
+      ansible.builtin.command: "mkswap {{ system_swap_file }}"
+      when: system_swap_type.stdout != 'swap'
+      changed_when: true
+
+    - name: Check active swap devices
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: system_swap_active
+      changed_when: false
+      check_mode: false # Read-only, safe to run in check mode
+
+    - name: Enable swap file
+      ansible.builtin.command: "swapon {{ system_swap_file }}"
+      when: system_swap_file not in system_swap_active.stdout_lines
+      changed_when: true
+
+    - name: Persist swap file in /etc/fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^{{ system_swap_file | regex_escape }}\s'
+        line: "{{ system_swap_file }} none swap sw 0 0"
+        state: present
+
+    - name: Set vm.swappiness
+      ansible.builtin.template:
+        src: sysctl-swap.conf.j2
+        dest: /etc/sysctl.d/60-swap.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Apply Swap Sysctl Settings
+
+# --- Automatic security updates ---
+
+# Debian and Ubuntu only: Arch Linux has no separate security updates, it is
+# upgraded as a whole by the playbook run
+- name: Configure unattended-upgrades
+  when:
+    - system_unattended_upgrades | bool
+    - ansible_facts['os_family'] == "Debian"
+  block:
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Enable daily package list updates and upgrades
+      ansible.builtin.template:
+        src: 20auto-upgrades.j2
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Configure unattended-upgrades cleanup and reboot
+      ansible.builtin.template:
+        src: 52unattended-upgrades-local.j2
+        dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+        owner: root
+        group: root
+        mode: "0644"

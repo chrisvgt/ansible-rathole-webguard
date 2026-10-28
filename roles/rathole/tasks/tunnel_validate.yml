@@ -1,0 +1,121 @@
+---
+# roles/rathole/tasks/tunnel_validate.yml
+# Checks for tunnel_services. site.yml runs them before any role changes the
+# host; tunnel.yml runs them again so the role also works on its own.
+
+- name: Validate tunnel tuple membership
+  ansible.builtin.assert:
+    that:
+      - tunnel_id is defined
+      - tunnel_services is defined and tunnel_services is sequence
+    fail_msg: "tunnel_id and tunnel_services are required, see group_vars/tunnel.example.yml."
+    quiet: true
+
+- name: Validate tunnel tuple settings
+  ansible.builtin.assert:
+    that:
+      - tunnel_services | selectattr('name', 'undefined') | list | length == 0
+      - tunnel_services | selectattr('local_addr', 'undefined') | list | length == 0
+      - tunnel_services | map(attribute='name') | unique | list | length == tunnel_services | length
+    fail_msg: "Every service in tunnel_services needs a unique name and a local_addr."
+    quiet: true
+
+# Without bind_addr a service listens on loopback, on the port of its local_addr
+- name: Determine the bind address of each service
+  ansible.builtin.set_fact:
+    rathole_tunnel_binds: >-
+      {%- set ns = namespace(out={}) -%}
+      {%- for s in tunnel_services -%}
+        {%- set ns.out = ns.out | combine({s.name: s.bind_addr
+                                            | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', '')))}) -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
+- name: Ensure both Noise keys are set or none
+  ansible.builtin.assert:
+    that: (rathole_noise_private_key is defined) == (rathole_noise_public_key is defined)
+    fail_msg: "rathole_noise_private_key and rathole_noise_public_key must be set together (or both left out)."
+    quiet: true
+
+- name: Find hosts of this tunnel tuple
+  ansible.builtin.set_fact:
+    rathole_tuple_servers: >-
+      {{ groups['all'] | map('extract', hostvars) | selectattr('tunnel_id', 'defined')
+         | selectattr('tunnel_id', 'eq', tunnel_id) | selectattr('rathole_role', 'defined')
+         | selectattr('rathole_role', 'eq', 'server') | map(attribute='inventory_hostname') | list }}
+    rathole_tuple_clients: >-
+      {{ groups['all'] | map('extract', hostvars) | selectattr('tunnel_id', 'defined')
+         | selectattr('tunnel_id', 'eq', tunnel_id) | selectattr('rathole_role', 'defined')
+         | selectattr('rathole_role', 'eq', 'client') | map(attribute='inventory_hostname') | list }}
+
+- name: Ensure the tuple has one server and at most one client
+  ansible.builtin.assert:
+    that:
+      - rathole_tuple_servers | length == 1
+      - rathole_tuple_clients | length <= 1
+    fail_msg: >-
+      Tunnel '{{ tunnel_id }}' needs exactly one host with rathole_role=server and at most one client
+      (servers: {{ rathole_tuple_servers }}, clients: {{ rathole_tuple_clients }}).
+    quiet: true
+
+# 0.0.0.0 and :: listen on every address, so they collide with any other
+# address on the same port and type
+- name: Ensure each bind address and protocol is used once
+  ansible.builtin.assert:
+    that: rathole_tunnel_bind_conflicts | length == 0
+    fail_msg: >-
+      Services in tunnel '{{ tunnel_id }}' use the same bind_addr and type:
+      {{ rathole_tunnel_bind_conflicts | join(', ') }}
+    quiet: true
+  vars:
+    rathole_tunnel_bind_conflicts: >-
+      {%- set any_addr = ['0.0.0.0', '::', '[::]'] -%}
+      {%- set ns = namespace(seen=[], out=[]) -%}
+      {%- for s in tunnel_services -%}
+        {%- set bind = rathole_tunnel_binds[s.name] -%}
+        {%- set b = {'name': s.name, 'host': bind | regex_replace(':[^:]*$', ''),
+                     'port': bind | regex_replace('^.*:', ''), 'type': s.type | default('tcp')} -%}
+        {%- for o in ns.seen if o.port == b.port and o.type == b.type
+                                and (o.host == b.host or o.host in any_addr or b.host in any_addr) -%}
+          {%- set ns.out = ns.out + [o.name ~ ' and ' ~ b.name ~ ' (' ~ b.port ~ '/' ~ b.type ~ ')'] -%}
+        {%- endfor -%}
+        {%- set ns.seen = ns.seen + [b] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
+# A service bound to a port the server already uses cannot start (Rathole
+# reports "Address already in use"), or Caddy reaches the wrong program.
+# 8080 is a common app port and also the CrowdSec Local API.
+- name: Ensure no service binds a port the server already uses
+  ansible.builtin.assert:
+    that: rathole_tunnel_reserved_conflicts | length == 0
+    fail_msg: >-
+      Services in tunnel '{{ tunnel_id }}' use a port the server already needs:
+      {{ rathole_tunnel_reserved_conflicts | join(', ') }}.
+      Set bind_addr to a free port, e.g. bind_addr: 127.0.0.1:18080 (Caddy proxies to it).
+    quiet: true
+  vars:
+    rathole_tunnel_server_vars: "{{ hostvars[rathole_tuple_servers[0]] }}"
+    rathole_tunnel_reserved: >-
+      {{ [
+           {'port': '80', 'type': 'tcp', 'by': 'Caddy'},
+           {'port': '443', 'type': 'tcp', 'by': 'Caddy'},
+           {'port': '443', 'type': 'udp', 'by': 'Caddy'},
+           {'port': rathole_listen_addr | regex_replace('^.*:', ''),
+            'type': 'tcp', 'by': 'Rathole'},
+           {'port': rathole_tunnel_server_vars.ansible_port | default(22) | string, 'type': 'tcp', 'by': 'SSH'},
+         ]
+         + ([
+              {'port': crowdsec_lapi_port | default('8080') | string, 'type': 'tcp', 'by': 'CrowdSec Local API'},
+              {'port': crowdsec_appsec_port | default('7422') | string, 'type': 'tcp', 'by': 'CrowdSec AppSec'},
+              {'port': '6060', 'type': 'tcp', 'by': 'CrowdSec metrics'},
+            ] if enable_crowdsec | default(true) | bool else []) }}
+    rathole_tunnel_reserved_conflicts: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for s in tunnel_services -%}
+        {%- set port = rathole_tunnel_binds[s.name] | regex_replace('^.*:', '') -%}
+        {%- for r in rathole_tunnel_reserved if r.port == port and r.type == (s.type | default('tcp')) -%}
+          {%- set ns.out = ns.out + [s.name ~ ' (' ~ port ~ '/' ~ r.type ~ ', ' ~ r.by ~ ')'] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.out }}

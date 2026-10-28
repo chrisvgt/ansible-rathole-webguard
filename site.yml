@@ -1,3 +1,47 @@
+# Minimal server images may lack Python, which Ansible modules need, and sudo.
+# Runs before facts are gathered, with raw commands only.
+- name: Prepare hosts for Ansible
+  hosts: webservers
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Check whether the login user is root
+      ansible.builtin.raw: id -u
+      register: bootstrap_uid
+      changed_when: false
+      check_mode: false # Read-only, safe to run in check mode
+      tags: [always]
+
+    # Logged in as root, become is not needed; without this Ansible would
+    # still call sudo, which minimal images do not have
+    - name: Run as the login user when it is root
+      ansible.builtin.set_fact:
+        ansible_become: false
+      when: bootstrap_uid.stdout | trim == '0'
+      tags: [always]
+
+    - name: Install Python if it is missing
+      ansible.builtin.raw: |
+        command -v python3 >/dev/null 2>&1 && exit 0
+        if command -v apt-get >/dev/null 2>&1; then
+          # No prompts (e.g. tzdata on Ubuntu): raw runs with a terminal and would wait
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq && apt-get install -y -qq python3 >/dev/null || exit 1
+        elif command -v pacman >/dev/null 2>&1; then
+          # Keyring first, then a full upgrade: Arch does not support partial upgrades
+          pacman -Sy --noconfirm --needed archlinux-keyring >/dev/null &&
+            pacman -Su --noconfirm >/dev/null &&
+            pacman -S --noconfirm --needed python >/dev/null || exit 1
+        else
+          echo "no supported package manager found" >&2
+          exit 1
+        fi
+        echo "installed python"
+      become: "{{ bootstrap_uid.stdout | trim != '0' }}"
+      register: bootstrap_python
+      changed_when: "'installed python' in bootstrap_python.stdout"
+      tags: [always]
+
 - name: Ansible-Rathole-Webguard
   hosts: webservers
   become: true # All tasks in this play will run with root privileges
@@ -6,12 +50,36 @@
   any_errors_fatal: true # Stop on first error to avoid partial deployments
 
   pre_tasks:
-    - name: Ensure this playbook is only executed on Debian-based systems
+    # group_vars/all.yml is optional; missing settings get their documented defaults
+    # Static import, so the defaults also apply when only some tags are selected
+    - name: Apply defaults for global settings
+      ansible.builtin.import_tasks: tasks/global_defaults.yml
+      tags: [always]
+
+    - name: Ensure this playbook runs on a supported system
       ansible.builtin.assert:
         that:
-          - ansible_facts["os_family"] == "Debian"
-        fail_msg: "This playbook can only be executed on Debian-based systems (e.g., Ubuntu, Debian)."
-        success_msg: "System is Debian-based. Proceeding with the playbook."
+          - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+        fail_msg: "This playbook supports Debian, Ubuntu and Arch Linux, not {{ ansible_facts['distribution'] }}."
+        quiet: true
+
+    # CrowdSec publishes its release archives for x86_64 only
+    - name: Ensure Arch Linux runs on x86_64
+      ansible.builtin.assert:
+        that: ansible_facts['architecture'] == 'x86_64'
+        fail_msg: "Arch Linux is supported on x86_64 only."
+        quiet: true
+      when: ansible_facts['os_family'] == 'Archlinux'
+
+    # Fail early, before anything is changed
+    - name: Check the configuration
+      ansible.builtin.import_tasks: tasks/preflight.yml
+      tags: [always]
+
+    - name: Check the nameserver of the server
+      ansible.builtin.import_tasks: tasks/nameserver_check.yml
+      when: rathole_role == 'server'
+      tags: [always]
 
     - name: Ensure APT cache is updated and perform a system upgrade (Debian-based systems)
       ansible.builtin.apt:
@@ -19,16 +87,45 @@
         cache_valid_time: 3600
         upgrade: "{{ apt_upgrade_mode | default('safe') }}"
         autoremove: true
-      when: ansible_facts["os_family"] == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
 
-    - name: Install common system utilities (Debian-based systems)
-      ansible.builtin.apt:
+    # Arch Linux is upgraded as a whole, only here: there is no update timer
+    - name: Upgrade the system (Arch Linux)
+      community.general.pacman:
+        update_cache: true
+        upgrade: true
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    # Arch Linux removes the modules of the running kernel when it upgrades
+    # it, so reboot before the roles need modules (nftables)
+    - name: Check whether the upgrade needs a reboot (Arch Linux)
+      ansible.builtin.import_tasks: tasks/reboot_required.yml
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Reboot into the new kernel (Arch Linux)
+      ansible.builtin.reboot:
+        msg: "System rebooting into the new kernel."
+        pre_reboot_delay: 5
+        post_reboot_delay: 10
+        connect_timeout: 300
+      register: arch_reboot
+      when:
+        - ansible_facts['os_family'] == "Archlinux"
+        - enable_auto_reboot | bool
+        - reboot_required | bool
+
+    - name: Read the running kernel after the reboot (Arch Linux)
+      ansible.builtin.setup:
+        filter: [ansible_kernel]
+      when: arch_reboot.rebooted | default(false)
+
+    - name: Install common system utilities
+      ansible.builtin.package:
         name:
           - curl # For downloading files
           - unzip # For extracting archives
           - git # For version control and cloning repositories
         state: present
-      when: ansible_facts["os_family"] == "Debian"
       tags: [base]
 
     - name: Ensure /usr/local/bin exists
@@ -38,23 +135,17 @@
         mode: "0755"
       tags: [base]
 
-    # Pre-install Go + xcaddy in parallel before Caddy role
-    - name: Pre-install Go toolchain (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: go_lang
-      when: rathole_role == "server"
-      tags: [caddy, go]
-
-    - name: Pre-install xcaddy (runs before Caddy build)
-      ansible.builtin.include_role:
-        name: xcaddy
-      when: rathole_role == "server"
-      tags: [caddy, xcaddy]
-
   roles:
+    # Small-host tuning (journald size limit, optional swap file, security updates).
+    # Runs first so swap is available before the memory-hungry Caddy build.
+    # Set 'enable_system_tuning: false' to skip it (default: true).
+    - role: system
+      when: enable_system_tuning | bool
+      tags: system
+
     # The 'caddy' role is applied only when this host is designated as a Rathole 'server'.
     # Caddy acts as the web server and reverse proxy in the server setup.
-    # Dependencies (go_lang, xcaddy) are already resolved via pre_tasks.
+    # Dependencies (go_lang, xcaddy) run first, once, via the caddy role's meta/main.yml.
     - role: caddy
       when: rathole_role == "server"
       tags: caddy
@@ -62,14 +153,15 @@
     # The 'crowdsec' role provides security and is optional.
     # It's included only if the host is a Rathole 'server' AND 'enable_crowdsec' is true.
     - role: crowdsec
-      when: rathole_role == "server" and enable_crowdsec
+      when: rathole_role == "server" and enable_crowdsec | bool
       tags: crowdsec
 
     # CrowdSec blocklist import role
     # Only included if host is a Rathole 'server' AND crowdsec_import is enabled.
-    # Dependencies (crowdsec, python) are auto-resolved via meta/main.yml.
+    # Depends on the python role (meta/main.yml). The crowdsec role above must
+    # run first; the role asserts enable_crowdsec instead of depending on it.
     - role: crowdsec_import
-      when: rathole_role == "server" and enable_crowdsec_import
+      when: rathole_role == "server" and enable_crowdsec_import | bool
       tags: crowdsec_import
 
     # The 'rathole' role is always applied. Its internal tasks will
@@ -78,13 +170,20 @@
     - role: rathole
       tags: rathole
 
+    # Optional nftables firewall on the server, for hosts without a trusted
+    # provider firewall. Runs last: it opens the ports of the Rathole config.
+    # Always included on the server: with enable_firewall: false it removes
+    # the rules of an earlier run.
+    - role: firewall
+      when: rathole_role == "server"
+      tags: firewall
+
   post_tasks:
     - name: Check if reboot is required after package upgrades
-      ansible.builtin.stat:
-        path: /var/run/reboot-required
-      register: reboot_required_file
+      ansible.builtin.import_tasks: tasks/reboot_required.yml
       tags: [reboot]
 
+    # ansible.builtin.reboot already waits until the host is reachable again
     - name: Reboot host if required
       ansible.builtin.reboot:
         msg: "System rebooting due to package upgrades."
@@ -92,35 +191,30 @@
         post_reboot_delay: 10
         connect_timeout: 300
       when:
-        - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - enable_auto_reboot | bool # Set to 'false' to only report pending reboots
+        - reboot_required | bool
       tags: [reboot]
 
-    - name: Wait for host to reboot
-      ansible.builtin.wait_for_connection:
-        delay: 10
-        timeout: 300
+    - name: Report pending reboot
+      ansible.builtin.debug:
+        msg: "A reboot is required after package upgrades but enable_auto_reboot is false."
       when:
-        - ansible_facts["os_family"] == "Debian"
-        - reboot_required_file.stat.exists or (apt_upgrade_mode | default('safe')) == 'dist'
+        - not (enable_auto_reboot | bool)
+        - reboot_required | bool
       tags: [reboot]
 
+    # Temporary download/build files are cleaned up by each role itself
+    # Housekeeping, not a configuration change: always reported as changed by apt
     - name: Clean up APT package cache to save disk space
       ansible.builtin.apt:
         clean: true
+      changed_when: false
+      when: ansible_facts['os_family'] == "Debian"
       tags: [cleanup]
 
-    - name: Clean up global temporary files from roles
-      ansible.builtin.shell:
-        cmd: |
-          rm -f /tmp/go*.tar.gz
-          rm -f /tmp/xcaddy_temp.tar.gz
-          rm -f /tmp/xcaddy
-          rm -f /tmp/rathole_*.zip
-          rm -rf /tmp/rathole_unpacked
-          rm -f /tmp/install_crowdsec.sh
-          rm -rf /tmp/caddy_build
-          rm -rf /tmp/caddy_plugins
-        executable: /bin/bash
+    # pacman keeps every downloaded version; keep only the installed ones
+    - name: Clean up pacman package cache to save disk space
+      ansible.builtin.command: pacman -Sc --noconfirm
       changed_when: false
+      when: ansible_facts['os_family'] == "Archlinux"
       tags: [cleanup]

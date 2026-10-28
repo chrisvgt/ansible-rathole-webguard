@@ -1,0 +1,36 @@
+---
+# roles/firewall/tasks/disable.yml
+# enable_firewall: false removes a firewall set up by an earlier run; without
+# this, the boot unit would keep loading the old rules.
+
+- name: Check for a firewall from an earlier run
+  ansible.builtin.stat:
+    path: /etc/systemd/system/webguard-firewall.service
+  register: firewall_unit
+
+- name: Remove the firewall
+  when: firewall_unit.stat.exists
+  block:
+    - name: Stop loading the firewall rules at boot
+      ansible.builtin.systemd_service:
+        name: webguard-firewall
+        enabled: false
+        state: stopped
+
+    - name: Remove the firewall rules from the running system
+      ansible.builtin.command: nft delete table inet webguard
+      register: firewall_delete
+      changed_when: firewall_delete.rc == 0
+      failed_when: firewall_delete.rc != 0 and 'No such file or directory' not in firewall_delete.stderr
+
+    - name: Remove the boot unit and the rules file
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/webguard-firewall.service
+        - "{{ firewall_rules_file }}"
+
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true

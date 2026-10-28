@@ -1,0 +1,32 @@
+---
+# tests/examples.yml
+# The example files work as copied: run by tests/run.sh against a copy of
+# inventory.example.ini and group_vars/*.example.yml
+
+- name: Check the example tuple
+  hosts: webservers
+  gather_facts: false
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: Apply global defaults
+      ansible.builtin.include_tasks: "{{ repo_dir }}/tasks/global_defaults.yml"
+
+    - name: Run the preflight checks of site.yml
+      ansible.builtin.include_tasks: "{{ repo_dir }}/tasks/preflight.yml"
+
+    - name: Run Rathole derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Render and check the Caddyfile
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+      when: rathole_role == 'server'
+
+    - name: Check example result
+      ansible.builtin.assert:
+        that: >-
+          (rathole_role == 'server' and caddy_effective_sites | length == 4
+           and rathole_server_config.services | length == 4)
+          or (rathole_role == 'client' and rathole_client_config.remote_addr == '203.0.113.10:2333')

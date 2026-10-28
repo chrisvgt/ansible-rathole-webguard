@@ -1,0 +1,21 @@
+---
+# roles/firewall/meta/main.yml
+
+galaxy_info:
+  author: chrisvgt
+  description: nftables input filter for the server (SSH, web, Rathole and public tunnel ports)
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions: ["bookworm", "trixie"]
+    - name: Ubuntu
+      versions: ["jammy", "noble"]
+    - name: ArchLinux
+      versions: ["all"]
+  galaxy_tags:
+    - security
+    - firewall
+    - nftables
+
+dependencies: []

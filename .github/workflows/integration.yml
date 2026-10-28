@@ -1,0 +1,104 @@
+name: Integration
+
+"on":
+  # Changes reach develop through pull requests, which already ran this, and
+  # the release pull request runs it again; a push run there would repeat it
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+  # Weekly: new Arch Linux packages and upstream releases between changes
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: integration (${{ matrix.server }} server, ${{ matrix.client }} client)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { server: debian12, client: debian12 }
+          - { server: debian13, client: debian13 }
+          - { server: arch, client: arch }
+          - { server: arch, client: debian13 }
+          - { server: debian13, client: arch }
+          - { server: ubuntu2404, client: ubuntu2204 }
+          - { server: ubuntu2204, client: ubuntu2404 }
+    env:
+      TASK_COVERAGE_FILE: ${{ github.workspace }}/task-coverage.txt
+      ANSIBLE_CALLBACK_PLUGINS: ${{ github.workspace }}/tests/callback_plugins
+      ANSIBLE_CALLBACKS_ENABLED: task_coverage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install Ansible
+        run: pip install -r tests/requirements.txt
+
+      # The firewall tests run nftables with conntrack in containers, which
+      # cannot load kernel modules themselves
+      - name: Prepare nftables
+        run: |
+          sudo apt-get install -y nftables
+          sudo modprobe -a nf_tables nft_ct
+
+      # The other tests do not depend on the system of the hosts; here for
+      # the task coverage of the modes the full run does not use
+      - name: Tests
+        if: matrix.server == 'debian13' && matrix.client == 'debian13'
+        run: ./tests/run.sh
+
+      - name: Full run against a server and a client
+        env:
+          SERVER_OS: ${{ matrix.server }}
+          CLIENT_OS: ${{ matrix.client }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./tests/check_integration.sh
+
+      - name: Keep the task coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-coverage-${{ matrix.server }}-${{ matrix.client }}
+          path: task-coverage.txt
+          if-no-files-found: ignore
+
+  # Over all combinations: tasks for one system only run on that system
+  coverage:
+    name: task coverage (at least 90%)
+    needs: integration
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Fetch the task coverage of all combinations
+        uses: actions/download-artifact@v4
+        with:
+          pattern: task-coverage-*
+          path: coverage
+
+      - name: Task coverage (at least 90%)
+        run: |
+          pip install pyyaml
+          cat coverage/*/task-coverage.txt > task-coverage.txt
+          python3 tests/coverage.py task-coverage.txt --min 90 --missing

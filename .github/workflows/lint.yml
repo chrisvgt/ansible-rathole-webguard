@@ -1,10 +1,12 @@
 name: Lint Ansible
 
 "on":
+  # Changes reach develop through pull requests, which already ran this, and
+  # the release pull request runs it again; a push run there would repeat it
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   lint:
@@ -16,23 +18,34 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version-file: .python-version
 
       - name: Install linters
         run: |
           python -m pip install --upgrade pip
-          pip install yamllint ansible ansible-lint pre-commit
+          pip install -r tests/requirements.txt yamllint ansible-lint pre-commit
 
-      - name: Yamllint (warnings allowed)
-        run: |
-          # Yamllint exits non-zero for errors only; we've configured most style issues as warnings.
-          yamllint -s .
+      - name: Yamllint (strict, warnings fail)
+        run: yamllint -s .
 
       - name: Ansible-lint
         env:
           ANSIBLE_DEPRECATION_WARNINGS: "false"
-        run: |
-          ansible-lint -v site.yml
+        run: ansible-lint
+
+      - name: Playbook syntax check
+        run: ansible-playbook --syntax-check -i localhost, site.yml
+
+      - name: Install nftables (firewall rule syntax check)
+        run: sudo apt-get install -y nftables
+
+      # The firewall test runs nftables with conntrack in a container, which
+      # cannot load kernel modules itself
+      - name: Load nftables kernel modules
+        run: sudo modprobe -a nf_tables nft_ct
+
+      - name: Tests
+        run: ./tests/run.sh
 
       - name: Pre-commit (format checks)
         run: |
