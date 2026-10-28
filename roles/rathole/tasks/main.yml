@@ -53,19 +53,11 @@
         prefix: rathole_
       register: rathole_tmp_dir
 
-    - name: Look up the SHA256 of the Rathole asset
-      ansible.builtin.uri:
-        url: "{{ rathole_release_url }}"
-        headers:
-          Accept: application/vnd.github+json
-      register: rathole_release
-      check_mode: false # Read-only, safe to run in check mode
-
     - name: Download Rathole zip asset
       ansible.builtin.get_url:
         url: "{{ rathole_download_url_base }}/{{ rathole_asset_name }}"
         dest: "{{ rathole_tmp_dir.path }}/{{ rathole_asset_name }}"
-        checksum: "{{ rathole_release.json.assets | selectattr('name', 'equalto', rathole_asset_name) | map(attribute='digest') | first }}"
+        checksum: "sha256:{{ rathole_download_url_base }}/{{ rathole_asset_name }}.sha256"
         mode: "0644"
       register: rathole_download_result
       until: rathole_download_result is succeeded
