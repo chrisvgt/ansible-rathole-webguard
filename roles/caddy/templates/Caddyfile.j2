@@ -280,11 +280,101 @@ coraza_waf {
 }
 {%- endmacro %}
 {#
-Security headers for every site. HSTS keeps browsers on HTTPS after the first
+Request handling of one site, the same in both modes. `port` is the local
+port, `id` names the rate limit zone and the Coraza audit log, `ws` the
+WebSocket matcher (unique within a site block).
+#}
+{% macro site_handlers(site, port, id, ws) %}
+# === WebSocket detection (must be evaluated first) ===
+# WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
+# a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
+@{{ ws }} header Upgrade websocket
+handle @{{ ws }} {
+    {% if enable_crowdsec | bool %}
+    crowdsec
+    {% endif %}
+    reverse_proxy localhost:{{ port }} {
+        header_up X-Request-ID {http.request.id}
+        {% if site.stream | default(false) %}
+        flush_interval -1
+        {% endif %}
+    }
+}
+# === Standard traffic: full security pipeline ===
+handle {
+    {% if enable_crowdsec | bool %}
+    # 1. CrowdSec: blocks known bad IPs (cheapest check first)
+    crowdsec
+    {% endif %}
+    {% if enable_rate_limit | default(true) | bool %}
+    # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
+    rate_limit {
+        zone {{ id }} {
+            key "{http.request.remote.ip}"
+            window {{ site.rate_limit_window | default('1m') }}
+            events {{ site.rate_limit_events | default(500) }}
+        }
+    }
+    {% endif %}
+
+    {% set site_coraza_mode = site.coraza_mode | default(none) %}
+    {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
+        {% set effective_coraza_mode = site_coraza_mode %}
+        {% set site_has_waf = true %}
+    {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
+        {% set site_has_waf = false %}
+    {% else %}
+        {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
+        {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
+    {% endif %}
+    {% if site_has_waf %}
+    # 3. Coraza WAF: lightweight rules, low CPU
+    {{ coraza_directives(effective_coraza_mode, id) | indent(4) }}
+    {% endif %}
+    {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
+    # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
+    # Auto-disabled for stream: true sites (media streaming has binary payloads
+    # that AppSec cannot inspect, causing timeouts and 100% CPU).
+    appsec
+    {% endif %}
+    # 5. Reverse Proxy
+    {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
+    @forward_path path {{ site.forward_path }}*
+    reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(port) }} {
+        {% if site.forward_ip is defined %}
+        header_up X-Forwarded-For {{ site.forward_ip }}
+        {% endif %}
+        {% if site.stream | default(false) %}
+        flush_interval -1
+        {% endif %}
+        {% if site.proxy_timeout is defined %}
+        transport http {
+            response_header_timeout {{ site.proxy_timeout }}
+            dial_timeout {{ site.proxy_timeout }}
+        }
+        {% endif %}
+    }
+    {% endif %}
+    reverse_proxy localhost:{{ port }} {
+        header_up X-Request-ID {http.request.id}
+        {% if site.stream | default(false) %}
+        flush_interval -1
+        {% endif %}
+        {% if site.proxy_timeout is defined %}
+        transport http {
+            response_header_timeout {{ site.proxy_timeout }}
+            dial_timeout {{ site.proxy_timeout }}
+        }
+        {% endif %}
+    }
+}
+{%- endmacro %}
+{#
+Response headers of one site. HSTS keeps browsers on HTTPS after the first
 visit (without includeSubDomains, so other subdomains are not affected).
 X-XSS-Protection is left out: browsers dropped it and it can cause harm.
 #}
-{% macro security_headers() %}
+{% macro site_headers(site) %}
 # Security headers
 header {
     Strict-Transport-Security "max-age=31536000"
@@ -294,6 +384,13 @@ header {
     Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
     -Server
 }
+
+# Caching headers for static media/metadata to reduce requests
+# Use site.cache_paths to customize per site (Jellyfin defaults if not set)
+{% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
+@static_assets path {{ cache_paths }}
+header @static_assets Cache-Control "public, max-age=86400"
+header @static_assets ETag {http.response.header.ETag}
 {%- endmacro %}
 {#
 One site block for traditional mode, also used in wildcard mode for domains
@@ -302,104 +399,9 @@ that the wildcard certificate does not cover.
 {% macro traditional_site(site) %}
 {{ site.domain }} {
     route {
-        # === WebSocket detection (must be evaluated first) ===
-        # WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
-        # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
-        @websocket header Upgrade websocket
-        handle @websocket {
-            {% if enable_crowdsec | bool %}
-            crowdsec
-            {% endif %}
-            reverse_proxy localhost:{{ site.local_port }} {
-                header_up X-Request-ID {http.request.id}
-                header_up X-Forwarded-For {http.request.remote.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-Host {http.request.host}
-                {% if site.stream | default(false) %}
-                flush_interval -1
-                {% endif %}
-            }
-        }
-        # === Standard traffic: full security pipeline ===
-        handle {
-            {% if enable_crowdsec | bool %}
-            # 1. CrowdSec: blocks known bad IPs (cheapest check first)
-            crowdsec
-            {% endif %}
-            {% if enable_rate_limit | default(true) | bool %}
-            # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
-            rate_limit {
-                zone {{ site.name | default(site.domain | replace('.', '_')) }} {
-                    key "{http.request.remote.ip}"
-                    window {{ site.rate_limit_window | default('1m') }}
-                    events {{ site.rate_limit_events | default(500) }}
-                }
-            }
-            {% endif %}
-
-            {% set site_coraza_mode = site.coraza_mode | default(none) %}
-            {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
-                {% set effective_coraza_mode = site_coraza_mode %}
-                {% set site_has_waf = true %}
-            {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
-                {% set site_has_waf = false %}
-            {% else %}
-                {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
-                {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
-            {% endif %}
-            {% if site_has_waf %}
-            # 3. Coraza WAF: lightweight rules, low CPU
-            {{ coraza_directives(effective_coraza_mode, site.name) | indent(12) }}
-            {% endif %}
-            {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
-            # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
-            # Auto-disabled for stream: true sites (media streaming has binary payloads
-            # that AppSec cannot inspect, causing timeouts and 100% CPU).
-            appsec
-            {% endif %}
-            # 5. Reverse Proxy
-            {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
-            @forward_path path {{ site.forward_path }}*
-            reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.local_port) }} {
-                {% if site.forward_ip is defined %}
-                header_up X-Forwarded-For {{ site.forward_ip }}
-                {% endif %}
-                {% if site.stream | default(false) %}
-                flush_interval -1
-                {% endif %}
-                {% if site.proxy_timeout is defined %}
-                transport http {
-                    response_header_timeout {{ site.proxy_timeout }}
-                    dial_timeout {{ site.proxy_timeout }}
-                }
-                {% endif %}
-            }
-            {% endif %}
-            reverse_proxy localhost:{{ site.local_port }} {
-                header_up X-Request-ID {http.request.id}
-                header_up X-Forwarded-For {http.request.remote.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-Host {http.request.host}
-                {% if site.stream | default(false) %}
-                flush_interval -1
-                {% endif %}
-                {% if site.proxy_timeout is defined %}
-                transport http {
-                    response_header_timeout {{ site.proxy_timeout }}
-                    dial_timeout {{ site.proxy_timeout }}
-                }
-                {% endif %}
-            }
-        }
+        {{ site_handlers(site, site.local_port, site.name | default(site.domain | replace('.', '_')), 'websocket') | indent(8) }}
     }
-    {{ security_headers() | indent(4) }}
-
-    # Caching headers for static media/metadata to reduce requests
-    # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
-    {% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
-    @static_assets path {{ cache_paths }}
-    header @static_assets Cache-Control "public, max-age=86400"
-    header @static_assets ETag {http.response.header.ETag}
+    {{ site_headers(site) | indent(4) }}
 
     # Access logging for this site
     log {
@@ -441,108 +443,8 @@ that the wildcard certificate does not cover.
         # Match exact subdomain for this base domain (e.g., test.example.com)
         @{{ site.name }} host {{ site.subdomain }}.{{ base_domain | replace('*.','') }}
         handle @{{ site.name }} {
-            # === WebSocket detection (must be evaluated first) ===
-            # WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
-            # a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
-            @{{ site.name }}_ws header Upgrade websocket
-            handle @{{ site.name }}_ws {
-                {% if enable_crowdsec | bool %}
-                crowdsec
-                {% endif %}
-                reverse_proxy localhost:{{ site.port }} {
-                    header_up X-Request-ID {http.request.id}
-                    header_up X-Forwarded-For {http.request.remote.host}
-                    header_up X-Forwarded-Proto {http.request.scheme}
-                    header_up X-Forwarded-Host {http.request.host}
-                    {% if site.stream | default(false) %}
-                    flush_interval -1
-                    {% endif %}
-                }
-            }
-            # === Standard traffic: full security pipeline ===
-            handle {
-                {% if enable_crowdsec | bool %}
-                # 1. CrowdSec: blocks known bad IPs (cheapest check first)
-                crowdsec
-                {% endif %}
-                {% if enable_rate_limit | default(true) | bool %}
-                # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
-                rate_limit {
-                    zone {{ site_id }} {
-                        key "{http.request.remote.ip}"
-                        window {{ site.rate_limit_window | default('1m') }}
-                        events {{ site.rate_limit_events | default(500) }}
-                    }
-                }
-                {% endif %}
-
-                {% set site_coraza_mode = site.coraza_mode | default(none) %}
-                {% if site_coraza_mode is not none and site_coraza_mode != 'off' %}
-                    {% set effective_coraza_mode = site_coraza_mode %}
-                    {% set site_has_waf = true %}
-                {% elif site_coraza_mode is not none and site_coraza_mode == 'off' %}
-                    {% set site_has_waf = false %}
-                {% else %}
-                    {% set site_has_waf = enable_coraza_waf | default(false) | bool %}
-                    {% set effective_coraza_mode = coraza_mode_default | default('recommended') %}
-                {% endif %}
-                {% if site_has_waf %}
-                # 3. Coraza WAF: lightweight rules, low CPU
-                {{ coraza_directives(effective_coraza_mode, site_id) | indent(16) }}
-                {% endif %}
-
-                {% if enable_crowdsec | bool and not site.disable_appsec | default(false) and not site.stream | default(false) %}
-                # 4. CrowdSec AppSec: deep behavior/application inspection (most expensive - runs last)
-                # Auto-disabled for stream: true sites (media streaming has binary payloads
-                # that AppSec cannot inspect, causing timeouts and 100% CPU).
-                appsec
-                {% endif %}
-
-                # 5. Reverse Proxy: Only clean, encrypted traffic reaches this point
-                {% if site.enable_forward is defined and site.enable_forward and site.forward_path is defined %}
-                # Route specific paths to different backends when configured
-                @forward_path path {{ site.forward_path }}*
-                reverse_proxy @forward_path localhost:{{ site.forward_path_port | default(site.port) }} {
-                    {% if site.forward_ip is defined %}
-                    header_up X-Forwarded-For {{ site.forward_ip }}
-                    {% endif %}
-                    {% if site.stream | default(false) %}
-                    flush_interval -1
-                    {% endif %}
-                    {% if site.proxy_timeout is defined %}
-                    transport http {
-                        response_header_timeout {{ site.proxy_timeout }}
-                        dial_timeout {{ site.proxy_timeout }}
-                    }
-                    {% endif %}
-                }
-                {% endif %}
-
-                # Default proxy for all other paths
-                reverse_proxy localhost:{{ site.port }} {
-                    header_up X-Request-ID {http.request.id}
-                    header_up X-Forwarded-For {http.request.remote.host}
-                    header_up X-Forwarded-Proto {http.request.scheme}
-                    header_up X-Forwarded-Host {http.request.host}
-                    {% if site.stream | default(false) %}
-                    flush_interval -1
-                    {% endif %}
-                    {% if site.proxy_timeout is defined %}
-                    transport http {
-                        response_header_timeout {{ site.proxy_timeout }}
-                        dial_timeout {{ site.proxy_timeout }}
-                    }
-                    {% endif %}
-                }
-            }
-            {{ security_headers() | indent(12) }}
-
-            # Caching headers for static media/metadata to reduce requests
-            # Use site.cache_paths to customize per site (Jellyfin defaults if not set)
-            {% set cache_paths = site.cache_paths | default('/Items/* /Images/* /web/* *.js *.css *.jpg *.png *.gif') %}
-            @static_assets path {{ cache_paths }}
-            header @static_assets Cache-Control "public, max-age=86400"
-            header @static_assets ETag {http.response.header.ETag}
+            {{ site_handlers(site, site.port, site_id, site.name ~ '_ws') | indent(12) }}
+            {{ site_headers(site) | indent(12) }}
         }
         {% endfor %}
 

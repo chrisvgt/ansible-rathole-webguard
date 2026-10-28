@@ -6,6 +6,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         body = b"hello from the client\n"
+        if self.path == "/headers":
+            names = ("X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host")
+            body = "".join(f"{n}: {self.headers.get(n)}\n" for n in names).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
