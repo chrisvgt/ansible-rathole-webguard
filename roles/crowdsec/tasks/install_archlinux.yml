@@ -45,11 +45,16 @@
         suffix: crowdsec
       register: crowdsec_archive_dir
 
+    # A GITHUB_TOKEN on the control node (set in CI) lifts GitHub's limit of 60
+    # requests per hour, which runners sharing an address can reach
     - name: Look up the release assets
       ansible.builtin.uri:
         url: "https://api.github.com/repos/{{ item.repo }}/releases/tags/v{{ item.version }}"
-        headers:
-          Accept: application/vnd.github+json
+        headers: >-
+          {{ {'Accept': 'application/vnd.github+json'}
+             | combine({'Authorization': 'Bearer ' ~ github_token} if github_token else {}) }}
+      vars:
+        github_token: "{{ lookup('ansible.builtin.env', 'GITHUB_TOKEN') }}"
       register: crowdsec_releases
       loop: "{{ crowdsec_archive_installs }}"
       loop_control:
