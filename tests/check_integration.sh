@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Full run of site.yml against a server and a client container (Debian 12,
-# Debian 13 or Arch Linux with systemd, own network), then checks from the
+# Full run of site.yml against a server and a client container (Debian,
+# Ubuntu or Arch Linux with systemd, own network), then checks from the
 # outside: site through the tunnel, CrowdSec bouncer, firewall, Caddy sandbox.
 # A second run must change nothing, a check-mode run must pass, and turning the
 # firewall off must remove it.
 # The playbook runs like on real hosts: through scripts/run-playbook.sh, over
-# SSH with host key checking, as a user with sudo on Debian and as root on Arch
-# Linux.
+# SSH with host key checking, as a user with sudo on Debian and Ubuntu and as
+# root on Arch Linux.
 # SERVER_OS and CLIENT_OS choose the system of each host: debian13 (default),
-# debian12 or arch.
+# debian12, ubuntu2204, ubuntu2404 or arch.
 # Needs Docker with --privileged, network access and ssh.
 set -euo pipefail
 
@@ -31,13 +31,13 @@ cleanup # Leftovers of an aborted run
 logs=$(mktemp -d)
 trap 'cleanup; rm -rf "$logs" 2>/dev/null || true' EXIT # The swap file belongs to root
 
-# Debian like a minimal server image: systemd, sshd and sudo, but no Python,
-# the playbook installs it itself (built once per release, reused)
-debian_image() { # release
-  local image=webguard-integration:debian$1-ssh
+# Debian or Ubuntu like a minimal server image: systemd, sshd and sudo, but no
+# Python, the playbook installs it itself (built once per release, reused)
+apt_image() { # image, e.g. debian:13
+  local image=webguard-integration:${1/:/}-ssh
   if ! docker image inspect "$image" >/dev/null 2>&1; then
     docker rm -f it-build >/dev/null 2>&1 || true
-    docker run --name it-build "debian:$1" sh -c 'apt-get update -qq &&
+    docker run --name it-build -e DEBIAN_FRONTEND=noninteractive "$1" sh -c 'apt-get update -qq &&
       apt-get install -y -qq --no-install-recommends systemd systemd-sysv openssh-server sudo >/dev/null &&
       rm -rf /var/lib/apt/lists/*' >&2 || return
     docker commit it-build "$image" >/dev/null || return
@@ -60,10 +60,11 @@ fi
 
 image_for() {
   case $1 in
-    debian12 | debian13) debian_image "${1#debian}" ;;
+    debian12 | debian13) apt_image "debian:${1#debian}" ;;
+    ubuntu2204 | ubuntu2404) apt_image "ubuntu:${1:6:2}.${1:8:2}" ;;
     arch) echo "$arch_image" ;;
     *)
-      echo "unknown OS: $1 (debian12, debian13 or arch)" >&2
+      echo "unknown OS: $1 (debian12, debian13, ubuntu2204, ubuntu2404 or arch)" >&2
       exit 2
       ;;
   esac
@@ -98,8 +99,8 @@ on() { docker exec "$1" bash -c "$2"; }
 ip_of() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"; }
 
 # SSH access like on real hosts: a key for this run, a user with sudo on
-# Debian and root on Arch Linux. The hosts are reached through an own SSH
-# config, so ~/.ssh/config and known_hosts of this computer are not used.
+# Debian and Ubuntu and root on Arch Linux. The hosts are reached through an
+# own SSH config, so ~/.ssh/config and known_hosts of this computer are not used.
 ssh-keygen -q -t ed25519 -N '' -C integration -f "$logs/id_ed25519"
 : >"$logs/known_hosts"
 : >"$logs/ssh_config"

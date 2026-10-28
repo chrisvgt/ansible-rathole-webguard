@@ -9,7 +9,7 @@ Ansible playbook that publishes services from a home network through a small VPS
 - **CrowdSec** (optional, on by default) blocks bad IPs and inspects requests (AppSec).
 - **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates and blocklist import are opt-in.
 
-Supported: Debian (bullseye, bookworm, trixie) and Ubuntu (focal, jammy, noble) on x86_64, arm64 and armv6/armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
+Supported: Debian 12 and 13 and Ubuntu 22.04 and 24.04 LTS on x86_64, arm64 and armv6/armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
 
 Target server size: 2 vCPU, 2 GB RAM, about 10 GB disk. See [Resource footprint](#resource-footprint).
 
