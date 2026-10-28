@@ -275,6 +275,7 @@
     owner: root
     group: root
     mode: "0600" # May contain the Ntfy auth token
+  diff: false
   notify: Restart CrowdSec
   when: ntfy_enabled | default(false) | bool
 
