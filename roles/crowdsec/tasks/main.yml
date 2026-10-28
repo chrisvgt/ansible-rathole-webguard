@@ -72,10 +72,12 @@
 
 ## CrowdSec Hub Content Installation
 
+# Only refreshes the index, which changes upstream at any time; installed
+# items are not touched, so a second run stays without changes
 - name: Update CrowdSec Hub
   ansible.builtin.command: cscli hub update
   register: crowdsec_cscli_hub_update_output
-  changed_when: "'Nothing to do' not in crowdsec_cscli_hub_update_output.stdout"
+  changed_when: false
   failed_when: crowdsec_cscli_hub_update_output.rc != 0
   until: crowdsec_cscli_hub_update_output is succeeded
   retries: 3
