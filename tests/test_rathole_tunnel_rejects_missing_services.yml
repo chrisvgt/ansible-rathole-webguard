@@ -1,13 +1,12 @@
 ---
-# tests/test_rathole_tunnel_rejects_legacy_mix.yml
-# tunnel_services together with caddy_sites
+# tests/test_rathole_tunnel_rejects_missing_services.yml
+# Without tunnel_services there is nothing to configure
 
-- name: Reject tunnel_services together with caddy_sites
+- name: Reject a host without tunnel_services
   hosts: srv
   gather_facts: false
   vars:
-    caddy_sites:
-      - { name: old, domain: old.example.com, local_port: 8000 }
+    tunnel_services: null
   tasks:
     - name: Run tunnel derivation
       block:
@@ -24,4 +23,4 @@
       ansible.builtin.assert:
         that:
           - rejected_msg is defined
-          - "'caddy_sites cannot be used together' in rejected_msg"
+          - "'tunnel_services are required' in rejected_msg"
