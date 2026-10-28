@@ -3,16 +3,21 @@
 # Checks for tunnel_services. site.yml runs them before any role changes the
 # host; tunnel.yml runs them again so the role also works on its own.
 
-- name: Validate tunnel tuple settings
+- name: Validate tunnel tuple membership
   ansible.builtin.assert:
     that:
       - tunnel_id is defined
-      - tunnel_services is sequence
+      - tunnel_services is defined and tunnel_services is sequence
+    fail_msg: "tunnel_id and tunnel_services are required, see group_vars/tunnel.example.yml."
+    quiet: true
+
+- name: Validate tunnel tuple settings
+  ansible.builtin.assert:
+    that:
       - tunnel_services | selectattr('name', 'undefined') | list | length == 0
       - tunnel_services | selectattr('local_addr', 'undefined') | list | length == 0
       - tunnel_services | map(attribute='name') | unique | list | length == tunnel_services | length
-    fail_msg: >-
-      tunnel_services needs tunnel_id, and every service needs a unique name and a local_addr.
+    fail_msg: "Every service in tunnel_services needs a unique name and a local_addr."
     quiet: true
 
 - name: Ensure both Noise keys are set or none
@@ -20,18 +25,6 @@
     that: (rathole_noise_private_key is defined) == (rathole_noise_public_key is defined)
     fail_msg: "rathole_noise_private_key and rathole_noise_public_key must be set together (or both left out)."
     quiet: true
-
-- name: Ensure tunnel mode is not mixed with legacy settings
-  ansible.builtin.assert:
-    that: lookup('ansible.builtin.varnames', '^' ~ item ~ '$') | length == 0
-    fail_msg: "{{ item }} cannot be used together with tunnel_services. Move its entries into tunnel_services."
-    quiet: true
-  loop:
-    - rathole_server_config
-    - rathole_client_config
-    - caddy_sites
-    - wildcard_sites
-  when: not (rathole_auto_secrets | default(false) | bool)
 
 - name: Find hosts of this tunnel tuple
   ansible.builtin.set_fact:

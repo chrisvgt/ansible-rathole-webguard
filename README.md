@@ -210,10 +210,6 @@ A service with several domains gets one site per domain, named `<name>_<domain>`
 
 WebSocket upgrades skip rate limiting, WAF and AppSec (they cannot inspect the stream); the CrowdSec IP check still applies.
 
-### Legacy configuration
-
-Configurations from older versions keep working: `rathole_server_config` / `rathole_client_config` and `caddy_sites` / `wildcard_sites` in `host_vars/<host>.yml`, with `rathole_role` per host. A host uses either `tunnel_services` or these variables, not both; the preflight check stops otherwise. To migrate, move the services of both hosts into one `tunnel_services` list and keep the existing keys and token with `rathole_noise_private_key`, `rathole_noise_public_key` and `rathole_default_token`, so the running tunnel does not change.
-
 ### Small host tuning (`system` role)
 
 | Variable                        | Default     | Effect                                                                                                                |
@@ -243,7 +239,7 @@ Moving the VPS to another system: install the new system, keep the inventory ent
 
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site. With `tunnel_services`: `tunnel_id` is set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and no legacy Rathole or Caddy site variables are mixed in. The roles also check that `rathole_server_config` / `rathole_client_config` exist (legacy), that the CPU architecture is supported and that the import password is set.
+1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port) and both Noise keys are set together. The roles also check that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`; on Arch Linux `pacman -Syu`, and with a new kernel a reboot right away (if `enable_auto_reboot` is true), because Arch Linux removes the modules of the running kernel that the firewall needs.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.

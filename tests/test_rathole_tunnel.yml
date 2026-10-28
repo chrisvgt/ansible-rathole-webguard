@@ -21,7 +21,6 @@
           - (rathole_server_config.services | selectattr('name', 'eq', 'game-tcp') | first).bind_addr == '0.0.0.0:30000'
           - rathole_server_config.services | selectattr('local_addr', 'defined') | list | length == 0
           - rathole_server_config.transport.type == 'noise'
-          - rathole_auto_secrets | bool
       when: rathole_role == 'server'
 
     - name: Check client config

@@ -33,10 +33,8 @@
 
 - name: Validate that the server has sites in traditional mode
   ansible.builtin.assert:
-    that: >-
-      (caddy_sites | default([]) | length > 0)
-      or (tunnel_services | default([], true) | map(attribute='domain', default='') | select | list | length > 0)
-    fail_msg: "enable_wildcard is false, so caddy_sites or a tunnel_services entry with a domain is required."
+    that: tunnel_services | default([], true) | map(attribute='domain', default='') | select | list | length > 0
+    fail_msg: "enable_wildcard is false, so a tunnel_services entry with a domain is required."
     quiet: true
   when:
     - rathole_role == 'server'
@@ -46,7 +44,6 @@
   ansible.builtin.import_role:
     name: rathole
     tasks_from: tunnel_validate
-  when: (tunnel_services | default(none)) is not none
 
 - name: Validate that CrowdSec import has CrowdSec enabled
   ansible.builtin.assert:

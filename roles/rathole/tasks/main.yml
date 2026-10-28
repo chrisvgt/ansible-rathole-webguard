@@ -1,22 +1,8 @@
 ---
 # roles/rathole/tasks/main.yml
 
-# Tunnel tuple mode: derive the Rathole config from tunnel_services
 - name: Build Rathole config from tunnel_services
   ansible.builtin.include_tasks: tunnel.yml
-  when: (tunnel_services | default(none)) is not none
-
-- name: Validate Rathole role variables
-  ansible.builtin.assert:
-    that:
-      - rathole_role is defined
-      - rathole_role in ['server', 'client']
-      - rathole_role != 'server' or (rathole_server_config | default(none)) is mapping
-      - rathole_role != 'client' or (rathole_client_config | default(none)) is mapping
-    fail_msg: >-
-      rathole_role must be 'server' or 'client' and the matching
-      rathole_server_config / rathole_client_config mapping (or tunnel_services) must be defined.
-    quiet: true
 
 - name: Ensure Rathole system group exists
   ansible.builtin.group:
@@ -130,10 +116,9 @@
     group: "{{ rathole_group }}"
     mode: "0750"
 
-# Tunnel tuple mode: create or read Noise keys and the default token
+# Create or read the Noise keys and the default token
 - name: Add tunnel secrets to the Rathole config
   ansible.builtin.include_tasks: secrets.yml
-  when: rathole_auto_secrets | default(false) | bool
 
 - name: Create or update Rathole configuration file
   ansible.builtin.template:
