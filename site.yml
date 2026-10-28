@@ -76,6 +76,11 @@
       ansible.builtin.import_tasks: tasks/preflight.yml
       tags: [always]
 
+    - name: Check the nameserver of the server
+      ansible.builtin.import_tasks: tasks/nameserver_check.yml
+      when: rathole_role == 'server'
+      tags: [always]
+
     - name: Ensure APT cache is updated and perform a system upgrade (Debian-based systems)
       ansible.builtin.apt:
         update_cache: true
