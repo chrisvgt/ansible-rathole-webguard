@@ -31,7 +31,6 @@
       {{ {'listen_addr': rathole_listen_addr, 'transport': rathole_transport,
           'services': rathole_tunnel_server_services}
          | combine({'heartbeat_interval': rathole_heartbeat_interval} if rathole_heartbeat_interval is defined else {}) }}
-    rathole_auto_secrets: true
   no_log: true
   when: rathole_role == 'server'
 
@@ -42,7 +41,6 @@
           'transport': rathole_transport, 'services': rathole_tunnel_client_services}
          | combine({'heartbeat_timeout': rathole_heartbeat_timeout} if rathole_heartbeat_timeout is defined else {})
          | combine({'retry_interval': rathole_retry_interval} if rathole_retry_interval is defined else {}) }}
-    rathole_auto_secrets: true
   no_log: true
   when: rathole_role == 'client'
   vars:

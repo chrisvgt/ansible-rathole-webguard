@@ -1,84 +1,73 @@
 ---
 # roles/caddy/tasks/sites.yml
-# Build the site lists the Caddyfile renders. With tunnel_services, every
-# service domain becomes a site; services without a domain are tunnel-only.
-# Without tunnel_services, caddy_sites / wildcard_sites are used unchanged.
+# Build the site lists the Caddyfile renders: every service domain becomes a
+# site; services without a domain are tunnel-only.
 
-- name: Use legacy site lists
+# One entry per domain. Rathole-only keys are dropped, all other keys
+# (coraza_mode, stream, cache_paths, ...) are passed to the site. Empty
+# domains mean tunnel-only.
+- name: Build one site per service domain
   ansible.builtin.set_fact:
-    caddy_effective_sites: "{{ caddy_sites | default([]) }}"
-    caddy_effective_wildcard_sites: "{{ wildcard_sites | default([]) }}"
+    caddy_tunnel_sites: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for s in tunnel_services if s.domain | default(none) -%}
+        {%- set domains = ([s.domain] if s.domain is string else s.domain) | select | map('lower') | list -%}
+        {%- set options = s | dict2items | rejectattr('key', 'in', caddy_tunnel_service_keys) | items2dict -%}
+        {%- set port = (s.bind_addr | default(s.local_addr)) | regex_replace('^.*:', '') | int -%}
+        {%- for d in domains -%}
+          {%- set site_name = s.name if domains | length == 1 else s.name ~ '_' ~ (d | replace('.', '_')) -%}
+          {%- set ns.out = ns.out + [{'name': site_name, 'domain': d, 'local_port': port} | combine(options)] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.out }}
+    caddy_public_domain_services: >-
+      {{ tunnel_services | selectattr('domain', 'defined') | selectattr('domain')
+         | selectattr('bind_addr', 'defined') | rejectattr('bind_addr', 'match', '(127\.|localhost:|\[::1\]:)')
+         | map(attribute='name') | list }}
+
+- name: Warn about domains with a public bind_addr
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: reachable past Caddy (no TLS, WAF or CrowdSec) through a public bind_addr:
+      {{ caddy_public_domain_services | join(', ') }}. Keep bind_addr on 127.0.0.1 for services with a
+      domain; a VPN or game server needs no domain, only a DNS record.
+  when: caddy_public_domain_services | length > 0
+
+- name: Use traditional site blocks
+  ansible.builtin.set_fact:
+    caddy_effective_sites: "{{ caddy_tunnel_sites }}"
+    caddy_effective_wildcard_sites: []
     caddy_effective_extra_sites: []
-  when: (tunnel_services | default(none)) is none
+  when: not (enable_wildcard | default(false) | bool)
 
-- name: Build sites from tunnel_services
-  when: (tunnel_services | default(none)) is not none
-  block:
-    # One entry per domain. Rathole-only keys are dropped, all other keys
-    # (coraza_mode, stream, cache_paths, ...) are passed to the site. Empty
-    # domains mean tunnel-only.
-    - name: Build one site per service domain
-      ansible.builtin.set_fact:
-        caddy_tunnel_sites: >-
-          {%- set ns = namespace(out=[]) -%}
-          {%- for s in tunnel_services if s.domain | default(none) -%}
-            {%- set domains = ([s.domain] if s.domain is string else s.domain) | select | map('lower') | list -%}
-            {%- set options = s | dict2items | rejectattr('key', 'in', caddy_tunnel_service_keys) | items2dict -%}
-            {%- set port = (s.bind_addr | default(s.local_addr)) | regex_replace('^.*:', '') | int -%}
-            {%- for d in domains -%}
-              {%- set site_name = s.name if domains | length == 1 else s.name ~ '_' ~ (d | replace('.', '_')) -%}
-              {%- set ns.out = ns.out + [{'name': site_name, 'domain': d, 'local_port': port} | combine(options)] -%}
-            {%- endfor -%}
-          {%- endfor -%}
-          {{ ns.out }}
-        caddy_public_domain_services: >-
-          {{ tunnel_services | selectattr('domain', 'defined') | selectattr('domain')
-             | selectattr('bind_addr', 'defined') | rejectattr('bind_addr', 'match', '(127\.|localhost:|\[::1\]:)')
-             | map(attribute='name') | list }}
-
-    - name: Warn about domains with a public bind_addr
-      ansible.builtin.debug:
-        msg: >-
-          WARNING: reachable past Caddy (no TLS, WAF or CrowdSec) through a public bind_addr:
-          {{ caddy_public_domain_services | join(', ') }}. Keep bind_addr on 127.0.0.1 for services with a
-          domain; a VPN or game server needs no domain, only a DNS record.
-      when: caddy_public_domain_services | length > 0
-
-    - name: Use traditional site blocks
-      ansible.builtin.set_fact:
-        caddy_effective_sites: "{{ caddy_tunnel_sites }}"
-        caddy_effective_wildcard_sites: []
-        caddy_effective_extra_sites: []
-      when: not (enable_wildcard | default(false) | bool)
-
-    # Wildcard mode: sub.example.com is grouped under *.example.com. Apex
-    # domains and deeper names are not covered by that certificate and get
-    # their own block instead.
-    - name: Group sites by wildcard base domain
-      ansible.builtin.set_fact:
-        caddy_effective_sites: []
-        caddy_effective_wildcard_sites: >-
-          {%- set ns = namespace(bases=[], groups={}) -%}
-          {%- for site in caddy_tunnel_sites if site.domain.split('.') | length == 3 -%}
-            {%- set labels = site.domain.split('.') -%}
-            {%- set base = '*.' ~ labels[1:] | join('.') -%}
-            {%- if base not in ns.bases -%}{%- set ns.bases = ns.bases + [base] -%}{%- endif -%}
-            {%- set entry = site | dict2items | rejectattr('key', 'in', ['domain', 'local_port']) | items2dict
-                            | combine({'subdomain': labels[0], 'port': site.local_port}) -%}
-            {%- set ns.groups = ns.groups | combine({base: ns.groups[base] | default([]) + [entry]}) -%}
-          {%- endfor -%}
-          {%- set result = namespace(out=[]) -%}
-          {%- for base in ns.bases -%}
-            {%- set result.out = result.out + [{'domain': base, 'sites': ns.groups[base]}] -%}
-          {%- endfor -%}
-          {{ result.out }}
-        caddy_effective_extra_sites: >-
-          {%- set ns = namespace(out=[]) -%}
-          {%- for site in caddy_tunnel_sites if site.domain.split('.') | length != 3 -%}
-            {%- set ns.out = ns.out + [site] -%}
-          {%- endfor -%}
-          {{ ns.out }}
-      when: enable_wildcard | default(false) | bool
+# Wildcard mode: sub.example.com is grouped under *.example.com. Apex
+# domains and deeper names are not covered by that certificate and get
+# their own block instead.
+- name: Group sites by wildcard base domain
+  ansible.builtin.set_fact:
+    caddy_effective_sites: []
+    caddy_effective_wildcard_sites: >-
+      {%- set ns = namespace(bases=[], groups={}) -%}
+      {%- for site in caddy_tunnel_sites if site.domain.split('.') | length == 3 -%}
+        {%- set labels = site.domain.split('.') -%}
+        {%- set base = '*.' ~ labels[1:] | join('.') -%}
+        {%- if base not in ns.bases -%}{%- set ns.bases = ns.bases + [base] -%}{%- endif -%}
+        {%- set entry = site | dict2items | rejectattr('key', 'in', ['domain', 'local_port']) | items2dict
+                        | combine({'subdomain': labels[0], 'port': site.local_port}) -%}
+        {%- set ns.groups = ns.groups | combine({base: ns.groups[base] | default([]) + [entry]}) -%}
+      {%- endfor -%}
+      {%- set result = namespace(out=[]) -%}
+      {%- for base in ns.bases -%}
+        {%- set result.out = result.out + [{'domain': base, 'sites': ns.groups[base]}] -%}
+      {%- endfor -%}
+      {{ result.out }}
+    caddy_effective_extra_sites: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for site in caddy_tunnel_sites if site.domain.split('.') | length != 3 -%}
+        {%- set ns.out = ns.out + [site] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+  when: enable_wildcard | default(false) | bool
 
 # Coraza is needed if it is enabled globally or if any active site sets a
 # coraza_mode other than 'off'. Caddyfile.j2 uses this fact as well, so the
