@@ -16,6 +16,8 @@ table inet webguard {
     # ICMP (1) and ICMPv6 (58) as numbers: names need /etc/protocols, which
     # minimal images without netbase lack
     meta l4proto { 1, 58 } accept
+    # DHCPv6 replies answer a multicast request, so conntrack does not match them
+    ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
 {% if firewall_tcp_ports %}
     tcp dport { {{ firewall_tcp_ports | join(', ') }} } accept
 {% endif %}

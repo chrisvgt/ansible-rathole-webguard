@@ -307,7 +307,7 @@ With `enable_firewall: true` the server drops all incoming connections except:
 
 Use it if the provider firewall is not used or not trusted. The home server (client) is not touched. The rules live in their own nftables table (`inet webguard`, file `/etc/nftables.d/webguard.nft`), loaded at boot by `webguard-firewall.service`, so the CrowdSec bouncer keeps working. When the rules change, or are no longer loaded, a timer removes them again after `firewall_rollback_seconds` (120) unless Ansible can open a new SSH connection, and they are then not loaded at boot either, so a mistake does not lock you out.
 
-To remove the firewall, set `enable_firewall: false` and run the playbook: it deletes the table, the boot unit and the rules file. The ICMP rule uses protocol numbers, so minimal images without `netbase` (`/etc/protocols`) work too. On container VPS (LXC, OpenVZ) without their own kernel, nftables may not be available; the rules are checked with `nft -c` before anything is loaded.
+To remove the firewall, set `enable_firewall: false` and run the playbook: it deletes the table, the boot unit and the rules file. ICMP, ICMPv6 and DHCPv6 replies are always allowed, so the VPS keeps its IPv6 address. The ICMP rule uses protocol numbers, so minimal images without `netbase` (`/etc/protocols`) work too. On container VPS (LXC, OpenVZ) without their own kernel, nftables may not be available; the rules are checked with `nft -c` before anything is loaded.
 
 ## Rathole
 
