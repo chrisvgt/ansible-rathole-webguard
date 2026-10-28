@@ -63,6 +63,7 @@ jobs:
         env:
           SERVER_OS: ${{ matrix.server }}
           CLIENT_OS: ${{ matrix.client }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./tests/check_integration.sh
 
       - name: Keep the task coverage

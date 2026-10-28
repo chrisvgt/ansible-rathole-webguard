@@ -45,11 +45,19 @@
         suffix: crowdsec
       register: crowdsec_archive_dir
 
+    # In GitHub Actions the workflow token lifts GitHub's limit of 60 requests
+    # per hour, which runners sharing an address can reach. Elsewhere no token
+    # is sent, so an unrelated GITHUB_TOKEN in the shell cannot break the run.
     - name: Look up the release assets
       ansible.builtin.uri:
         url: "https://api.github.com/repos/{{ item.repo }}/releases/tags/v{{ item.version }}"
-        headers:
-          Accept: application/vnd.github+json
+        headers: >-
+          {{ {'Accept': 'application/vnd.github+json'}
+             | combine({'Authorization': 'Bearer ' ~ github_token} if github_token else {}) }}
+      vars:
+        github_token: >-
+          {{ lookup('ansible.builtin.env', 'GITHUB_TOKEN')
+             if lookup('ansible.builtin.env', 'GITHUB_ACTIONS') == 'true' else '' }}
       register: crowdsec_releases
       loop: "{{ crowdsec_archive_installs }}"
       loop_control:
