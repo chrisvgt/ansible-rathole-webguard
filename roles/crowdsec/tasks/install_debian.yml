@@ -35,7 +35,9 @@
     owner: root
     group: root
     mode: "0644"
+  register: crowdsec_apt_pin
 
+# Check mode does not write the new pin, and apt refuses a version the old one excludes
 - name: Install CrowdSec agent and iptables bouncer
   ansible.builtin.apt:
     name:
@@ -44,3 +46,4 @@
     state: present
     allow_downgrade: true # The versions of the playbook win
   notify: Restart CrowdSec
+  when: not (ansible_check_mode and crowdsec_apt_pin is changed)

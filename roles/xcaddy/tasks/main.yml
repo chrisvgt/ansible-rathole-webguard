@@ -30,6 +30,7 @@
         path: /var/tmp
         suffix: xcaddy
       register: xcaddy_tmp_dir
+      check_mode: false # Check mode needs it too; nothing is downloaded there
 
     - name: Download the xcaddy archive
       ansible.builtin.get_url:
@@ -65,4 +66,5 @@
       ansible.builtin.file:
         path: "{{ xcaddy_tmp_dir.path }}"
         state: absent
+      check_mode: false # Also created in check mode
       when: xcaddy_tmp_dir.path is defined

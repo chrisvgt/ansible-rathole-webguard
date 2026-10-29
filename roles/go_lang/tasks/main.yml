@@ -35,6 +35,7 @@
         path: /var/tmp
         suffix: go
       register: go_lang_tmp_dir
+      check_mode: false # Check mode needs it too; nothing is downloaded there
 
     - name: Download the Go archive
       ansible.builtin.get_url:
@@ -60,6 +61,7 @@
       ansible.builtin.file:
         path: "{{ go_lang_tmp_dir.path }}"
         state: absent
+      check_mode: false # Also created in check mode
       when: go_lang_tmp_dir.path is defined
 
 # Earlier versions set up Go for every login shell; the Caddy build sets its own PATH

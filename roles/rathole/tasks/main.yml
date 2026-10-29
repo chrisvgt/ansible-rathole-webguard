@@ -52,6 +52,7 @@
         state: directory
         prefix: rathole_
       register: rathole_tmp_dir
+      check_mode: false # Check mode needs it too; nothing is downloaded there
 
     - name: Download Rathole zip asset
       ansible.builtin.get_url:
@@ -87,6 +88,7 @@
       ansible.builtin.file:
         path: "{{ rathole_tmp_dir.path }}"
         state: absent
+      check_mode: false # Also created in check mode
       when: rathole_tmp_dir.path is defined
 
 # The config holds tokens and private keys: readable by the service group only

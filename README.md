@@ -239,7 +239,7 @@ Moving the VPS to another system: install the new system, keep the inventory ent
 
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port) both Noise keys are set together, and the server's `/etc/resolv.conf` lists a nameserver (Caddy reads only that file). The roles also check that the CPU architecture is supported and that the import password is set.
+1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and the server's `/etc/resolv.conf` lists a nameserver (Caddy reads only that file). The roles also check that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`; on Arch Linux `pacman -Syu`, and with a new kernel a reboot right away (if `enable_auto_reboot` is true), because Arch Linux removes the modules of the running kernel that the firewall needs.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.
@@ -283,7 +283,7 @@ With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall b
 
 Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (`login`, `sign-in`, `auth`, `token`); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
 
-Normal use of common self-hosted apps does not get users banned: the official CrowdSec whitelists for Nextcloud, Jellyfin, Jellyseerr, Overseerr and a few others are installed (`crowdsec_hub_whitelists`), and a `POST` answered with `401` outside a login path counts as an expired session, not as an attack. The package's `crowdsec-hubupdate.timer` updates collections and whitelists daily.
+Normal use of common self-hosted apps does not get users banned: the official CrowdSec whitelists for Nextcloud, Jellyfin, Plex, Jellyseerr, Overseerr and a few others are installed (`crowdsec_hub_whitelists`), and a `POST` answered with `401` outside a login path counts as an expired session, not as an attack. The package's `crowdsec-hubupdate.timer` updates collections and whitelists daily.
 
 `enable_crowdsec_import: true` adds [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import), which imports 28+ public feeds (IPsum, Spamhaus DROP, Blocklist.de, Firehol, Abuse.ch, DShield, Tor exit nodes and others) every hour:
 
@@ -338,7 +338,7 @@ Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be 
 | `crowdsec_version`                  | CrowdSec                  |
 | `crowdsec_firewall_bouncer_version` | CrowdSec firewall bouncer |
 
-Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes.
+Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes. Hub rules (whitelists, AppSec and CVE rules) are only updated for the latest CrowdSec version, so keep `crowdsec_version` current.
 
 With the [Renovate](https://github.com/apps/renovate) app installed on the repository, `renovate.json` opens a pull request against `develop` whenever one of these versions, a GitHub Action or a pre-commit hook has a new release (weekly, Monday morning). A version set in your own files overrides the role default, so remove such overrides to follow these updates.
 
