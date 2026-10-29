@@ -338,7 +338,7 @@ Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be 
 | `crowdsec_version`                  | CrowdSec                  |
 | `crowdsec_firewall_bouncer_version` | CrowdSec firewall bouncer |
 
-Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes.
+Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes. Hub rules (whitelists, AppSec and CVE rules) are only updated for the latest CrowdSec version, so keep `crowdsec_version` current.
 
 With the [Renovate](https://github.com/apps/renovate) app installed on the repository, `renovate.json` opens a pull request against `develop` whenever one of these versions, a GitHub Action or a pre-commit hook has a new release (weekly, Monday morning). A version set in your own files overrides the role default, so remove such overrides to follow these updates.
 

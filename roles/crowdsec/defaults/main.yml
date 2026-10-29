@@ -39,7 +39,8 @@ crowdsec_collections:
 # requests of its app (missing thumbnails, WebDAV sync, ...), so they are safe
 # to install even if the app is not used. Only official crowdsecurity items
 # with upstream hub tests and a generic HTTP filter (works with Caddy logs);
-# crowdsec-hubupdate.timer keeps them up to date when apps change.
+# crowdsec-hubupdate.timer keeps them up to date when apps change. The hub
+# stops updating the items of a CrowdSec version once a newer one is out.
 crowdsec_hub_whitelists:
   - crowdsecurity/nextcloud-whitelist
   - crowdsecurity/jellyfin-whitelist
@@ -61,6 +62,6 @@ crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key
 # repositories), checked against the SHA256 that GitHub shows for the asset. A
 # version change replaces only the programs.
 # renovate: datasource=github-releases depName=crowdsecurity/crowdsec extractVersion=^v(?<version>.+)$
-crowdsec_version: "1.8.1"
+crowdsec_version: "1.8.2"
 # renovate: datasource=github-releases depName=crowdsecurity/cs-firewall-bouncer extractVersion=^v(?<version>.+)$
 crowdsec_firewall_bouncer_version: "0.0.36"
