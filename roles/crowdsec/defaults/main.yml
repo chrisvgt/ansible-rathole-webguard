@@ -16,9 +16,11 @@ crowdsec_db_use_wal: true # Write-ahead log: fewer locks and less I/O on small d
 crowdsec_db_flush_max_items: 5000 # Keep at most this many alerts
 crowdsec_db_flush_max_age: "7d" # Delete alerts older than this
 
-# systemd memory limits for the crowdsec service (MemoryHigh throttles, MemoryMax kills)
-crowdsec_memory_high: "300M"
-crowdsec_memory_max: "400M"
+# systemd memory limits for the crowdsec service (MemoryHigh throttles, MemoryMax kills).
+# With the blocklists (about 140k decisions) CrowdSec needs about 300 MB plus its
+# database cache; when throttled, AppSec times out and Caddy answers 500.
+crowdsec_memory_high: "600M"
+crowdsec_memory_max: "800M"
 
 # Failed login detection (see README): repeated failed POSTs to login-like paths
 crowdsec_login_detection: true
