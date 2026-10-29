@@ -295,14 +295,16 @@ for host in "$server" "$client"; do
 done
 
 # Versions before the role defaults; also available on the APT repository.
+# CrowdSec: the previous default, as on hosts that update. Much older versions
+# get an older hub index, which lacks whitelists the role installs.
 # Before the key change: that key is only passed with -e, these runs use the
 # stored one.
 echo "== CrowdSec version change"
-playbook -e crowdsec_version=1.8.0 -e crowdsec_firewall_bouncer_version=0.0.34 --tags crowdsec >"$logs/older.log" 2>&1 || {
+playbook -e crowdsec_version=1.8.1 -e crowdsec_firewall_bouncer_version=0.0.34 --tags crowdsec >"$logs/older.log" 2>&1 || {
   tail -30 "$logs/older.log"
   fail=1
 }
-crowdsec_versions " after the change to an older version" 1.8.0 0.0.34
+crowdsec_versions " after the change to an older version" 1.8.1 0.0.34
 playbook --tags crowdsec >"$logs/newer.log" 2>&1 || {
   tail -30 "$logs/newer.log"
   fail=1
