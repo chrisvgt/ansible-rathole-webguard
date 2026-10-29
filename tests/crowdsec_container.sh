@@ -101,6 +101,7 @@ for i in $(seq 1 8); do log 198.51.100.33 POST /Sessions/Playing/Progress 403; d
 for i in $(seq 1 30); do log 198.51.100.34 PROPFIND "/remote.php/dav/files/user/folder$i/new$i.txt" 404; done
 for i in $(seq 1 30); do log 198.51.100.35 GET "/core/preview?fileId=$i&x=250&y=250" 404; done
 for i in $(seq 1 60); do log 198.51.100.36 GET "/api/v1/movie/$((1000 + i))" 200; done
+for i in $(seq 1 30); do log 198.51.100.37 GET "/library/metadata/$((2000 + i))/thumb/1700000000" 404; done
 # Still detected: basic auth guessing, probing for unknown paths
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.40 POST /api/upload 401 '{"Www-Authenticate":["Basic realm=\"x\""]}'; done
 for i in $(seq 1 30); do log 198.51.100.41 GET "/backup$i.zip" 404; done
@@ -122,6 +123,7 @@ check "Jellyfin progress reports (403): no ban" no_decision 198.51.100.33
 check "Nextcloud WebDAV sync: no ban" no_decision 198.51.100.34
 check "Nextcloud previews: no ban" no_decision 198.51.100.35
 check "Seerr browsing: no ban" no_decision 198.51.100.36
+check "Plex missing artwork: no ban" no_decision 198.51.100.37
 check "basic auth guessing: ban" has_alert 198.51.100.40 crowdsecurity/http-generic-bf
 check "probing unknown paths: ban" has_alert 198.51.100.41 crowdsecurity/http-probing
 # profiles.yaml with duration_expr: first ban lasts 4h
