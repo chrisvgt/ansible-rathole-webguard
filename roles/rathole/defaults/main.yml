@@ -2,7 +2,7 @@
 # roles/rathole/defaults/main.yml
 
 # renovate: datasource=github-releases depName=chrisvgt/rathole extractVersion=^v(?<version>.+)$
-rathole_version: "0.6.1" # Version of Rathole to install
+rathole_version: "0.6.3" # Version of Rathole to install
 rathole_download_url_base: "https://github.com/chrisvgt/rathole/releases/download/v{{ rathole_version }}" # Base URL for downloading Rathole releases
 rathole_install_path: "/usr/local/bin" # Directory where the Rathole binary will be placed
 rathole_config_path: "{{ rathole_config_path_default }}" # Directory for Rathole configuration files
