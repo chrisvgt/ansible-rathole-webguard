@@ -159,7 +159,7 @@
     # CrowdSec blocklist import role
     # Only included if host is a Rathole 'server' AND crowdsec_import is enabled.
     # Depends on the python role (meta/main.yml). The crowdsec role above must
-    # run first; the role asserts enable_crowdsec instead of depending on it.
+    # run first; the preflight checks require enable_crowdsec for it.
     - role: crowdsec_import
       when: rathole_role == "server" and enable_crowdsec_import | bool
       tags: crowdsec_import
