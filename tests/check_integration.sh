@@ -281,6 +281,19 @@ if playbook --check --diff -e "@$logs/ntfy.yml" >"$logs/check.log" 2>&1; then ec
 fi
 check "--diff does not show the ntfy token" "! grep -q LEAKCHECK-NTFY '$logs/check.log'"
 
+# Updates (older versions here) are previewed without being downloaded
+if playbook --check -e go_lang_version=1.27.2 -e xcaddy_version=0.4.5 -e rathole_version=0.6.0 \
+  -e crowdsec_firewall_bouncer_version=0.0.34 >"$logs/check-update.log" 2>&1; then
+  echo "ok   --check passes with pending updates"
+else
+  echo "FAIL --check passes with pending updates"
+  grep -E '^(fatal|failed):' -A3 "$logs/check-update.log" | head -40
+  fail=1
+fi
+for host in "$server" "$client"; do
+  check "--check leaves no download directories on $host" "on $host '! ls -d /var/tmp/ansible.* /tmp/rathole_* 2>/dev/null | grep -q .'"
+done
+
 # Versions before the role defaults; also available on the APT repository.
 # CrowdSec: the previous default, as on hosts that update. Much older versions
 # get an older hub index, which lacks whitelists the role installs.
