@@ -49,6 +49,7 @@ crowdsec_hub_whitelists:
   - crowdsecurity/actual-budget-whitelist
   - crowdsecurity/rocketchat-whitelist
   - crowdsecurity/zammad-whitelist
+  - crowdsecurity/plex-allowlist
 crowdsec_session_whitelist_file: /etc/crowdsec/parsers/s02-enrich/local-session-whitelist.yaml
 
 # Caddy bouncer key: generated on the first run and stored here, unless
