@@ -19,9 +19,10 @@ format: |
   {{- $body := "" -}}
   {{- $ip := "" -}}
   {{- range . -}}
-  {{- $fqdn := "" -}}{{- $rule := "" -}}{{- $msg := "" -}}{{- $verb := "" -}}{{- $path := "" -}}{{- $status := "" -}}
+  {{- $fqdn := "" -}}{{- $svc := "" -}}{{- $rule := "" -}}{{- $msg := "" -}}{{- $verb := "" -}}{{- $path := "" -}}{{- $status := "" -}}
   {{- range .Events -}}{{- range .Meta -}}
   {{- if or (eq .Key "target_fqdn") (eq .Key "target_host") -}}{{- $fqdn = .Value -}}{{- end -}}
+  {{- if eq .Key "service" -}}{{- $svc = .Value -}}{{- end -}}
   {{- if eq .Key "rule_name" -}}{{- $rule = .Value -}}{{- end -}}
   {{- if eq .Key "message" -}}{{- $msg = .Value -}}{{- end -}}
   {{- if eq .Key "http_verb" -}}{{- $verb = .Value -}}{{- end -}}
@@ -30,7 +31,7 @@ format: |
   {{- end -}}{{- end -}}
   {{- $ip = trim .Source.Value -}}
   {{- $scenario := trim .Scenario -}}
-  {{- $service := get $services $fqdn | default $fqdn | default (ternary "SSH" "Server" (contains "ssh" $scenario)) -}}
+  {{- $service := get $services $fqdn | default $fqdn | default $svc | default "Server" -}}
   {{- $title = printf "[%s] %s banned" $service $ip -}}
   {{- $body = printf "%s[!] Rule: %s\n" $body (default $scenario $rule) -}}
   {{- if $msg -}}{{- $body = printf "%s> Info: %s\n" $body $msg -}}{{- end -}}

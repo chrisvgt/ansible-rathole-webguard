@@ -30,6 +30,16 @@ crowdsec_login_bf_capacity: 5 # Failed logins tolerated before a ban
 crowdsec_login_bf_leakspeed: "1m" # One failed login is forgotten per interval
 crowdsec_login_bf_file: /etc/crowdsec/scenarios/local-login-bf.yaml
 
+# Failed handshakes on the Rathole server port (see README). Timeouts do not
+# count; set dynamic_ddns_hostnames so your own client is never banned
+crowdsec_rathole_detection: true
+crowdsec_rathole_bf_capacity: 5 # Failed handshakes tolerated before a ban
+crowdsec_rathole_bf_leakspeed: "1m" # One failed handshake is forgotten per interval
+crowdsec_rathole_files:
+  - { src: acquis-rathole.yaml.j2, dest: /etc/crowdsec/acquis.d/rathole.yaml }
+  - { src: rathole-logs.yaml.j2, dest: /etc/crowdsec/parsers/s01-parse/local-rathole-logs.yaml }
+  - { src: rathole-bf.yaml.j2, dest: /etc/crowdsec/scenarios/local-rathole-bf.yaml }
+
 # Hub collections: Caddy logs (incl. failed logins) and the AppSec rules
 crowdsec_collections:
   - crowdsecurity/caddy
