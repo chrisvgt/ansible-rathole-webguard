@@ -15,6 +15,9 @@
     ntfy_topic: test
     dynamic_whitelist_enabled: true
     dynamic_ddns_hostnames: [home.example.test]
+    tunnel_services:
+      - { name: app, domain: app.example.com, local_addr: "127.0.0.1:8080" }
+      - { name: game, local_addr: "127.0.0.1:30000" } # Tunnel-only, no domain
   tasks:
     - name: Load CrowdSec defaults
       ansible.builtin.include_vars: "{{ role_dir }}/defaults/main.yml"

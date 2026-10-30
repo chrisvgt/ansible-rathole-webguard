@@ -28,6 +28,9 @@ api:
 prometheus:
   enabled: false
 EOF
+# Test only: ntfy messages go to a local listener
+sed -i 's|^url: .*|url: http://127.0.0.1:18099/|' /etc/crowdsec/notifications/ntfy.yaml
+(while :; do printf 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n' | nc -l -p 18099 >>/tmp/ntfy.txt; done) &
 
 cscli hub update >/dev/null 2>&1 || bad "hub update"
 while read -r collection; do
@@ -127,8 +130,17 @@ check "Plex missing artwork: no ban" no_decision 198.51.100.37
 check "basic auth guessing: ban" has_alert 198.51.100.40 crowdsecurity/http-generic-bf
 check "probing unknown paths: ban" has_alert 198.51.100.41 crowdsecurity/http-probing
 # profiles.yaml with duration_expr: first ban lasts 4h
+# ntfy message for the login ban
+# (toJson escapes ">" as >)
+ntfy=$(grep -F '198.51.100.7 banned' /tmp/ntfy.txt | sed 's/\\u003e/>/g')
+has() { echo "$ntfy" | grep -qF "$1"; }
+check "ntfy: service in the title" has '"title":"[app] 198.51.100.7 banned"'
+check "ntfy: rule" has '[!] Rule: local/login-bf'
+check "ntfy: request" has '> Request: 6x POST /api/auth/login (400)'
+check "ntfy: unban command" has '$ cscli decisions delete --ip 198.51.100.7'
+check "ntfy: topic" has '"topic":"test"'
 check "first ban lasts 4h" sh -c "echo '$decisions' | grep ',Ip:198.51.100.7,' | grep -q ',3h59m'"
 check "no fatal errors" sh -c "! grep -q 'level=fatal' /tmp/crowdsec.log"
 
-[ $fail -eq 0 ] || tail -20 /tmp/crowdsec.log
+[ $fail -eq 0 ] || { tail -20 /tmp/crowdsec.log; cat /tmp/ntfy.txt; }
 exit $fail
