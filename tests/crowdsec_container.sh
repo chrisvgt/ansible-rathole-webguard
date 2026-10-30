@@ -38,12 +38,21 @@ labels:
   type: syslog
 EOF
 
-cscli hub update >/dev/null 2>&1 || bad "hub update"
+# The hub fails now and then; retry like the role does
+hub() {
+  for _ in 1 2 3; do
+    cscli "$@" >/tmp/hub.log 2>&1 && return
+    sleep 5
+  done
+  tail -3 /tmp/hub.log
+  return 1
+}
+hub hub update || bad "hub update"
 while read -r collection; do
-  cscli collections install "$collection" >/dev/null 2>&1 || bad "install $collection"
+  hub collections install "$collection" || bad "install $collection"
 done </t/collections.txt
 while read -r parser; do
-  cscli parsers install "$parser" >/dev/null 2>&1 || bad "install $parser"
+  hub parsers install "$parser" || bad "install $parser"
 done </t/hub_whitelists.txt
 
 check "configuration loads (crowdsec -t)" crowdsec -t
