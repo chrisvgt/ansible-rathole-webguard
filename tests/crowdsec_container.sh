@@ -131,12 +131,13 @@ check "basic auth guessing: ban" has_alert 198.51.100.40 crowdsecurity/http-gene
 check "probing unknown paths: ban" has_alert 198.51.100.41 crowdsecurity/http-probing
 # profiles.yaml with duration_expr: first ban lasts 4h
 # ntfy message for the login ban
-ntfy=$(grep -F '198.51.100.7 banned' /tmp/ntfy.txt)
+# (toJson escapes ">" as >)
+ntfy=$(grep -F '198.51.100.7 banned' /tmp/ntfy.txt | sed 's/\\u003e/>/g')
 has() { echo "$ntfy" | grep -qF "$1"; }
-check "ntfy: service in the title" has '"title":"app - 198.51.100.7 banned"'
-check "ntfy: rule" has 'Rule: local/login-bf'
-check "ntfy: request" has 'Request: 6x POST /api/auth/login, status 400'
-check "ntfy: unban command" has 'Unban: cscli decisions delete --ip 198.51.100.7'
+check "ntfy: service in the title" has '"title":"[app] 198.51.100.7 banned"'
+check "ntfy: rule" has '[!] Rule: local/login-bf'
+check "ntfy: request" has '> Request: 6x POST /api/auth/login (400)'
+check "ntfy: unban command" has '$ cscli decisions delete --ip 198.51.100.7'
 check "ntfy: topic" has '"topic":"test"'
 check "first ban lasts 4h" sh -c "echo '$decisions' | grep ',Ip:198.51.100.7,' | grep -q ',3h59m'"
 check "no fatal errors" sh -c "! grep -q 'level=fatal' /tmp/crowdsec.log"

@@ -31,18 +31,18 @@ format: |
   {{- $ip = trim .Source.Value -}}
   {{- $scenario := trim .Scenario -}}
   {{- $service := get $services $fqdn | default $fqdn | default (ternary "SSH" "Server" (contains "ssh" $scenario)) -}}
-  {{- $title = printf "%s - %s banned" $service $ip -}}
-  {{- $body = printf "%sRule: %s\n" $body (default $scenario $rule) -}}
-  {{- if $msg -}}{{- $body = printf "%sInfo: %s\n" $body $msg -}}{{- end -}}
-  {{- if $fqdn -}}{{- $body = printf "%sHost: %s\n" $body $fqdn -}}{{- end -}}
+  {{- $title = printf "[%s] %s banned" $service $ip -}}
+  {{- $body = printf "%s[!] Rule: %s\n" $body (default $scenario $rule) -}}
+  {{- if $msg -}}{{- $body = printf "%s> Info: %s\n" $body $msg -}}{{- end -}}
+  {{- if $fqdn -}}{{- $body = printf "%s> Host: %s\n" $body $fqdn -}}{{- end -}}
   {{- if $path -}}
-  {{- $body = printf "%sRequest: %dx %s" $body (len .Events) (trim (printf "%s %s" $verb $path)) -}}
-  {{- if $status -}}{{- $body = printf "%s, status %s" $body $status -}}{{- end -}}
+  {{- $body = printf "%s> Request: %dx %s" $body (len .Events) (trim (printf "%s %s" $verb $path)) -}}
+  {{- if $status -}}{{- $body = printf "%s (%s)" $body $status -}}{{- end -}}
   {{- $body = printf "%s\n" $body -}}
   {{- end -}}
-  {{- if .Source.Cn -}}{{- $body = printf "%sOrigin: %s, %s (AS%s)\n" $body .Source.Cn .Source.AsName .Source.AsNumber -}}{{- end -}}
-  {{- range .Decisions -}}{{- $body = printf "%s%s: %s\n" $body (title (trim .Type)) (trim .Duration) -}}{{- end -}}
-  {{- $body = printf "%sUnban: cscli decisions delete --ip %s\n\n" $body $ip -}}
+  {{- if .Source.Cn -}}{{- $body = printf "%s> Origin: %s, %s (AS%s)\n" $body .Source.Cn .Source.AsName .Source.AsNumber -}}{{- end -}}
+  {{- range .Decisions -}}{{- $body = printf "%s> %s: %s\n" $body (title (trim .Type)) (trim .Duration) -}}{{- end -}}
+  {{- $body = printf "%s\n$ cscli decisions delete --ip %s\n\n" $body $ip -}}
   {{- end -}}
   {{- if gt (len .) 1 -}}{{- $title = printf "%d IPs banned" (len .) -}}{{- end -}}
   {{- dict "topic" $topic "title" $title "message" (trim $body)
