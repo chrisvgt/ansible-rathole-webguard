@@ -1,0 +1,22 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/rathole-bf.yaml.j2
+# Repeated failed handshakes on the Rathole server port ban the IP: wrong keys
+# or tokens, other protocols, scanners. Timeouts do not count, so the own client
+# on a slow or interrupted connection is not banned.
+type: leaky
+name: local/rathole-bf
+description: "Failed handshakes on the Rathole server port"
+filter: "evt.Meta.log_type == 'rathole_failed_handshake' && !(evt.Meta.message matches '(?i)timeout')"
+groupby: evt.Meta.source_ip
+capacity: {{ crowdsec_rathole_bf_capacity }}
+leakspeed: {{ crowdsec_rathole_bf_leakspeed | to_json }}
+blackhole: 5m
+labels:
+  service: rathole
+  behavior: "tcp:bruteforce"
+  label: "Rathole handshake brute force"
+  classification:
+    - attack.T1110
+  confidence: 3
+  spoofable: 0
+  remediation: true

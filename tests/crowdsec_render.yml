@@ -32,7 +32,7 @@
         path: "{{ out_dir }}/{{ item }}"
         state: directory
         mode: "0755"
-      loop: [acquis.d, notifications, parsers/s02-enrich, postoverflows/s01-whitelist, scenarios]
+      loop: [acquis.d, notifications, parsers/s01-parse, parsers/s02-enrich, postoverflows/s01-whitelist, scenarios]
 
     - name: Render templates
       ansible.builtin.template:
@@ -48,6 +48,13 @@
         - { src: 01-my-dynamic-whitelist.yaml.j2, dest: postoverflows/s01-whitelist/01-my-dynamic-whitelist.yaml }
         - { src: login-bf.yaml.j2, dest: "scenarios/{{ crowdsec_login_bf_file | basename }}" }
         - { src: session-whitelist.yaml.j2, dest: "parsers/s02-enrich/{{ crowdsec_session_whitelist_file | basename }}" }
+
+    - name: Render the Rathole handshake detection
+      ansible.builtin.template:
+        src: "{{ role_dir }}/templates/{{ item.src }}"
+        dest: "{{ out_dir }}/{{ item.dest | replace('/etc/crowdsec/', '') }}"
+        mode: "0644"
+      loop: "{{ crowdsec_rathole_files }}"
 
     - name: List the hub items the role installs
       ansible.builtin.copy:
