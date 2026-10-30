@@ -5,8 +5,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-# renovate: datasource=docker depName=crowdsecurity/crowdsec
-image=crowdsecurity/crowdsec:v1.8.1
+# Same CrowdSec version as the role installs
+image=crowdsecurity/crowdsec:v$(sed -n 's/^crowdsec_version: "\(.*\)"/\1/p' roles/crowdsec/defaults/main.yml)
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
