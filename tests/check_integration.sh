@@ -213,7 +213,7 @@ rathole_handshake() {
     grep -q local/rathole-bf
 }
 check "a failed Rathole handshake reaches the ban scenario" rathole_handshake
-check "app whitelists are installed""on $server 'cscli parsers list -o raw' | grep -q crowdsecurity/nextcloud-whitelist"
+check "app whitelists are installed" "on $server 'cscli parsers list -o raw' | grep -q crowdsecurity/nextcloud-whitelist"
 check "hub updates are scheduled" "on $server 'systemctl is-enabled crowdsec-hubupdate.timer'"
 check "blocklist import is scheduled" "on $server 'systemctl is-active crowdsec-blocklist-import.timer'"
 check "blocklist import ran successfully" "test \"\$(on $server 'systemctl show -p Result --value crowdsec-blocklist-import.service')\" = success"
