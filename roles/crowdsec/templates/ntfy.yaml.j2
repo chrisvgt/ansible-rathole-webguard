@@ -6,8 +6,9 @@
 type: http
 name: ntfy
 log_level: info
-# One ntfy message per batch of bans: service, rule, request, origin and the
-# command to lift the ban
+# One ntfy message per batch of bans: service, rule, request and the command
+# to lift the ban. No GeoIP origin: the free database is often wrong for
+# hosting providers, the CTI button shows the right one
 format: |
   {{- $topic := [[ ntfy_topic | to_json ]] -}}
   {{- $services := dict
@@ -41,7 +42,6 @@ format: |
   {{- if $status -}}{{- $body = printf "%s (%s)" $body $status -}}{{- end -}}
   {{- $body = printf "%s\n" $body -}}
   {{- end -}}
-  {{- if .Source.Cn -}}{{- $body = printf "%s> Origin: %s, %s (AS%s)\n" $body .Source.Cn .Source.AsName .Source.AsNumber -}}{{- end -}}
   {{- range .Decisions -}}{{- $body = printf "%s> %s: %s\n" $body (title (trim .Type)) (trim .Duration) -}}{{- end -}}
   {{- $body = printf "%s\n$ cscli decisions delete --ip %s\n\n" $body $ip -}}
   {{- end -}}

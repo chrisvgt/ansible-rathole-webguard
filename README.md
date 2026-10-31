@@ -164,7 +164,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 
 Without `group_vars/all.yml` these defaults apply. Flags can also be set per tuple in `group_vars/tunnel_<name>.yml` or per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
 
-Server options in the tuple file: `ntfy_enabled` (a push message per ban with service, rule, request, origin and the `cscli decisions delete --ip` command to lift it), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `group_vars/tunnel.example.yml`.
+Server options in the tuple file: `ntfy_enabled` (a push message per ban with service, rule, request and the `cscli decisions delete --ip` command to lift it), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `group_vars/tunnel.example.yml`.
 
 ### Services
 

@@ -289,7 +289,7 @@
 ## CrowdSec Whitelist Configuration
 
 # The whitelists keep normal use of Nextcloud, Jellyfin, Seerr, ... from getting
-# users banned; GeoIP adds the country to the Ntfy notifications
+# users banned
 - name: Install hub parsers
   ansible.builtin.command:
     argv: [cscli, parsers, install, "{{ item }}"]
@@ -299,7 +299,7 @@
   retries: 3
   delay: 5 # The hub CDN drops a connection now and then
   notify: Restart CrowdSec
-  loop: "{{ crowdsec_hub_whitelists + (['crowdsecurity/geoip-enrich'] if ntfy_enabled | default(false) | bool else []) }}"
+  loop: "{{ crowdsec_hub_whitelists }}"
   when: item not in (crowdsec_cscli_parsers_list.stdout | default(''))
 
 - name: Ignore expired sessions outside login paths
