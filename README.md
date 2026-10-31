@@ -164,7 +164,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 
 Without `group_vars/all.yml` these defaults apply. Flags can also be set per tuple in `group_vars/tunnel_<name>.yml` or per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
 
-Server options in the tuple file: `ntfy_enabled` (CrowdSec alerts via ntfy), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `group_vars/tunnel.example.yml`.
+Server options in the tuple file: `ntfy_enabled` (a push message per ban with service, rule, request, origin and the `cscli decisions delete --ip` command to lift it), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `group_vars/tunnel.example.yml`.
 
 ### Services
 
@@ -282,6 +282,8 @@ Audit logs (relevant events only, no bodies) are written to `/var/log/caddy/cora
 With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall bouncer (iptables; nftables on Arch Linux), the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. The database is flushed (5000 alerts, 7 days) and the service is limited to 400 MB RAM.
 
 Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (`login`, `sign-in`, `auth`, `token`); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
+
+Failed handshakes on the Rathole port are detected the same way: CrowdSec reads the Rathole log from the journal and bans an IP after 5 failed handshakes (wrong key or token, another protocol); one is forgotten per minute. Timeouts do not count, so your own client on a slow connection is not banned; to be safe from a wrong key after a config change, set `dynamic_ddns_hostnames`. Turn it off with `crowdsec_rathole_detection: false`.
 
 Normal use of common self-hosted apps does not get users banned: the official CrowdSec whitelists for Nextcloud, Jellyfin, Plex, Jellyseerr, Overseerr and a few others are installed (`crowdsec_hub_whitelists`), and a `POST` answered with `401` outside a login path counts as an expired session, not as an attack. The package's `crowdsec-hubupdate.timer` updates collections and whitelists daily.
 

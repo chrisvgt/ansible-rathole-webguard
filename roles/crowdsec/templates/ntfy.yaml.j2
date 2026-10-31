@@ -1,28 +1,59 @@
+#jinja2: variable_start_string:'[[', variable_end_string:']]'
 # File Managed by Ansible
 # roles/crowdsec/templates/ntfy.yaml.j2
+# Ansible variables use square brackets here; the curly braces are CrowdSec's Go template.
 
 type: http
 name: ntfy
 log_level: info
-{% raw %}
+# One ntfy message per batch of bans: service, rule, request, origin and the
+# command to lift the ban
 format: |
-  {{range . -}}
-  {{$alert := . -}}
-  {{range .Decisions -}}
-  {{.Value}} will get {{.Type}} for next {{.Duration}} for triggering {{.Scenario}}
-  Shodan: https://www.shodan.io/host/{{.Value}}
-  CrowdSec CTI: https://app.crowdsec.net/cti/{{.Value}}
-  {{end -}}
-  Country Code: {{$alert.Source.Cn}}
-  ASN: {{$alert.Source.AsName}} ({{$alert.Source.AsNumber}})
-  {{end -}}
-{% endraw %}
-url: https://{{ ntfy_server }}/{{ ntfy_topic }}
+  {{- $topic := [[ ntfy_topic | to_json ]] -}}
+  {{- $services := dict
+{%- for s in tunnel_services | default([]) %}
+{%- set domains = s.domain | default([], true) %}
+{%- for d in ([domains] if domains is string else domains) %} [[ d | to_json ]] [[ s.name | to_json ]]{% endfor %}
+{%- endfor %} -}}
+  {{- $title := "" -}}
+  {{- $body := "" -}}
+  {{- $ip := "" -}}
+  {{- range . -}}
+  {{- $fqdn := "" -}}{{- $svc := "" -}}{{- $rule := "" -}}{{- $msg := "" -}}{{- $verb := "" -}}{{- $path := "" -}}{{- $status := "" -}}
+  {{- range .Events -}}{{- range .Meta -}}
+  {{- if or (eq .Key "target_fqdn") (eq .Key "target_host") -}}{{- $fqdn = .Value -}}{{- end -}}
+  {{- if eq .Key "service" -}}{{- $svc = .Value -}}{{- end -}}
+  {{- if eq .Key "rule_name" -}}{{- $rule = .Value -}}{{- end -}}
+  {{- if eq .Key "message" -}}{{- $msg = .Value -}}{{- end -}}
+  {{- if eq .Key "http_verb" -}}{{- $verb = .Value -}}{{- end -}}
+  {{- if or (eq .Key "http_path") (eq .Key "target_uri") -}}{{- $path = .Value -}}{{- end -}}
+  {{- if eq .Key "http_status" -}}{{- $status = .Value -}}{{- end -}}
+  {{- end -}}{{- end -}}
+  {{- $ip = trim .Source.Value -}}
+  {{- $scenario := trim .Scenario -}}
+  {{- $service := get $services $fqdn | default $fqdn | default $svc | default "Server" -}}
+  {{- $title = printf "[%s] %s banned" $service $ip -}}
+  {{- $body = printf "%s[!] Rule: %s\n" $body (default $scenario $rule) -}}
+  {{- if $msg -}}{{- $body = printf "%s> Info: %s\n" $body $msg -}}{{- end -}}
+  {{- if $fqdn -}}{{- $body = printf "%s> Host: %s\n" $body $fqdn -}}{{- end -}}
+  {{- if $path -}}
+  {{- $body = printf "%s> Request: %dx %s" $body (len .Events) (trim (printf "%s %s" $verb $path)) -}}
+  {{- if $status -}}{{- $body = printf "%s (%s)" $body $status -}}{{- end -}}
+  {{- $body = printf "%s\n" $body -}}
+  {{- end -}}
+  {{- if .Source.Cn -}}{{- $body = printf "%s> Origin: %s, %s (AS%s)\n" $body .Source.Cn .Source.AsName .Source.AsNumber -}}{{- end -}}
+  {{- range .Decisions -}}{{- $body = printf "%s> %s: %s\n" $body (title (trim .Type)) (trim .Duration) -}}{{- end -}}
+  {{- $body = printf "%s\n$ cscli decisions delete --ip %s\n\n" $body $ip -}}
+  {{- end -}}
+  {{- if gt (len .) 1 -}}{{- $title = printf "%d IPs banned" (len .) -}}{{- end -}}
+  {{- dict "topic" $topic "title" $title "message" (trim $body)
+      "actions" (list (dict "action" "view" "label" "CrowdSec CTI" "url" (printf "https://app.crowdsec.net/cti/%s" $ip))
+                      (dict "action" "view" "label" "Shodan" "url" (printf "https://www.shodan.io/host/%s" $ip)))
+      | toJson -}}
+url: https://[[ ntfy_server ]]/
 method: POST
 headers:
-  Content-Type: "text/plain"
+  Content-Type: "application/json"
 {% if ntfy_auth_token | default('') %}
-  Authorization: "Bearer {{ ntfy_auth_token }}"
+  Authorization: "Bearer [[ ntfy_auth_token ]]"
 {% endif %}
-  Title: "Crowdsec Trigger"
-  Tags: "warning"

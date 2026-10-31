@@ -1,0 +1,8 @@
+# File Managed by Ansible
+# roles/crowdsec/templates/acquis-rathole.yaml.j2
+# Reads the Rathole server log (failed handshakes) from the journal
+source: journalctl
+journalctl_filter:
+  - "_SYSTEMD_UNIT=rathole.service"
+labels:
+  type: syslog

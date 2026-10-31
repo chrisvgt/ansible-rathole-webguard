@@ -28,13 +28,31 @@ api:
 prometheus:
   enabled: false
 EOF
+# Test only: ntfy messages go to a local listener
+sed -i 's|^url: .*|url: http://127.0.0.1:18099/|' /etc/crowdsec/notifications/ntfy.yaml
+(while :; do printf 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n' | nc -l -p 18099 >>/tmp/ntfy.txt; done) &
+# Test only: no journal in the container, the Rathole log comes from a file
+cat >/etc/crowdsec/acquis.d/rathole.yaml <<'EOF'
+filenames: [/var/log/rathole.log]
+labels:
+  type: syslog
+EOF
 
-cscli hub update >/dev/null 2>&1 || bad "hub update"
+# The hub fails now and then; retry like the role does
+hub() {
+  for _ in 1 2 3; do
+    cscli "$@" >/tmp/hub.log 2>&1 && return
+    sleep 5
+  done
+  tail -3 /tmp/hub.log
+  return 1
+}
+hub hub update || bad "hub update"
 while read -r collection; do
-  cscli collections install "$collection" >/dev/null 2>&1 || bad "install $collection"
+  hub collections install "$collection" || bad "install $collection"
 done </t/collections.txt
 while read -r parser; do
-  cscli parsers install "$parser" >/dev/null 2>&1 || bad "install $parser"
+  hub parsers install "$parser" || bad "install $parser"
 done </t/hub_whitelists.txt
 
 check "configuration loads (crowdsec -t)" crowdsec -t
@@ -48,7 +66,7 @@ done
 
 # --- Engine with LAPI ---
 cscli machines add -a --force >/dev/null 2>&1
-touch /var/log/caddy/test.access.log
+touch /var/log/caddy/test.access.log /var/log/rathole.log
 crowdsec >/tmp/crowdsec.log 2>&1 &
 i=0
 until cscli lapi status >/dev/null 2>&1; do
@@ -105,6 +123,13 @@ for i in $(seq 1 30); do log 198.51.100.37 GET "/library/metadata/$((2000 + i))/
 # Still detected: basic auth guessing, probing for unknown paths
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.40 POST /api/upload 401 '{"Www-Authenticate":["Basic realm=\"x\""]}'; done
 for i in $(seq 1 30); do log 198.51.100.41 GET "/backup$i.zip" 404; done
+# Rathole server log as the journal hands it to CrowdSec (syslog format)
+rathole() {
+  printf '%s vps rathole[42]: %s ERROR connection{addr=%s:51234}: rathole::server: Handshake from %s failed: %s\n' \
+    "$(date '+%b %e %H:%M:%S')" "$(date -u +%Y-%m-%dT%H:%M:%S.000000Z)" "$1" "$1" "$2" >>/var/log/rathole.log
+}
+for i in 1 2 3 4 5 6 7 8; do rathole 198.51.100.60 'Failed to do transport handshake: Failed to do noise handshake: decrypt error'; done
+for i in 1 2 3 4 5 6 7 8; do rathole 198.51.100.61 'Transport handshake timeout: deadline has elapsed'; done
 sleep 10
 
 decisions=$(cscli decisions list -o raw 2>/dev/null)
@@ -126,9 +151,21 @@ check "Seerr browsing: no ban" no_decision 198.51.100.36
 check "Plex missing artwork: no ban" no_decision 198.51.100.37
 check "basic auth guessing: ban" has_alert 198.51.100.40 crowdsecurity/http-generic-bf
 check "probing unknown paths: ban" has_alert 198.51.100.41 crowdsecurity/http-probing
+check "failed Rathole handshakes: ban" has_alert 198.51.100.60 local/rathole-bf
+check "Rathole handshake timeouts: no ban" no_decision 198.51.100.61
 # profiles.yaml with duration_expr: first ban lasts 4h
+# ntfy message for the login ban
+# (toJson escapes ">" as >)
+ntfy=$(grep -F '198.51.100.7 banned' /tmp/ntfy.txt | sed 's/\\u003e/>/g')
+has() { echo "$ntfy" | grep -qF "$1"; }
+check "ntfy: service in the title" has '"title":"[app] 198.51.100.7 banned"'
+check "ntfy: rule" has '[!] Rule: local/login-bf'
+check "ntfy: request" has '> Request: 6x POST /api/auth/login (400)'
+check "ntfy: unban command" has '$ cscli decisions delete --ip 198.51.100.7'
+check "ntfy: topic" has '"topic":"test"'
+check "ntfy: Rathole ban" grep -qF '"title":"[rathole] 198.51.100.60 banned"' /tmp/ntfy.txt
 check "first ban lasts 4h" sh -c "echo '$decisions' | grep ',Ip:198.51.100.7,' | grep -q ',3h59m'"
 check "no fatal errors" sh -c "! grep -q 'level=fatal' /tmp/crowdsec.log"
 
-[ $fail -eq 0 ] || tail -20 /tmp/crowdsec.log
+[ $fail -eq 0 ] || { tail -20 /tmp/crowdsec.log; cat /tmp/ntfy.txt; }
 exit $fail

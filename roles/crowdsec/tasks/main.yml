@@ -225,6 +225,26 @@
   notify: Restart CrowdSec
   when: not crowdsec_login_detection | bool
 
+# Rathole logs every failed handshake on its server port with the peer's IP
+- name: Configure failed handshake detection on the Rathole port
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
+  loop: "{{ crowdsec_rathole_files }}"
+  when: crowdsec_rathole_detection | bool
+
+- name: Remove failed handshake detection on the Rathole port
+  ansible.builtin.file:
+    path: "{{ item.dest }}"
+    state: absent
+  notify: Restart CrowdSec
+  loop: "{{ crowdsec_rathole_files }}"
+  when: not crowdsec_rathole_detection | bool
+
 # The machine and bouncer for the blocklist import are managed by the crowdsec_import role
 
 ## CrowdSec Ntfy and Profile Configuration

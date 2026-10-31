@@ -203,6 +203,16 @@ check "firewall drops other ports" "! on $client 'curl -s --max-time 3 http://$s
 check "firewall leaves local access" "on $server 'curl -s --max-time 3 http://127.0.0.1:9000/'"
 check "Caddy bouncer is registered" "on $server 'cscli bouncers list -o raw' | grep -q caddy-bouncer"
 check "failed login scenario is loaded" "on $server 'cscli scenarios list -o raw' | grep -q local/login-bf"
+# A failed handshake on the Rathole port as CrowdSec reads it from the journal; the
+# client's private IP is replaced, since private IPs are never banned
+on "$client" "exec 3<>/dev/tcp/$server_ip/2333; printf garbage >&3" >/dev/null 2>&1 || true
+sleep 2
+rathole_handshake() {
+  on "$server" "journalctl -u rathole --no-pager | grep 'Handshake from $client_ip failed' | tail -1 |
+    sed 's/$client_ip/198.51.100.70/g' >/tmp/rathole.log && cscli explain --file /tmp/rathole.log --type syslog" |
+    grep -q local/rathole-bf
+}
+check "a failed Rathole handshake reaches the ban scenario" rathole_handshake
 check "app whitelists are installed" "on $server 'cscli parsers list -o raw' | grep -q crowdsecurity/nextcloud-whitelist"
 check "hub updates are scheduled" "on $server 'systemctl is-enabled crowdsec-hubupdate.timer'"
 check "blocklist import is scheduled" "on $server 'systemctl is-active crowdsec-blocklist-import.timer'"
