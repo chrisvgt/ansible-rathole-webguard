@@ -83,6 +83,9 @@ check "all runs lint"          "yamllint -s ." all
 check "all runs tests"         "./tests/run.sh" all
 check "all runs pre-commit"    "pre-commit run --all-files" all
 check "ownership fix"          "chown -R $(id -u):$(id -g)" coverage task-coverage.txt
+check "lint ownership fix"     "chown -R $(id -u):$(id -g)" lint
+check "test ownership fix"     "chown -R $(id -u):$(id -g)" test
+check "playbook ownership fix" "chown -R $(id -u):$(id -g)" playbook --no-vault
 
 # Environment forwarding when a supported variable is set.
 export TASK_COVERAGE_FILE=/tmp/task-coverage.txt

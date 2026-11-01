@@ -98,12 +98,16 @@ case "$cmd" in
   lint)
     build_image
     extra=()
-    run_cmd bash -c 'yamllint -s . && ansible-lint && ansible-playbook --syntax-check -i localhost, site.yml'
+    run_cmd bash -c 'yamllint -s . && ansible-lint && ansible-playbook --syntax-check -i localhost, site.yml' || status=$?
+    restore_owner
+    exit "$status"
     ;;
   test)
     build_image
     extra=(--cap-add=NET_ADMIN)
-    run_cmd ./tests/run.sh
+    run_cmd ./tests/run.sh || status=$?
+    restore_owner
+    exit "$status"
     ;;
   pre-commit)
     build_image
@@ -147,7 +151,9 @@ case "$cmd" in
     if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
       extra+=(-v "$SSH_AUTH_SOCK:/ssh-agent" -e SSH_AUTH_SOCK=/ssh-agent)
     fi
-    run_cmd ./scripts/run-playbook.sh "$@"
+    run_cmd ./scripts/run-playbook.sh "$@" || status=$?
+    restore_owner
+    exit "$status"
     ;;
   shell)
     build_image
