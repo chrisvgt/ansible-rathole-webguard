@@ -65,6 +65,7 @@ expect_fail() {
 }
 
 check "build context"          "docker/dev" build
+check "python version"         "--build-arg PYTHON_VERSION=$(cat "$repo/.python-version")" build
 check "lint commands"          "yamllint -s . && ansible-lint && ansible-playbook --syntax-check -i localhost, site.yml" lint
 check "test command"           "./tests/run.sh" test
 check "test NET_ADMIN"         "--cap-add=NET_ADMIN" test
@@ -80,6 +81,13 @@ check "lint ownership fix"     "chown -R $(id -u):$(id -g)" lint
 check "test ownership fix"     "chown -R $(id -u):$(id -g)" test
 check "pre-commit ownership"   "chown -R $(id -u):$(id -g)" pre-commit
 check "all ownership fix"      "chown -R $(id -u):$(id -g)" all
+check "shell ownership fix"    "chown -R $(id -u):$(id -g)" shell
+
+# In a git worktree, .git is a file and its directory must be mounted too.
+if [[ -f "$repo/.git" ]]; then
+  common=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)
+  check "worktree git mount"   "-v $common:$common" lint
+fi
 
 # Refuse non-Linux hosts.
 STUB_UNAME=Darwin expect_fail "non-Linux host" "Linux" build
