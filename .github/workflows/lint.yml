@@ -16,17 +16,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Read Python version
+        id: python
+        run: echo "version=$(cat .python-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the development image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          load: true
+          tags: ansible-rathole-webguard-dev:local
+          build-args: |
+            PYTHON_VERSION=${{ steps.python.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # The firewall test runs nftables with conntrack in a container, which
       # cannot load kernel modules itself
       - name: Load nftables kernel modules
         run: sudo modprobe -a nf_tables nft_ct
 
-      # The first command builds the development image, the others reuse it
       - name: Yamllint, ansible-lint and syntax check
         run: ./docker.sh lint
 
       - name: Tests
         run: ./docker.sh test
 
+      - name: Cache pre-commit hooks
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml', 'docker/requirements.txt') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
       - name: Pre-commit (format checks)
+        env:
+          WEBGUARD_PRECOMMIT_CACHE: ${{ runner.temp }}/pre-commit
         run: ./docker.sh pre-commit
