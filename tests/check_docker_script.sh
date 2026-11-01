@@ -73,6 +73,8 @@ check "test same-path mount"   "-v $repo:$repo" test
 check "test TMPDIR"            "TMPDIR=$repo/.tmp" test
 check "test socket"            "${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock" test
 check "pre-commit cache"       "webguard-dev-pre-commit:/root/.cache/pre-commit" pre-commit
+WEBGUARD_PRECOMMIT_CACHE=/tmp/pc-cache check "pre-commit cache path" "-v /tmp/pc-cache:/root/.cache/pre-commit" pre-commit
+unset WEBGUARD_PRECOMMIT_CACHE
 check "all runs lint"          "yamllint -s . && ansible-lint" all
 check "all runs tests"         "./tests/run.sh" all
 check "all runs pre-commit"    "pre-commit run --all-files" all
