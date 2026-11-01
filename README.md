@@ -29,7 +29,7 @@ A **tuple** is one server (VPS) and one client (home server) connected by one tu
 
 ### Before you start
 
-- A computer with Ansible (`ansible-core`, tested with 2.21) that reaches both hosts over SSH, as `root` or as a user with `sudo`. Python is installed on the hosts if it is missing.
+- A computer that reaches both hosts over SSH, as `root` or as a user with `sudo`, and runs the playbook either with Ansible installed (`ansible-core`, tested with 2.21) or with only Docker on Linux (see [Development](#development)). Python is installed on the hosts if it is missing.
 - A VPS and a home server with a supported OS (see above).
 - For each domain a DNS record that points to the VPS (A, and AAAA if the VPS has IPv6). Without Cloudflare, Caddy needs it before the first run to get its certificates.
 - On the VPS, these ports reachable from the internet: 80/tcp, 443/tcp and 443/udp for Caddy, and the Rathole port (default 2333/tcp). Open them in the provider firewall, or let the playbook manage the host firewall (`enable_firewall: true`, see [Firewall](#firewall)).
@@ -391,6 +391,27 @@ sudo journalctl -u crowdsec-blocklist-import.service
 | Rathole tunnel down          | Client reaches server port? Service names, tokens and keys match?          |
 | Rathole permission denied    | Referenced files under `/home`? Move them, e.g. to `/etc/rathole`          |
 
+## Development
+
+Linting, tests, the integration test and the playbook run in a Docker image. On the host you need Linux with a local, rootful Docker Engine, plus `git` and `bash`. Ansible, the linters and pre-commit are not needed on the host.
+
+```bash
+./scripts/dev.sh build                 # build the development image
+./scripts/dev.sh lint                  # yamllint, ansible-lint and a playbook syntax check
+./scripts/dev.sh test                  # test suite (tests/run.sh)
+./scripts/dev.sh pre-commit            # format checks over the repository
+./scripts/dev.sh all                   # lint, test and pre-commit in one container
+./scripts/dev.sh integration           # full run against a server and a client container
+./scripts/dev.sh playbook --no-vault   # deployment playbook, with ~/.ssh and your SSH agent
+./scripts/dev.sh shell                 # interactive bash in the container
+```
+
+- Only Linux with a local, rootful Docker daemon is supported. macOS, Windows, Docker Desktop, remote `DOCKER_HOST`, rootless Docker and SELinux-enforcing hosts are not.
+- The container runs as root and mounts the host's Docker socket. Whoever can run `scripts/dev.sh` can control the Docker daemon of the host. Use it only on a checkout you trust.
+- The image is built from `docker/dev/` only. Your `inventory.ini`, `group_vars/` and `host_vars/` never end up in the image.
+- After each command the wrapper gives the repository back to your user, so no root-owned files stay behind.
+- Tool versions are pinned in `docker/dev/requirements.txt` and kept current by Renovate.
+
 ## Directory structure
 
 ```
@@ -403,6 +424,7 @@ sudo journalctl -u crowdsec-blocklist-import.service
 ├── host_vars/                  # Optional per-host overrides
 ├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
 ├── tasks/preflight.yml         # Configuration checks, also run on the examples
+├── docker/dev/                 # Development image (Dockerfile, pinned tools)
 ├── tests/                      # Derivation tests (tests/run.sh)
 ├── roles/
 │   ├── system/                 # journald limit, optional swap, security updates
@@ -414,7 +436,9 @@ sudo journalctl -u crowdsec-blocklist-import.service
 │   ├── python/                 # pipx for the importer
 │   ├── rathole/                # Tunnel server and client
 │   └── firewall/               # Optional nftables firewall on the server
-└── scripts/run-playbook.sh     # Wrapper with vault options
+└── scripts/
+    ├── dev.sh                  # Development commands in Docker
+    └── run-playbook.sh         # Wrapper with vault options
 ```
 
 ## License
