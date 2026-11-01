@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Helper to run the main ansible playbook with sensible defaults.
 # Usage:
-#   ./scripts/run-playbook.sh            # prompts for the vault password (--ask-vault-pass)
-#   ./scripts/run-playbook.sh --no-vault # no vault, secrets in plaintext group_vars
-#   ./scripts/run-playbook.sh --vault-file /path/to/vault_pass.txt
-#   ./scripts/run-playbook.sh --no-vault --check --diff   # other options go to ansible-playbook
+#   ./run-playbook.sh            # prompts for the vault password (--ask-vault-pass)
+#   ./run-playbook.sh --no-vault # no vault, secrets in plaintext group_vars
+#   ./run-playbook.sh --vault-file /path/to/vault_pass.txt
+#   ./run-playbook.sh --no-vault --check --diff   # other options go to ansible-playbook
 
 set -euo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PLAYBOOK="${PLAYBOOK:-site.yml}"
 INVENTORY="${INVENTORY:-inventory.ini}"
 NO_VAULT=false

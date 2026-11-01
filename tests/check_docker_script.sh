@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/dev.sh wraps the development image in Docker. Its build and run
+# ./docker.sh wraps the development image in Docker. Its build and run
 # commands are asserted against a stub `docker` that only prints its arguments.
 set -eu
 
@@ -29,7 +29,7 @@ chmod +x "$stub_dir/uname"
 fail=0
 
 run() {
-  PATH="$stub_dir:$PATH" ./scripts/dev.sh "$@"
+  PATH="$stub_dir:$PATH" "$repo/docker.sh" "$@"
 }
 
 check() {
@@ -64,7 +64,7 @@ expect_fail() {
   fi
 }
 
-check "build context"          "docker/dev" build
+check "build context"          "$repo/docker" build
 check "python version"         "--build-arg PYTHON_VERSION=$(cat "$repo/.python-version")" build
 check "lint commands"          "yamllint -s . && ansible-lint && ansible-playbook --syntax-check -i localhost, site.yml" lint
 check "test command"           "./tests/run.sh" test
