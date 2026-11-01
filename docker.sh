@@ -75,16 +75,33 @@ run_cmd() {
   docker run "${argv[@]}"
 }
 
-# Give the repository back to the host user. Failures here must not mask the
-# command's exit status, but they must not stay silent either.
+# Give the repository (and the pre-commit cache when it is a host directory)
+# back to the host user. Failures here must not mask the command's exit
+# status, but they must not stay silent either.
 restore_owner() {
-  if ! docker run --rm -v "$REPO:$REPO" -w "$REPO" "$IMAGE" \
-    chown -R "$(id -u):$(id -g)" .; then
-    echo "warning: could not restore repository ownership" >&2
+  local -a targets
+  targets=("$REPO")
+  if [[ "$PRECOMMIT_CACHE" == */* ]]; then
+    targets+=("$PRECOMMIT_CACHE")
   fi
+  local t
+  for t in "${targets[@]}"; do
+    if ! docker run --rm -v "$t:$t" -w "$t" "$IMAGE" \
+      chown -R "$(id -u):$(id -g)" .; then
+      echo "warning: could not restore ownership of $t" >&2
+    fi
+  done
 }
 
 status=0
+
+# The pre-commit cache is a named volume by default; a path (anything with a
+# slash) becomes a host directory so CI can share it via actions/cache.
+PRECOMMIT_CACHE=${WEBGUARD_PRECOMMIT_CACHE:-webguard-dev-pre-commit}
+if [[ "$PRECOMMIT_CACHE" == */* ]]; then
+  mkdir -p "$PRECOMMIT_CACHE"
+fi
+precommit_mount=(-v "$PRECOMMIT_CACHE:/root/.cache/pre-commit")
 
 case "$cmd" in
   build)
@@ -106,14 +123,14 @@ case "$cmd" in
     ;;
   pre-commit)
     build_image
-    extra=(-v webguard-dev-pre-commit:/root/.cache/pre-commit)
+    extra=("${precommit_mount[@]}")
     run_cmd bash -c 'pre-commit install-hooks && pre-commit run --all-files' || status=$?
     restore_owner
     exit "$status"
     ;;
   all)
     build_image
-    extra=(--cap-add=NET_ADMIN -v webguard-dev-pre-commit:/root/.cache/pre-commit)
+    extra=(--cap-add=NET_ADMIN "${precommit_mount[@]}")
     run_cmd bash -c 'yamllint -s . && ansible-lint && ansible-playbook --syntax-check -i localhost, site.yml && ./tests/run.sh && pre-commit install-hooks && pre-commit run --all-files' || status=$?
     restore_owner
     exit "$status"

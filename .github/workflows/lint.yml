@@ -11,45 +11,49 @@ name: Lint Ansible
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Read Python version
+        id: python
+        run: echo "version=$(cat .python-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the development image
+        uses: docker/build-push-action@v6
         with:
-          python-version-file: .python-version
-
-      - name: Install linters
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r docker/requirements.txt
-
-      - name: Yamllint (strict, warnings fail)
-        run: yamllint -s .
-
-      - name: Ansible-lint
-        env:
-          ANSIBLE_DEPRECATION_WARNINGS: "false"
-        run: ansible-lint
-
-      - name: Playbook syntax check
-        run: ansible-playbook --syntax-check -i localhost, site.yml
-
-      - name: Install nftables (firewall rule syntax check)
-        run: sudo apt-get install -y nftables
+          context: docker
+          load: true
+          tags: ansible-rathole-webguard-dev:local
+          build-args: |
+            PYTHON_VERSION=${{ steps.python.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # The firewall test runs nftables with conntrack in a container, which
       # cannot load kernel modules itself
       - name: Load nftables kernel modules
         run: sudo modprobe -a nf_tables nft_ct
 
+      - name: Yamllint, ansible-lint and syntax check
+        run: ./docker.sh lint
+
       - name: Tests
-        run: ./tests/run.sh
+        run: ./docker.sh test
+
+      - name: Cache pre-commit hooks
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml', 'docker/requirements.txt') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
 
       - name: Pre-commit (format checks)
-        run: |
-          pre-commit install-hooks
-          pre-commit run --all-files || (
-            echo "Pre-commit checks failed. Please run 'pre-commit run --all-files' locally to auto-fix." && exit 1
-          )
+        env:
+          WEBGUARD_PRECOMMIT_CACHE: ${{ runner.temp }}/pre-commit
+        run: ./docker.sh pre-commit
