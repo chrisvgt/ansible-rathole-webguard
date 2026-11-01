@@ -75,13 +75,22 @@ run_cmd() {
   docker run "${argv[@]}"
 }
 
-# Give the repository back to the host user. Failures here must not mask the
-# command's exit status, but they must not stay silent either.
+# Give the repository (and the pre-commit cache when it is a host directory)
+# back to the host user. Failures here must not mask the command's exit
+# status, but they must not stay silent either.
 restore_owner() {
-  if ! docker run --rm -v "$REPO:$REPO" -w "$REPO" "$IMAGE" \
-    chown -R "$(id -u):$(id -g)" .; then
-    echo "warning: could not restore repository ownership" >&2
+  local -a targets
+  targets=("$REPO")
+  if [[ "$PRECOMMIT_CACHE" == */* ]]; then
+    targets+=("$PRECOMMIT_CACHE")
   fi
+  local t
+  for t in "${targets[@]}"; do
+    if ! docker run --rm -v "$t:$t" -w "$t" "$IMAGE" \
+      chown -R "$(id -u):$(id -g)" .; then
+      echo "warning: could not restore ownership of $t" >&2
+    fi
+  done
 }
 
 status=0
