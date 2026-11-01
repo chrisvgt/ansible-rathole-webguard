@@ -82,7 +82,7 @@ From this, the playbook builds the Rathole server and client configuration and t
 No secrets are needed for the default settings: the tunnel keys and the CrowdSec credentials are created on the server (see [Secrets](#secrets)). With `enable_cloudflare: true`, set `cloudflare_api_token` in the tuple file first.
 
 ```bash
-./scripts/run-playbook.sh --no-vault
+./run-playbook.sh --no-vault
 ```
 
 The script runs `ansible-playbook -i inventory.ini site.yml`. Without `--no-vault` it asks for the vault password, for secrets kept in Ansible Vault. Use `--vault-file <file>`, `--inventory <file>` or `--playbook <file>` to change the defaults. All other options are passed on to `ansible-playbook`, for example `--limit home`, `--tags caddy`, or `-K` if `sudo` asks for a password. Before later changes, `--check --diff` shows what would change without changing anything.
@@ -127,7 +127,7 @@ The Rathole client reads the public key and the token from its server, also with
 
 Two ways to store your own secrets:
 
-**Plaintext (simple).** Write the value into `group_vars/tunnel_<name>.yml` and run `./scripts/run-playbook.sh --no-vault`. The file is gitignored.
+**Plaintext (simple).** Write the value into `group_vars/tunnel_<name>.yml` and run `./run-playbook.sh --no-vault`. The file is gitignored.
 
 **Ansible Vault.** Reference a vault variable in the tuple file (`cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"`) and define it in an encrypted file:
 
@@ -140,7 +140,7 @@ ansible-vault create group_vars/webservers/vault.yml
 vault_cloudflare_api_token_server: "..."
 ```
 
-Run `./scripts/run-playbook.sh` (prompts) or `./scripts/run-playbook.sh --vault-file ~/.vault_pass`. Do not create a directory with the same name as one of your files (`group_vars/all/`, `group_vars/tunnel_home/`): Ansible then ignores the file of that name.
+Run `./run-playbook.sh` (prompts) or `./run-playbook.sh --vault-file ~/.vault_pass`. Do not create a directory with the same name as one of your files (`group_vars/all/`, `group_vars/tunnel_home/`): Ansible then ignores the file of that name.
 
 The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible writes it to `/etc/caddy/caddy.env` (root, mode 0600) on the server, and systemd passes it to Caddy. No manual env file is needed.
 
@@ -244,7 +244,7 @@ Moving the VPS to another system: install the new system, keep the inventory ent
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.
 
-Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./scripts/run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
+Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
 
 ## Caddy build
 
@@ -396,19 +396,19 @@ sudo journalctl -u crowdsec-blocklist-import.service
 Lint, tests and pre-commit can run locally in a Docker image. On the host you need Linux with a local, rootful Docker Engine, plus `git` and `bash`. Ansible and the linters are not needed on the host. The integration test runs in GitHub Actions only.
 
 ```bash
-./scripts/dev.sh build        # build the development image
-./scripts/dev.sh lint         # yamllint, ansible-lint and a playbook syntax check
-./scripts/dev.sh test         # test suite (tests/run.sh)
-./scripts/dev.sh pre-commit   # format checks over the repository
-./scripts/dev.sh all          # lint, test and pre-commit in one container
-./scripts/dev.sh shell        # interactive bash in the container
+./docker.sh build        # build the development image
+./docker.sh lint         # yamllint, ansible-lint and a playbook syntax check
+./docker.sh test         # test suite (tests/run.sh)
+./docker.sh pre-commit   # format checks over the repository
+./docker.sh all          # lint, test and pre-commit in one container
+./docker.sh shell        # interactive bash in the container
 ```
 
 - Only Linux with a local, rootful Docker daemon is supported. macOS, Windows, Docker Desktop, remote `DOCKER_HOST`, rootless Docker and SELinux-enforcing hosts are not.
-- The container runs as root and mounts the host's Docker socket. Whoever can run `scripts/dev.sh` can control the Docker daemon of the host. Use it only on a checkout you trust.
-- The image is built from `docker/dev/` only, so `inventory.ini`, `group_vars/` and `host_vars/` never end up in it.
+- The container runs as root and mounts the host's Docker socket. Whoever can run `./docker.sh` can control the Docker daemon of the host. Use it only on a checkout you trust.
+- The image is built from `docker/` only, so `inventory.ini`, `group_vars/` and `host_vars/` never end up in it.
 - After each command the wrapper gives the repository back to your user, so no root-owned files stay behind.
-- Tool versions are pinned in `docker/dev/requirements.txt` and kept current by Renovate.
+- Tool versions are pinned in `docker/requirements.txt` and kept current by Renovate.
 
 ## Directory structure
 
@@ -422,7 +422,7 @@ Lint, tests and pre-commit can run locally in a Docker image. On the host you ne
 ├── host_vars/                  # Optional per-host overrides
 ├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
 ├── tasks/preflight.yml         # Configuration checks, also run on the examples
-├── docker/dev/                 # Development image (Dockerfile, pinned tools)
+├── docker/                     # Development image (Dockerfile, pinned tools)
 ├── tests/                      # Derivation tests (tests/run.sh)
 ├── roles/
 │   ├── system/                 # journald limit, optional swap, security updates
@@ -434,9 +434,8 @@ Lint, tests and pre-commit can run locally in a Docker image. On the host you ne
 │   ├── python/                 # pipx for the importer
 │   ├── rathole/                # Tunnel server and client
 │   └── firewall/               # Optional nftables firewall on the server
-└── scripts/
-    ├── dev.sh                  # Local checks in Docker
-    └── run-playbook.sh         # Wrapper with vault options
+├── docker.sh                   # Local checks in Docker (development)
+└── run-playbook.sh             # Playbook wrapper with vault options (production)
 ```
 
 ## License

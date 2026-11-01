@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/run-playbook.sh passes unknown options on to ansible-playbook.
+# run-playbook.sh passes unknown options on to ansible-playbook.
 # A stub ansible-playbook prints its arguments instead of running anything.
 set -eu
 
@@ -14,7 +14,7 @@ check() {
   local expected=$1
   shift
   local got
-  got=$(PATH="$stub_dir:$PATH" ./scripts/run-playbook.sh "$@" | grep '^ARGS ' || true)
+  got=$(PATH="$stub_dir:$PATH" ./run-playbook.sh "$@" | grep '^ARGS ' || true)
   if [[ "$got" != "ARGS $expected" ]]; then
     echo "FAIL ($*): got '${got:-nothing}', expected 'ARGS $expected'"
     fail=1

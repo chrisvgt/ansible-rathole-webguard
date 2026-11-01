@@ -6,13 +6,13 @@
 # in GitHub Actions only.
 set -euo pipefail
 
-REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 IMAGE=${WEBGUARD_DEV_IMAGE:-ansible-rathole-webguard-dev:local}
 SOCK=${DOCKER_SOCK:-/var/run/docker.sock}
 
 usage() {
   cat <<'EOF'
-Usage: scripts/dev.sh <command>
+Usage: ./docker.sh <command>
 
 Commands:
   build        Build the development image
@@ -26,18 +26,18 @@ EOF
 
 # Linux only: the image and the same-path mount assume a Linux host daemon.
 if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "scripts/dev.sh only supports Linux hosts (got $(uname -s))" >&2
+  echo "./docker.sh only supports Linux hosts (got $(uname -s))" >&2
   exit 1
 fi
 
 # Only a local, rootful Docker daemon is supported.
 if [[ -n "${DOCKER_HOST:-}" && "$DOCKER_HOST" != "unix://$SOCK" ]]; then
-  echo "scripts/dev.sh requires a local rootful Docker daemon; DOCKER_HOST=$DOCKER_HOST is not supported" >&2
+  echo "./docker.sh requires a local rootful Docker daemon; DOCKER_HOST=$DOCKER_HOST is not supported" >&2
   exit 1
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  echo "scripts/dev.sh could not reach the Docker daemon (DOCKER_SOCK=$SOCK${DOCKER_HOST:+, DOCKER_HOST=$DOCKER_HOST})" >&2
+  echo "./docker.sh could not reach the Docker daemon (DOCKER_SOCK=$SOCK${DOCKER_HOST:+, DOCKER_HOST=$DOCKER_HOST})" >&2
   exit 1
 fi
 
@@ -50,7 +50,7 @@ shift
 
 build_image() {
   docker build --build-arg PYTHON_VERSION="$(cat "$REPO/.python-version")" \
-    --tag "$IMAGE" "$REPO/docker/dev"
+    --tag "$IMAGE" "$REPO/docker"
 }
 
 # Extra docker run options for the current command.

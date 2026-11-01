@@ -25,8 +25,8 @@ echo "== site.yml task order"
 echo "== run-playbook.sh options"
 ./tests/check_run_playbook.sh
 
-echo "== dev.sh options"
-./tests/check_dev_script.sh
+echo "== docker.sh options"
+./tests/check_docker_script.sh
 
 echo "== crowdsec in docker"
 if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
