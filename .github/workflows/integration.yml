@@ -46,7 +46,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Install Ansible
-        run: pip install -r tests/requirements.txt
+        run: pip install -r docker/dev/requirements.txt
 
       # The firewall tests run nftables with conntrack in containers, which
       # cannot load kernel modules themselves
