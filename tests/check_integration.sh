@@ -18,14 +18,16 @@ client_os=${CLIENT_OS:-debian13}
 # Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
 arch_image=archlinux:base-20261018.0.612668
-net=webguard-it
+net=${WEBGUARD_NETWORK:-webguard-it}
 server=it-server
 client=it-client
 
 cleanup() {
   docker exec "$server" swapoff /swap/swapfile >/dev/null 2>&1 || true
   docker rm -f "$server" "$client" >/dev/null 2>&1 || true
-  docker network rm "$net" >/dev/null 2>&1 || true
+  if [[ -z ${WEBGUARD_KEEP_NETWORK:-} ]]; then
+    docker network rm "$net" >/dev/null 2>&1 || true
+  fi
 }
 cleanup # Leftovers of an aborted run
 logs=$(mktemp -d)
@@ -73,7 +75,7 @@ server_image=$(image_for "$server_os")
 client_image=$(image_for "$client_os")
 echo "== server: $server_os, client: $client_os"
 
-docker network create "$net" >/dev/null
+docker network create "$net" >/dev/null 2>&1 || true
 docker run -d --name "$server" --hostname "$server" --network "$net" --privileged \
   --tmpfs /run --tmpfs /run/lock ${mounts[@]+"${mounts[@]}"} "$server_image" /lib/systemd/systemd >/dev/null
 docker run -d --name "$client" --hostname "$client" --network "$net" --privileged \
