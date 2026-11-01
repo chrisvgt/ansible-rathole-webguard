@@ -28,18 +28,22 @@
       vars:
         rules: "{{ lookup('file', rendered.dest) }}"
 
-    # nft needs CAP_NET_ADMIN and the conntrack module even for a dry run: sudo
-    # in CI, a user namespace locally if the module is loaded, otherwise skipped
+    # nft needs CAP_NET_ADMIN and the conntrack module even for a dry run: probe
+    # with sudo, then a user namespace; fail in CI when neither can load nft_ct
     - name: Check syntax with nft
       ansible.builtin.shell: |
         set -o pipefail
         probe='table inet probe { chain input { type filter hook input priority filter; ct state established accept; }; }'
-        if sudo -n nft --version >/dev/null 2>&1; then
+        if sudo -n nft --version >/dev/null 2>&1 && echo "$probe" | sudo -n nft -c -f - >/dev/null 2>&1; then
           sudo -n nft -c -f "{{ rendered.dest }}"
-        elif echo "$probe" | unshare -rn nft -c -f - 2>/dev/null; then
+        elif echo "$probe" | unshare -rn nft -c -f - >/dev/null 2>&1; then
           unshare -rn nft -c -f "{{ rendered.dest }}"
         else
-          echo "skipped: nft check needs root or a loaded nf_conntrack module"
+          if [[ -n ${CI:-} ]]; then
+            echo "nft check failed: the kernel cannot load nf_tables/nft_ct" >&2
+            exit 1
+          fi
+          echo "skipped: nft check needs nf_tables/nft_ct or a user namespace"
         fi
       args:
         executable: /bin/bash

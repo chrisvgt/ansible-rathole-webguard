@@ -6,3 +6,4 @@ vault.yml
 __pycache__
 *.log
 /log.txt
+/.tmp/

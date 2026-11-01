@@ -391,6 +391,25 @@ sudo journalctl -u crowdsec-blocklist-import.service
 | Rathole tunnel down          | Client reaches server port? Service names, tokens and keys match?          |
 | Rathole permission denied    | Referenced files under `/home`? Move them, e.g. to `/etc/rathole`          |
 
+## Development
+
+Lint, tests and pre-commit can run locally in a Docker image. On the host you need Linux with a local, rootful Docker Engine, plus `git` and `bash`. Ansible and the linters are not needed on the host. The integration test runs in GitHub Actions only.
+
+```bash
+./scripts/dev.sh build        # build the development image
+./scripts/dev.sh lint         # yamllint, ansible-lint and a playbook syntax check
+./scripts/dev.sh test         # test suite (tests/run.sh)
+./scripts/dev.sh pre-commit   # format checks over the repository
+./scripts/dev.sh all          # lint, test and pre-commit in one container
+./scripts/dev.sh shell        # interactive bash in the container
+```
+
+- Only Linux with a local, rootful Docker daemon is supported. macOS, Windows, Docker Desktop, remote `DOCKER_HOST`, rootless Docker and SELinux-enforcing hosts are not.
+- The container runs as root and mounts the host's Docker socket. Whoever can run `scripts/dev.sh` can control the Docker daemon of the host. Use it only on a checkout you trust.
+- The image is built from `docker/dev/` only, so `inventory.ini`, `group_vars/` and `host_vars/` never end up in it.
+- After each command the wrapper gives the repository back to your user, so no root-owned files stay behind.
+- Tool versions are pinned in `docker/dev/requirements.txt` and kept current by Renovate.
+
 ## Directory structure
 
 ```
@@ -403,6 +422,7 @@ sudo journalctl -u crowdsec-blocklist-import.service
 ├── host_vars/                  # Optional per-host overrides
 ├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
 ├── tasks/preflight.yml         # Configuration checks, also run on the examples
+├── docker/dev/                 # Development image (Dockerfile, pinned tools)
 ├── tests/                      # Derivation tests (tests/run.sh)
 ├── roles/
 │   ├── system/                 # journald limit, optional swap, security updates
@@ -414,7 +434,9 @@ sudo journalctl -u crowdsec-blocklist-import.service
 │   ├── python/                 # pipx for the importer
 │   ├── rathole/                # Tunnel server and client
 │   └── firewall/               # Optional nftables firewall on the server
-└── scripts/run-playbook.sh     # Wrapper with vault options
+└── scripts/
+    ├── dev.sh                  # Local checks in Docker
+    └── run-playbook.sh         # Wrapper with vault options
 ```
 
 ## License
