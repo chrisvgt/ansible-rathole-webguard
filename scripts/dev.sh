@@ -76,10 +76,12 @@ run_cmd() {
 }
 
 # Give the repository back to the host user. Failures here must not mask the
-# command's exit status.
+# command's exit status, but they must not stay silent either.
 restore_owner() {
-  docker run --rm -v "$REPO:$REPO" -w "$REPO" "$IMAGE" \
-    chown -R "$(id -u):$(id -g)" . || true
+  if ! docker run --rm -v "$REPO:$REPO" -w "$REPO" "$IMAGE" \
+    chown -R "$(id -u):$(id -g)" .; then
+    echo "warning: could not restore repository ownership" >&2
+  fi
 }
 
 status=0
@@ -122,7 +124,9 @@ case "$cmd" in
     if [[ -t 0 ]]; then
       extra+=(-it)
     fi
-    run_cmd bash
+    run_cmd bash || status=$?
+    restore_owner
+    exit "$status"
     ;;
   *)
     usage >&2
