@@ -40,13 +40,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
-
-      - name: Install Ansible
-        run: pip install -r tests/requirements.txt
+      - name: Build the development image
+        run: ./scripts/dev.sh build
 
       # The firewall tests run nftables with conntrack in containers, which
       # cannot load kernel modules themselves
@@ -59,14 +54,14 @@ jobs:
       # the task coverage of the modes the full run does not use
       - name: Tests
         if: matrix.server == 'debian13' && matrix.client == 'debian13'
-        run: ./tests/run.sh
+        run: ./scripts/dev.sh test
 
       - name: Full run against a server and a client
         env:
           SERVER_OS: ${{ matrix.server }}
           CLIENT_OS: ${{ matrix.client }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./tests/check_integration.sh
+        run: ./scripts/dev.sh integration
 
       - name: Keep the task coverage
         if: ${{ !cancelled() }}
@@ -86,10 +81,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
+      - name: Build the development image
+        run: ./scripts/dev.sh build
 
       - name: Fetch the task coverage of all combinations
         uses: actions/download-artifact@v4
@@ -99,6 +92,5 @@ jobs:
 
       - name: Task coverage (at least 90%)
         run: |
-          pip install pyyaml
           cat coverage/*/task-coverage.txt > task-coverage.txt
-          python3 tests/coverage.py task-coverage.txt --min 90 --missing
+          ./scripts/dev.sh coverage task-coverage.txt --min 90 --missing
