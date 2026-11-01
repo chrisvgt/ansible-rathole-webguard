@@ -15,6 +15,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        libatomic1 \
         nftables \
         openssh-client \
         sudo \
