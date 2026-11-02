@@ -38,10 +38,10 @@ jobs:
       ANSIBLE_CALLBACKS_ENABLED: task_coverage
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
@@ -70,7 +70,7 @@ jobs:
 
       - name: Keep the task coverage
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: task-coverage-${{ matrix.server }}-${{ matrix.client }}
           path: task-coverage.txt
@@ -84,15 +84,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
       - name: Fetch the task coverage of all combinations
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: task-coverage-*
           path: coverage

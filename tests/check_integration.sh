@@ -17,7 +17,7 @@ server_os=${SERVER_OS:-debian13}
 client_os=${CLIENT_OS:-debian13}
 # Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-arch_image=archlinux:base-20261018.0.612668
+arch_image=archlinux:base-20261025.0.616225
 net=webguard-it
 server=it-server
 client=it-client
