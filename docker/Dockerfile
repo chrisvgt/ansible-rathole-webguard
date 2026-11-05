@@ -3,7 +3,7 @@
 # The Python version is passed by ./docker.sh from .python-version.
 ARG PYTHON_VERSION=3.14
 
-FROM docker:29.9.2-cli AS docker-cli
+FROM docker:29.9.3-cli AS docker-cli
 
 FROM python:${PYTHON_VERSION}-slim-trixie
 
