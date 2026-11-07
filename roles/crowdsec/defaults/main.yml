@@ -77,4 +77,4 @@ crowdsec_bouncer_key_file: /etc/crowdsec/caddy.bouncer.key
 # renovate: datasource=github-releases depName=crowdsecurity/crowdsec extractVersion=^v(?<version>.+)$
 crowdsec_version: "1.8.2"
 # renovate: datasource=github-releases depName=crowdsecurity/cs-firewall-bouncer extractVersion=^v(?<version>.+)$
-crowdsec_firewall_bouncer_version: "0.0.36"
+crowdsec_firewall_bouncer_version: "0.0.38"
