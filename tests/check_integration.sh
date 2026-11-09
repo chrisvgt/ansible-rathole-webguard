@@ -4,7 +4,7 @@
 # outside: site through the tunnel, CrowdSec bouncer, firewall, Caddy sandbox.
 # A second run must change nothing, a check-mode run must pass, and turning the
 # firewall off must remove it.
-# The playbook runs like on real hosts: through scripts/run-playbook.sh, over
+# The playbook runs like on real hosts: through run-playbook.sh, over
 # SSH with host key checking, as a user with sudo on Debian and Ubuntu and as
 # root on Arch Linux.
 # SERVER_OS and CLIENT_OS choose the system of each host: debian13 (default),
@@ -17,7 +17,7 @@ server_os=${SERVER_OS:-debian13}
 client_os=${CLIENT_OS:-debian13}
 # Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-arch_image=archlinux:base-20261018.0.612668
+arch_image=archlinux:base-20261101.0.620205
 net=webguard-it
 server=it-server
 client=it-client
@@ -132,7 +132,7 @@ printf 'Host *\n  IdentityFile %s\n  IdentitiesOnly yes\n  UserKnownHostsFile %s
 
 playbook() {
   ANSIBLE_FORCE_COLOR=0 ANSIBLE_SSH_COMMON_ARGS="-F $logs/ssh_config" \
-    ./scripts/run-playbook.sh --no-vault --inventory tests/integration/hosts.ini ${extra[@]+"${extra[@]}"} "$@"
+    ./run-playbook.sh --no-vault --inventory tests/integration/hosts.ini ${extra[@]+"${extra[@]}"} "$@"
 }
 
 fail=0

@@ -2,5 +2,7 @@
 # roles/crowdsec/templates/crowdsec-memory.conf.j2
 
 [Service]
-MemoryHigh={{ crowdsec_memory_high }}
+Environment=GOMEMLIMIT={{ crowdsec_gomemlimit }}
+# No MemoryHigh: throttling stalls AppSec and Caddy answers 500
 MemoryMax={{ crowdsec_memory_max }}
+Restart=on-failure
