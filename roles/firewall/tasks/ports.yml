@@ -2,10 +2,14 @@
 # roles/firewall/tasks/ports.yml
 # Ports to open, derived from sshd, the Rathole server config and the defaults
 
+# firewall_ssh_ports and firewall_rathole_ports are kept apart from the
+# combined list: only they get the connection rate limit
 - name: Determine ports to open
   ansible.builtin.set_fact:
+    firewall_ssh_ports: "{{ firewall_ssh_found | map('int') | unique | sort }}"
+    firewall_rathole_ports: "{{ firewall_rathole_found | map('int') | unique | sort }}"
     firewall_tcp_ports: >-
-      {{ (firewall_ssh_ports + firewall_rathole_ports + firewall_service_ports['tcp']
+      {{ (firewall_ssh_found + firewall_rathole_found + firewall_service_ports['tcp']
           + ([80, 443] if firewall_web_ports | bool else []) + firewall_allowed_tcp_ports)
          | map('int') | unique | sort }}
     firewall_udp_ports: >-
@@ -15,7 +19,7 @@
     # sshd -T lists every listen address with its port; 'port' alone misses
     # ListenAddress entries with their own port. The port of the current
     # connection (SSH_CONNECTION) covers ports set in ~/.ssh/config.
-    firewall_ssh_ports: >-
+    firewall_ssh_found: >-
       {%- set sshd = firewall_sshd_config.stdout | default('') -%}
       {%- set listening = sshd | regex_findall('(?m)^listenaddress \S+:(\d+)$')
                           or sshd | regex_findall('(?m)^port (\d+)$') -%}
@@ -24,7 +28,7 @@
                       + ([ansible_port] if ansible_port is defined else [])
                       + (connection[3:4] if connection | length == 4 else []) -%}
       {{ ports or [22] }}
-    firewall_rathole_ports: "{{ [rathole_server_config.listen_addr | regex_replace('^.*:', '')] }}"
+    firewall_rathole_found: "{{ [rathole_server_config.listen_addr | regex_replace('^.*:', '')] }}"
     # Services bound to anything but loopback are meant to be reachable
     firewall_service_ports: >-
       {%- set ns = namespace(tcp=[], udp=[]) -%}

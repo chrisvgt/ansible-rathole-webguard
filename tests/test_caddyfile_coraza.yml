@@ -33,6 +33,26 @@
           - caddyfile | regex_findall('id:100020,') | length == 4
           - "'modsec_disabled.log' not in caddyfile"
           - caddyfile | regex_findall('SecAuditEngine RelevantOnly') | length == 4
+          # No header- or path-triggered engine bypass; only the static whitelist may switch the engine off
+          - "'id:100001' not in caddyfile"
+          - "'id:100002' not in caddyfile"
+          - "'id:100003' not in caddyfile"
+          - caddyfile | regex_findall('ctl:ruleEngine=Off') | length == 4
+          # The whitelist looks at the path only, never at the query string
+          - caddyfile | regex_findall('SecRule REQUEST_FILENAME "@rx ..\\(') | length == 4
+          - "'SecRule REQUEST_URI' not in caddyfile"
+          # Audit log without request headers (Cookie, Authorization)
+          - caddyfile | regex_findall('SecAuditLogParts AHZ') | length == 4
+          - "'ABHZ' not in caddyfile"
+          # Socket.IO binary POST stays allowed in strict mode, by path only
+          - caddyfile | regex_findall('id:100046,') | length == 1
+          - "'ctl:ruleRemoveById=100045' in caddyfile"
+          - "'socketio_binary' not in caddyfile"
+          # The static whitelist needs a plain query string (cache busters only).
+          # ctl runs on the last chain link: on the first it fires for every GET
+          - "'id:100020,phase:1,pass,nolog,t:none,chain,ctl' not in caddyfile"
+          - caddyfile | regex_findall('t:none,ctl:ruleEngine=Off') | length == 4
+          - caddyfile | regex_findall('SecRule QUERY_STRING "@rx \\^\\[A-Za-z0-9') | length == 4
 
 - name: Render Coraza without audit log and file whitelist
   hosts: srv

@@ -72,6 +72,22 @@ crowdsec_import_blocklist_decision_scenario: "{{ crowdsec_decision_scenario | de
 #   ALLOWLIST=1.2.3.4,140.82.112.0/20            # Mixed
 crowdsec_import_blocklist_allowlist: "{{ crowdsec_allowlist | default('140.82.121.3,140.82.121.4') }}"
 
+# What the role writes to ALLOWLIST: the list above, the resolved DDNS
+# addresses (crowdsec_import_ddns_ips, set by the role) and the extra entries
+crowdsec_import_allowlist_entries: >-
+  {{ (crowdsec_import_blocklist_allowlist | string | split(',') | map('trim') | select | list
+      + crowdsec_import_ddns_ips | default([])
+      + crowdsec_import_extra_allowlist) | unique | list }}
+
+# The importer's ALLOWLIST takes IPs and CIDR ranges only, no hostnames.
+# Imported decisions also bypass the postoverflow whitelist of the crowdsec
+# role, so without this the own (DDNS) addresses could be banned by a blocklist.
+# When dynamic_whitelist_enabled is true, the role resolves dynamic_ddns_hostnames
+# on the server on every run and adds the addresses; a changed address is only
+# picked up by the next run of the playbook. Add fixed addresses and ranges
+# (e.g. a VPN or office network) here:
+crowdsec_import_extra_allowlist: []
+
 # Provider allowlists - auto-fetch IP ranges from well-known providers
 # ALLOWLIST_GITHUB: Fetches GitHub's IP ranges from https://api.github.com/meta
 #   Covers: git, web, api, hooks, and actions IP ranges

@@ -41,6 +41,9 @@
           - "'tcp dport { 22, 80, 443, 2333 } accept' in test_rules.stdout"
           - "'udp dport { 443, 51820 } accept' in test_rules.stdout"
           - "'3000' not in test_rules.stdout"
+          - "'@ssh_meter4' in test_rules.stdout and '@ssh_meter6' in test_rules.stdout"
+          - "'rathole_meter' not in test_rules.stdout"
+          - "'webguard drop: ' in test_rules.stdout"
           - test_unit.status.UnitFileState == 'enabled'
           - test_rollback.status.ActiveState | default('inactive') != 'active'
         fail_msg: "{{ test_rules.stdout }} | boot unit {{ test_unit.status.UnitFileState }} | rollback {{ test_rollback.status.ActiveState | default('none') }}"

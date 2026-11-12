@@ -66,7 +66,9 @@ done
 
 # --- Engine with LAPI ---
 cscli machines add -a --force >/dev/null 2>&1
-touch /var/log/caddy/test.access.log /var/log/rathole.log
+# A rolled log (Caddy: <name>-<timestamp>.log) must not be read
+rolled=/var/log/caddy/test.access-2026-11-12T10-00-00.000.log
+touch /var/log/caddy/test.access.log "$rolled" /var/log/rathole.log
 crowdsec >/tmp/crowdsec.log 2>&1 &
 i=0
 until cscli lapi status >/dev/null 2>&1; do
@@ -102,7 +104,7 @@ n=0
 log() {
   n=$((n + 1))
   printf '{"level":"info","ts":%s.%03d,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"%s","remote_port":"51234","client_ip":"%s","proto":"HTTP/2.0","method":"%s","host":"app.example.com","uri":"%s","headers":{"User-Agent":["Mozilla/5.0"]}},"bytes_read":30,"duration":0.01,"size":20,"status":%s,"resp_headers":%s}\n' \
-    "$(date +%s)" "$n" "$1" "$1" "$2" "$3" "$4" "${5:-{\}}" >>/var/log/caddy/test.access.log
+    "$(date +%s)" "$n" "$1" "$1" "$2" "$3" "$4" "${5:-{\}}" >>"${LOGFILE:-/var/log/caddy/test.access.log}"
 }
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.7 POST /api/auth/login 400; done
 for s in 400 400 400 400 302 400 400 400 400; do log 198.51.100.8 POST /api/auth/login "$s"; done
@@ -112,6 +114,9 @@ for i in 1 2 3 4 5 6 7 8; do
 done
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.10 POST /api/items 400; done
 for i in 1 2 3 4 5 6 7 8; do log 198.51.100.20 POST /api/auth/login 400; done
+# Private addresses are never banned by the profiles (and the rolled log is not read)
+for i in 1 2 3 4 5 6 7 8; do log 10.0.0.5 POST /api/auth/login 400; done
+for i in 1 2 3 4 5 6 7 8; do LOGFILE=$rolled log 198.51.100.70 POST /api/auth/login 400; done
 # Normal use of common self-hosted apps that the stock scenarios ban
 for i in $(seq 1 15); do log 198.51.100.31 GET "/Items/f6e5d4c3b2a1$i/Images/Thumb?fillWidth=400" 404; done
 for i in $(seq 1 8); do log 198.51.100.32 POST /Sessions/Playing/Progress 401; done
@@ -128,7 +133,7 @@ rathole() {
   printf '%s vps rathole[42]: %s ERROR connection{addr=%s:51234}: rathole::server: Handshake from %s failed: %s\n' \
     "$(date '+%b %e %H:%M:%S')" "$(date -u +%Y-%m-%dT%H:%M:%S.000000Z)" "$1" "$1" "$2" >>/var/log/rathole.log
 }
-for i in 1 2 3 4 5 6 7 8; do rathole 198.51.100.60 'Failed to do transport handshake: Failed to do noise handshake: decrypt error'; done
+for i in $(seq 1 25); do rathole 198.51.100.60 'Failed to do transport handshake: Failed to do noise handshake: decrypt error'; done
 for i in 1 2 3 4 5 6 7 8; do rathole 198.51.100.61 'Transport handshake timeout: deadline has elapsed'; done
 sleep 10
 
@@ -141,6 +146,9 @@ check "brute force on a login path: ban" has_ban 198.51.100.7
 check "retry after a successful login: no ban" no_decision 198.51.100.8
 check "reset through another endpoint: still ban" has_ban 198.51.100.9
 check "failed POSTs elsewhere: no ban" no_decision 198.51.100.10
+check "private address: no ban" no_decision 10.0.0.5
+check "rolled Caddy log is not read: no ban" no_decision 198.51.100.70
+check "rolled Caddy log is not read: no alert" sh -c "! echo '$alerts' | grep -q 198.51.100.70"
 check "DDNS whitelist: no ban" no_decision 198.51.100.20
 check "Jellyfin missing thumbnails: no ban" no_decision 198.51.100.31
 check "client with an expired session (401): no ban" no_decision 198.51.100.32

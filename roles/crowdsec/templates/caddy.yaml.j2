@@ -3,5 +3,11 @@
 
 filenames:
   - /var/log/caddy/*.log
+# Caddy rolls its logs to <name>-<timestamp>.log (e.g.
+# access-2026-11-12T10-00-00.000.log). Reading those again would count every
+# old request a second time and could ban clients for traffic that was already
+# handled. The live files (<name>.log) stay included.
+exclude_regexps:
+  - '-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d+\.log$'
 labels:
   type: caddy

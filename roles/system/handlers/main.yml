@@ -11,3 +11,10 @@
 - name: Apply Swap Sysctl Settings
   ansible.builtin.command: sysctl -p /etc/sysctl.d/60-swap.conf
   changed_when: true
+
+# Read-only keys (e.g. in LXC containers) make sysctl fail, which must not stop the play.
+# Keys the kernel does not know are skipped by sysctl --system with an error message only.
+- name: Apply Hardening Sysctl Settings
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+  failed_when: false
