@@ -1,0 +1,187 @@
+---
+# roles/crowdsec_web_ui/tasks/main.yml
+# CrowdSec Web UI (https://github.com/TheDuffman85/crowdsec-web-ui) in a Podman
+# container, started by a systemd unit. It listens on 127.0.0.1 of the server only;
+# the Rathole role makes it reachable on the client (reverse service).
+# Always included on the server: with enable_crowdsec_web_ui: false it removes
+# the setup of an earlier run.
+
+- name: Remove the CrowdSec Web UI when it is turned off
+  ansible.builtin.include_tasks: remove.yml
+  when: not enable_crowdsec_web_ui | default(false) | bool
+
+- name: Stop here when the CrowdSec Web UI is turned off
+  ansible.builtin.meta: end_role
+  when: not enable_crowdsec_web_ui | default(false) | bool
+
+- name: Validate the CrowdSec Web UI settings
+  ansible.builtin.include_tasks: validate.yml
+
+# Restart CrowdSec now if the crowdsec role asked for it: the machine below is
+# created through the running Local API
+- name: Apply pending CrowdSec changes before the Web UI
+  ansible.builtin.meta: flush_handlers
+
+- name: Resolve the CrowdSec Web UI machine password
+  ansible.builtin.include_tasks: machine_password.yml
+
+## Podman
+
+# iproute2: ss, to check that the app only listens on loopback
+- name: Install Podman
+  ansible.builtin.package:
+    name:
+      - podman
+      - iproute2
+    state: present
+
+## Directories and files
+
+- name: Create the CrowdSec Web UI config directory
+  ansible.builtin.file:
+    path: "{{ crowdsec_web_ui_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The container runs as this unprivileged user; it only owns the data directory
+- name: Create the CrowdSec Web UI data directory
+  ansible.builtin.file:
+    path: "{{ crowdsec_web_ui_data_dir }}"
+    state: directory
+    owner: "{{ crowdsec_web_ui_uid }}"
+    group: "{{ crowdsec_web_ui_uid }}"
+    mode: "0700"
+
+- name: Install the script that binds the app to loopback
+  ansible.builtin.copy:
+    src: loopback.cjs
+    dest: "{{ crowdsec_web_ui_config_dir }}/loopback.cjs"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec Web UI
+
+# Holds the machine password: root only (podman reads it as root)
+- name: Create the CrowdSec Web UI env file
+  ansible.builtin.template:
+    src: crowdsec-web-ui.env.j2
+    dest: "{{ crowdsec_web_ui_config_dir }}/env"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+  no_log: true
+  register: crowdsec_web_ui_env
+  notify: Restart CrowdSec Web UI
+
+## LAPI machine
+
+- name: List CrowdSec machines
+  ansible.builtin.command: cscli machines list -o json
+  register: crowdsec_web_ui_machines_list
+  changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Determine whether the CrowdSec Web UI machine exists
+  ansible.builtin.set_fact:
+    crowdsec_web_ui_machine_exists: >-
+      {{ crowdsec_web_ui_machine_id in
+         (crowdsec_web_ui_machines_list.stdout | from_json | default([], true) | map(attribute='machineId') | list) }}
+
+# CrowdSec cannot show a machine's password, so the machine is updated whenever
+# the env file changes. '--file -' prints the credentials instead of overwriting
+# the agent's local_api_credentials.yaml; '--force' updates an existing machine.
+- name: Create or update the CrowdSec Web UI machine
+  ansible.builtin.command:
+    argv:
+      - cscli
+      - machines
+      - add
+      - "{{ crowdsec_web_ui_machine_id }}"
+      - --password
+      - "{{ crowdsec_web_ui_lapi_password }}"
+      - --file
+      - "-"
+      - --force
+  changed_when: true
+  no_log: true
+  when: not crowdsec_web_ui_machine_exists | bool or crowdsec_web_ui_env is changed
+
+## Image
+
+- name: Check whether the CrowdSec Web UI image is present
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", image, exists, "{{ crowdsec_web_ui_image }}"]
+  register: crowdsec_web_ui_image_check
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+
+# Podman pulls by the pinned digest, so a moved tag changes nothing
+- name: Pull the CrowdSec Web UI image
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", pull, --quiet, "{{ crowdsec_web_ui_image }}"]
+  register: crowdsec_web_ui_image_pull
+  until: crowdsec_web_ui_image_pull is succeeded
+  retries: 5
+  delay: 5
+  changed_when: true
+  when: crowdsec_web_ui_image_check.rc != 0
+  notify: Restart CrowdSec Web UI
+
+## Service
+
+- name: Install the CrowdSec Web UI systemd unit
+  ansible.builtin.template:
+    src: crowdsec-web-ui.service.j2
+    dest: /etc/systemd/system/crowdsec-web-ui.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec Web UI
+
+# Start (or restart after a change) now: the checks below need it running
+- name: Apply pending CrowdSec Web UI changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the CrowdSec Web UI
+  ansible.builtin.systemd:
+    name: crowdsec-web-ui
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Wait for the CrowdSec Web UI to answer
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ crowdsec_web_ui_port }}/api/health"
+    return_content: false
+  register: crowdsec_web_ui_health
+  until: crowdsec_web_ui_health.status | default(0) == 200
+  retries: 30
+  delay: 2
+  changed_when: false
+  when: not ansible_check_mode
+
+# The app has no listen address setting, loopback.cjs forces it. Never leave it
+# running when it is reachable from the network.
+- name: List the listeners on the CrowdSec Web UI port
+  ansible.builtin.command:
+    argv: [ss, -ltnH, "sport = :{{ crowdsec_web_ui_port }}"]
+  register: crowdsec_web_ui_listeners
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Ensure the CrowdSec Web UI only listens on loopback
+  ansible.builtin.assert:
+    that:
+      - crowdsec_web_ui_addresses | length > 0
+      - crowdsec_web_ui_addresses | reject('match', '^127\\.0\\.0\\.1:') | list | length == 0
+    fail_msg: >-
+      The CrowdSec Web UI must only listen on 127.0.0.1:{{ crowdsec_web_ui_port }}, found:
+      {{ crowdsec_web_ui_addresses | join(', ') or 'nothing' }}. Stop it with: systemctl stop crowdsec-web-ui
+    quiet: true
+  vars:
+    crowdsec_web_ui_addresses: "{{ crowdsec_web_ui_listeners.stdout_lines | map('split') | map(attribute=3) | list }}"
+  when: not ansible_check_mode

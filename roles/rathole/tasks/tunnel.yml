@@ -1,6 +1,8 @@
 ---
 # roles/rathole/tasks/tunnel.yml
-# Build rathole_server_config / rathole_client_config from tunnel_services.
+# Build rathole_server_config / rathole_client_config from tunnel_services plus,
+# with enable_crowdsec_web_ui on the server, the reverse service of the CrowdSec
+# Web UI (rathole_tunnel_services, set by tunnel_validate.yml).
 # The server of a tuple is the host with the same tunnel_id and rathole_role 'server'.
 # Forward services: the server binds bind_addr, the client connects to local_addr.
 # Reverse services (mode: reverse): the server connects to local_addr, the client binds bind_addr.
@@ -13,7 +15,7 @@
     rathole_tunnel_server: "{{ rathole_tuple_servers | first }}"
     rathole_tunnel_server_services: >-
       {%- set ns = namespace(out=[]) -%}
-      {%- for s in tunnel_services -%}
+      {%- for s in rathole_tunnel_services -%}
         {%- set extra = s | dict2items | selectattr('key', 'in', ['type', 'token', 'nodelay']) | items2dict -%}
         {%- if s.mode | default('forward') == 'reverse' -%}
           {%- set ns.out = ns.out + [{'name': s.name, 'mode': 'reverse', 'local_addr': s.local_addr} | combine(extra)] -%}
@@ -24,7 +26,7 @@
       {{ ns.out }}
     rathole_tunnel_client_services: >-
       {%- set ns = namespace(out=[]) -%}
-      {%- for s in tunnel_services -%}
+      {%- for s in rathole_tunnel_services -%}
         {%- set extra = s | dict2items | selectattr('key', 'in', ['type', 'token', 'nodelay', 'retry_interval']) | items2dict -%}
         {%- if s.mode | default('forward') == 'reverse' -%}
           {%- set ns.out = ns.out + [{'name': s.name, 'mode': 'reverse', 'bind_addr': rathole_tunnel_binds[s.name]} | combine(extra)] -%}

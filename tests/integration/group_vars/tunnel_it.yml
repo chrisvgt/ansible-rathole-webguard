@@ -18,6 +18,12 @@ tunnel_services:
   - { name: moderate, domain: moderate.test, local_addr: "127.0.0.1:8081", coraza_mode: moderate }
   - { name: strict, domain: strict.test, local_addr: "127.0.0.1:8082", coraza_mode: strict }
 
+# CrowdSec Web UI: own ports, so the defaults are not what is tested; the client
+# listens on every address, so the server can reach it too
+crowdsec_web_ui_port: 13000
+crowdsec_web_ui_client_port: 13001
+crowdsec_web_ui_client_listen: 0.0.0.0
+
 duration_expr: true
 
 # Optional CrowdSec features, so their tasks run too

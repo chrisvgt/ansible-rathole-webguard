@@ -1,0 +1,9 @@
+---
+# roles/crowdsec_web_ui/handlers/main.yml
+
+- name: Restart CrowdSec Web UI
+  ansible.builtin.systemd:
+    name: crowdsec-web-ui
+    daemon_reload: true
+    enabled: true
+    state: restarted

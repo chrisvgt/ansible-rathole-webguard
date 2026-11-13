@@ -1,0 +1,52 @@
+# File Managed by Ansible
+# roles/crowdsec_web_ui/templates/crowdsec-web-ui.service.j2
+
+[Unit]
+Description=CrowdSec Web UI (Podman container)
+Documentation=https://github.com/TheDuffman85/crowdsec-web-ui
+Wants=network-online.target crowdsec.service
+After=network-online.target crowdsec.service
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=120
+TimeoutStopSec=30
+# --network host: the app reaches the Local API and the metrics on 127.0.0.1 of the
+#   host. The app listens on all interfaces and cannot be told otherwise, so the
+#   preloaded script (see loopback.cjs) binds it to 127.0.0.1.
+# --user, --cap-drop all: no root and no capabilities in the container (the image's
+#   entrypoint only needs root to chown the data directory, which the playbook does)
+# --log-driver journald: logs go to the journal (journalctl -u {{ crowdsec_web_ui_container_name }}), no log file grows
+# --cgroup-manager cgroupfs: the default (systemd) needs D-Bus, which a minimal or freshly
+#   provisioned host may not run yet
+# --replace: take over a container left behind by a crash
+ExecStart={{ crowdsec_web_ui_podman }} --cgroup-manager cgroupfs run --rm --replace --name {{ crowdsec_web_ui_container_name }} \
+  --network host \
+  --user {{ crowdsec_web_ui_uid }}:{{ crowdsec_web_ui_uid }} \
+  --cap-drop all \
+  --security-opt no-new-privileges \
+  --read-only --tmpfs /tmp \
+  --pids-limit {{ crowdsec_web_ui_pids_limit }} \
+  --memory {{ crowdsec_web_ui_memory_max }} \
+  --log-driver journald \
+  --env-file {{ crowdsec_web_ui_config_dir }}/env \
+  -e CONFIG_SERVER_PORT={{ crowdsec_web_ui_port }} \
+  -e CONFIG_UPDATES_ENABLED=false \
+  -e CONFIG_INSTANCE_LAPI_URL={{ crowdsec_web_ui_lapi_url }} \
+  -e CONFIG_INSTANCE_LAPI_AUTH_USERNAME={{ crowdsec_web_ui_machine_id }} \
+{% if crowdsec_web_ui_metrics | bool %}
+  -e CONFIG_INSTANCE_METRICS_URL={{ crowdsec_web_ui_metrics_url }} \
+{% endif %}
+  -e "NODE_OPTIONS=--require=/opt/loopback.cjs --max-old-space-size={{ crowdsec_web_ui_node_heap_mb }}" \
+  -v {{ crowdsec_web_ui_data_dir }}:/app/data \
+  -v {{ crowdsec_web_ui_config_dir }}/loopback.cjs:/opt/loopback.cjs:ro \
+  {{ crowdsec_web_ui_image }}
+ExecStop={{ crowdsec_web_ui_podman }} stop --time 20 {{ crowdsec_web_ui_container_name }}
+# --rm is done by conmon and can be skipped (seen with Podman 4.9 on Ubuntu 24.04)
+ExecStopPost=-{{ crowdsec_web_ui_podman }} rm --force --ignore {{ crowdsec_web_ui_container_name }}
+SyslogIdentifier={{ crowdsec_web_ui_container_name }}
+
+[Install]
+WantedBy=multi-user.target

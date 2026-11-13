@@ -1,0 +1,44 @@
+---
+# roles/crowdsec_web_ui/defaults/main.yml
+# Enabled with enable_crowdsec_web_ui: true (group_vars/all.yml). The UI is only
+# reachable through a Rathole reverse tunnel, see "CrowdSec Web UI" in the README.
+#
+# crowdsec_web_ui_port, crowdsec_web_ui_client_port and crowdsec_web_ui_client_listen
+# are read by the server and the client of a tuple (the Rathole role derives the
+# reverse service from them), so set them where both see them: group_vars/all.yml,
+# group_vars/tunnel_<name>.yml or host_vars of the server. The defaults below are
+# repeated in roles/rathole/tasks/tunnel_validate.yml (a test keeps them equal).
+
+crowdsec_web_ui_port: 3000 # Port on the server; always bound to 127.0.0.1 and never opened in the firewall
+crowdsec_web_ui_client_port: 3000 # Port the Rathole client listens on
+crowdsec_web_ui_client_listen: "127.0.0.1" # Client address: 127.0.0.1 (the client itself), 0.0.0.0 (whole LAN) or one IPv4 address
+
+# Container image of the upstream project (linux/amd64 and linux/arm64 only),
+# pinned by tag and digest; Renovate updates both together.
+# Tags starting with "dev-" are development builds and must not be used.
+# renovate: datasource=docker depName=ghcr.io/theduffman85/crowdsec-web-ui
+crowdsec_web_ui_image: "ghcr.io/theduffman85/crowdsec-web-ui:2026.11.10@sha256:9822833b0359983bc8f70b7142028050a4c1dc5569eb6b3bc1b20a9970e61641"
+
+# Memory: podman --memory is the hard limit of the container (it is killed and
+# restarted above it), the Node heap limit stays below it so Node frees memory
+# before that. Measured with an empty cache: about 100 MB; it grows with the
+# number of alerts and decisions.
+crowdsec_web_ui_memory_max: "512m"
+crowdsec_web_ui_node_heap_mb: 256
+crowdsec_web_ui_pids_limit: 256
+
+crowdsec_web_ui_metrics: true # Show the CrowdSec Prometheus metrics (127.0.0.1:6060) in the UI
+
+crowdsec_web_ui_data_dir: "/var/lib/crowdsec-web-ui" # The UI's SQLite databases (users, settings, cache); back it up
+crowdsec_web_ui_uid: 62500 # The container runs as this user (no root, no capabilities); it only owns the data directory
+crowdsec_web_ui_config_dir: "/etc/crowdsec-web-ui" # Env file with the LAPI password (root, 0600) and the loopback script (root, 0644)
+
+# LAPI machine of the UI: the password is generated on the first run and stored
+# here (or set crowdsec_web_ui_machine_password yourself)
+crowdsec_web_ui_machine_id: "crowdsec-web-ui"
+crowdsec_web_ui_machine_password_file: "/etc/crowdsec/web-ui.machine.password"
+crowdsec_web_ui_lapi_url: "http://{{ crowdsec_lapi_ip | default('127.0.0.1') }}:{{ crowdsec_lapi_port | default('8080') }}"
+crowdsec_web_ui_metrics_url: "http://127.0.0.1:6060/metrics"
+
+crowdsec_web_ui_container_name: "crowdsec-web-ui"
+crowdsec_web_ui_podman: "/usr/bin/podman"

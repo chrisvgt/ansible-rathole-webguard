@@ -7,7 +7,7 @@ Ansible playbook that publishes services from a home network through a small VPS
 - **Rathole** tunnels the services from your LAN (client) to the VPS (server).
 - **Caddy** on the VPS terminates TLS, sets security headers (HSTS, no-sniff, frame and referrer policy) and reverse-proxies to the tunnel.
 - **CrowdSec** (optional, on by default) blocks bad IPs and inspects requests (AppSec).
-- **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates and blocklist import are opt-in.
+- **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates, blocklist import and the **CrowdSec Web UI** are opt-in.
 
 Supported: Debian 12 and 13 and Ubuntu 22.04 and 24.04 LTS on x86_64, arm64 and armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
 
@@ -108,11 +108,12 @@ Add another group to `inventory.ini`, add it to `[webservers:children]`, and cop
 
 With the default settings you set no secrets. The server creates them on the first run and keeps them in root-only files:
 
-| Secret                            | Stored on the server                                   | Set it yourself with        |
-| --------------------------------- | ------------------------------------------------------ | --------------------------- |
-| Rathole Noise keys and token      | `/etc/rathole/noise.key`, `noise.pub`, `default_token` | see below                   |
-| CrowdSec bouncer key for Caddy    | `/etc/crowdsec/caddy.bouncer.key`                      | `crowdsec_api_key`          |
-| Blocklist import machine password | `/etc/crowdsec/blocklist-import.machine.password`      | `crowdsec_machine_password` |
+| Secret                            | Stored on the server                                   | Set it yourself with               |
+| --------------------------------- | ------------------------------------------------------ | ---------------------------------- |
+| Rathole Noise keys and token      | `/etc/rathole/noise.key`, `noise.pub`, `default_token` | see below                          |
+| CrowdSec bouncer key for Caddy    | `/etc/crowdsec/caddy.bouncer.key`                      | `crowdsec_api_key`                 |
+| Blocklist import machine password | `/etc/crowdsec/blocklist-import.machine.password`      | `crowdsec_machine_password`        |
+| CrowdSec Web UI machine password  | `/etc/crowdsec/web-ui.machine.password`                | `crowdsec_web_ui_machine_password` |
 
 A value set in the tuple file always wins. If you change it later, the next run registers the new key or password with CrowdSec.
 
@@ -158,6 +159,7 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 | `enable_coraza_waf`      | `false`       | WAF for every site that does not set `coraza_mode` itself                                         |
 | `coraza_mode_default`    | `recommended` | WAF mode used by `enable_coraza_waf`                                                              |
 | `enable_crowdsec_import` | `false`       | Hourly import of public blocklists into CrowdSec. Requires `enable_crowdsec`                      |
+| `enable_crowdsec_web_ui` | `false`       | CrowdSec Web UI in a Podman container, see [CrowdSec Web UI](#crowdsec-web-ui). Needs more RAM    |
 | `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file, automatic security updates                |
 | `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip                   |
 | `enable_auto_reboot`     | `true`        | Reboot only if package upgrades require it. `false` only reports a pending reboot                 |
@@ -257,12 +259,12 @@ Moving the VPS to another system: install the new system, keep the inventory ent
 
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, `mode` is `forward` or `reverse` and reverse services have no `domain`, each `bind_addr` and `type` is used once per side (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and the server's `/etc/resolv.conf` lists a nameserver (Caddy reads only that file). The roles also check that the CPU architecture is supported and that the import password is set.
+1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, `mode` is `forward` or `reverse` and reverse services have no `domain`, each `bind_addr` and `type` is used once per side (`0.0.0.0:<port>` counts for every address on that port), `enable_crowdsec_web_ui` has `enable_crowdsec`, an x86_64 or arm64 server, free ports and a valid client address (and no service named `crowdsec-web-ui`), both Noise keys are set together, and the server's `/etc/resolv.conf` lists a nameserver (Caddy reads only that file). The roles also check that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`; on Arch Linux `pacman -Syu`, and with a new kernel a reboot right away (if `enable_auto_reboot` is true), because Arch Linux removes the modules of the running kernel that the firewall needs.
-3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
+3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `crowdsec_web_ui` (also to remove it again), `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.
 
-Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `rathole`, `firewall`, `reboot`, `cleanup`. The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
+Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `crowdsec_web_ui`, `rathole`, `firewall`, `reboot`, `cleanup`. A change of the Web UI ports or client address also needs `rathole` (`--tags crowdsec_web_ui,rathole`). The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
 
 ## Caddy build
 
@@ -315,6 +317,54 @@ Normal use of common self-hosted apps does not get users banned: the official Cr
 - imported bans bypass the DDNS whitelist of the engine, so the importer gets its own allowlist: the IPs of `dynamic_ddns_hostnames` (resolved on each playbook run; a changed DDNS address is picked up on the next run) and `crowdsec_import_extra_allowlist` (IPs or CIDRs, e.g. your home or office)
 - feeds can be switched off one by one, e.g. `crowdsec_enable_tor: false`; all options and their defaults are in `roles/crowdsec_import/defaults/main.yml`
 
+## CrowdSec Web UI
+
+[crowdsec-web-ui](https://github.com/TheDuffman85/crowdsec-web-ui) is a dashboard for CrowdSec: alerts, decisions, statistics, metrics, allowlists and manual bans. It is optional and off by default. It needs **more resources** than the rest of the server, see below.
+
+```yaml
+# group_vars/all.yml (or the tuple file)
+enable_crowdsec_web_ui: true
+```
+
+Requires `enable_crowdsec: true` and an x86_64 or arm64 server (the upstream image exists for these only; the playbook stops on others). After the run:
+
+- The server runs the image `ghcr.io/theduffman85/crowdsec-web-ui` with **Podman** as the systemd service `crowdsec-web-ui` (a hand-written unit, so it works from Podman 3.4 on Ubuntu 22.04 to current versions). The image is pinned by tag and digest (`crowdsec_web_ui_image`, updated by Renovate; `dev-*` tags are ignored) and pulled once per version.
+- The app listens on `127.0.0.1:<crowdsec_web_ui_port>` of the server **only**. It has no listen address setting, so a small script (`/etc/crowdsec-web-ui/loopback.cjs`, preloaded into Node) binds it to loopback; the run checks with `ss` that nothing else listens and fails otherwise. The firewall opens nothing for it.
+- A **Rathole reverse service** named `crowdsec-web-ui` is added to the tuple (no entry in `tunnel_services` needed): the client listens on `crowdsec_web_ui_client_listen:crowdsec_web_ui_client_port` and forwards to the server through the tunnel.
+- The playbook creates the LAPI machine `crowdsec-web-ui` with a generated password (`/etc/crowdsec/web-ui.machine.password`, root only; the container gets it from `/etc/crowdsec-web-ui/env`, mode 0600).
+
+**First use**: open `http://<client>:<client port>` (default `http://127.0.0.1:3000` on the client itself, or the client's LAN address with `0.0.0.0`). The first visit asks you to create the admin account; do it right away. Users, settings and the alert cache are in `/var/lib/crowdsec-web-ui` (back it up).
+
+| Variable                        | Default     | Effect                                                                                               |
+| ------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `crowdsec_web_ui_port`          | `3000`      | Port on the server (127.0.0.1)                                                                       |
+| `crowdsec_web_ui_client_port`   | `3000`      | Port the client listens on                                                                           |
+| `crowdsec_web_ui_client_listen` | `127.0.0.1` | Client address: `127.0.0.1` (the client only), `0.0.0.0` (whole LAN) or one of its IPv4 addresses    |
+| `crowdsec_web_ui_memory_max`    | `512m`      | Container memory limit (`podman --memory`); `crowdsec_web_ui_node_heap_mb` (256) keeps Node below it |
+| `crowdsec_web_ui_metrics`       | `true`      | Show the CrowdSec Prometheus metrics (`127.0.0.1:6060`) in the UI                                    |
+
+The ports and the client address are read by the server **and** the client, so set them where both see them: `group_vars/all.yml` or `group_vars/tunnel_<name>.yml` (they are per tuple). The run rejects collisions before anything changes: the client port against other reverse services on the client, the server port against forward services bound on the server's loopback or all addresses and against the ports the server needs itself (80, 443, the Rathole port, SSH, 8080, 7422, 6060). Use another port, e.g. `crowdsec_web_ui_port: 13000`, when your own service uses 3000.
+
+> **Warning:** with `crowdsec_web_ui_client_listen: "0.0.0.0"` everybody in the client's network can open the UI. There is no TLS, and the only protection is the admin login. Use `127.0.0.1` unless you need LAN access, and put it behind a VPN or an own reverse proxy with TLS if the LAN is not trusted. Whoever logs in can ban and unban IPs.
+
+**Resources** (the reason this is opt-in):
+
+- **RAM**: about 100 MB right after the start and, depending on how many alerts and decisions CrowdSec has, roughly 250-400 MB in steady state, plus Podman's small overhead (it is daemonless). The container is limited to 512 MB (`crowdsec_web_ui_memory_max`), so it is restarted rather than starving CrowdSec or Caddy. It adds to the 800 MB limit of CrowdSec and the 300 MB of the import: a 2 GB host with CrowdSec, the blocklist import and the WAF gets tight; use **at least 2 GB RAM plus swap** (`system_swap_enabled: true`) or 4 GB without swap, or skip the import.
+- **Disk**: about 0.5 GB for the image (463 MB measured), plus Podman's storage in `/var/lib/containers` and the databases in `/var/lib/crowdsec-web-ui`. Plan for about 1 GB.
+- **Network**: one pull of the image on the first run and for every new version.
+
+Maintenance:
+
+```bash
+sudo systemctl status crowdsec-web-ui
+sudo journalctl -u crowdsec-web-ui -f
+sudo podman ps
+```
+
+**Update**: change `crowdsec_web_ui_image` (Renovate does it) and run the playbook; the new image is pulled and the service restarts. Old images stay: `sudo podman image prune -a` frees the disk.
+
+**Remove**: set `enable_crowdsec_web_ui: false` and run the playbook for the server and the client (`--tags crowdsec_web_ui,rathole`). The service, its unit, env file and the LAPI machine are removed and the client stops listening. The data in `/var/lib/crowdsec-web-ui`, Podman and the image stay: `sudo rm -rf /var/lib/crowdsec-web-ui`, `sudo podman rmi -a` and removing the `podman` package free the rest.
+
 ## Firewall
 
 With `enable_firewall: true` the server drops all incoming connections except:
@@ -348,6 +398,7 @@ The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `Prot
 - Caddy is compiled on the server with Go. The build needs about 2.5-3 GB of free disk space for the module and build caches in `/var/tmp/caddy-build`, which is removed after the build. The Go toolchain stays in `/usr/local/go`.
 - The build runs with one compile job and a low GC target (`caddy_build_jobs`, `caddy_build_gogc`) to fit into 2 GB RAM. On 2 GB hosts, set `system_swap_enabled: true` as a safety margin.
 - Steady state limits: CrowdSec 800 MB, blocklist import 300 MB, Rathole 256 MB (systemd `MemoryMax`), journald 200 MB on disk.
+- The optional CrowdSec Web UI adds a container of up to 512 MB (about 250-400 MB in use) and about 1 GB of disk; see [CrowdSec Web UI](#crowdsec-web-ui).
 
 ## Updating
 
@@ -363,6 +414,7 @@ Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be 
 | `crowdsec_import_commit`            | crowdsec-blocklist-import (commit of the tag, from `git ls-remote <repo> 'refs/tags/<tag>*'`) |
 | `crowdsec_version`                  | CrowdSec                                                                                      |
 | `crowdsec_firewall_bouncer_version` | CrowdSec firewall bouncer                                                                     |
+| `crowdsec_web_ui_image`             | CrowdSec Web UI (container image, tag and digest; Renovate updates both)                      |
 
 Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes. Hub rules (whitelists, AppSec and CVE rules) are only updated for the latest CrowdSec version, so keep `crowdsec_version` current.
 
@@ -401,6 +453,8 @@ sudo rm -f /var/log/caddy/modsec_*.log
 
 ```bash
 sudo systemctl status rathole caddy crowdsec
+sudo systemctl status crowdsec-web-ui   # with enable_crowdsec_web_ui
+sudo journalctl -u crowdsec-web-ui
 sudo journalctl -u caddy -f
 sudo cscli metrics
 sudo cscli decisions list
@@ -459,6 +513,7 @@ Lint, tests and pre-commit can run locally in a Docker image. On the host you ne
 │   ├── xcaddy/                 # Caddy builder
 │   ├── crowdsec/               # CrowdSec engine, AppSec, bouncers
 │   ├── crowdsec_import/        # Blocklist importer
+│   ├── crowdsec_web_ui/        # Optional CrowdSec Web UI (Podman)
 │   ├── python/                 # pipx for the importer
 │   ├── rathole/                # Tunnel server and client
 │   └── firewall/               # Optional nftables firewall on the server

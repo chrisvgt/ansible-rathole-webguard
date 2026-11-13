@@ -2,6 +2,9 @@
 # roles/rathole/tasks/tunnel_validate.yml
 # Checks for tunnel_services. site.yml runs them before any role changes the
 # host; tunnel.yml runs them again so the role also works on its own.
+# Sets rathole_tunnel_services: tunnel_services plus the reverse service of the
+# CrowdSec Web UI when the server of the tuple has enable_crowdsec_web_ui. Every
+# later check and tunnel.yml work on that list.
 
 - name: Validate tunnel tuple membership
   ansible.builtin.assert:
@@ -11,57 +14,8 @@
     fail_msg: "tunnel_id and tunnel_services are required, see group_vars/tunnel.example.yml."
     quiet: true
 
-- name: Validate tunnel tuple settings
-  ansible.builtin.assert:
-    that:
-      - tunnel_services | selectattr('name', 'undefined') | list | length == 0
-      - tunnel_services | selectattr('local_addr', 'undefined') | list | length == 0
-      - tunnel_services | map(attribute='name') | unique | list | length == tunnel_services | length
-    fail_msg: "Every service in tunnel_services needs a unique name and a local_addr."
-    quiet: true
-
-# mode: reverse turns a service around: the server exposes its own local_addr
-# and the client binds bind_addr. Such a service has no Caddy site.
-- name: Validate the mode of each service
-  ansible.builtin.assert:
-    that: rathole_tunnel_bad_modes | length == 0
-    fail_msg: "mode must be 'forward' (default) or 'reverse': {{ rathole_tunnel_bad_modes | join(', ') }}"
-    quiet: true
-  vars:
-    rathole_tunnel_bad_modes: >-
-      {{ tunnel_services | selectattr('mode', 'defined') | rejectattr('mode', 'in', ['forward', 'reverse'])
-         | map(attribute='name') | list }}
-
-- name: Ensure reverse services have no domain
-  ansible.builtin.assert:
-    that: rathole_tunnel_reverse_domains | length == 0
-    fail_msg: >-
-      Reverse services are reached on the client, Caddy on the server cannot serve them;
-      remove domain from: {{ rathole_tunnel_reverse_domains | join(', ') }}
-    quiet: true
-  vars:
-    rathole_tunnel_reverse_domains: >-
-      {{ tunnel_services | selectattr('mode', 'defined') | selectattr('mode', 'eq', 'reverse')
-         | selectattr('domain', 'defined') | selectattr('domain') | map(attribute='name') | list }}
-
-# Without bind_addr a service listens on loopback, on the port of its local_addr:
-# on the server for forward services, on the client for reverse services
-- name: Determine the bind address of each service
-  ansible.builtin.set_fact:
-    rathole_tunnel_binds: >-
-      {%- set ns = namespace(out={}) -%}
-      {%- for s in tunnel_services -%}
-        {%- set ns.out = ns.out | combine({s.name: s.bind_addr
-                                            | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', '')))}) -%}
-      {%- endfor -%}
-      {{ ns.out }}
-
-- name: Ensure both Noise keys are set or none
-  ansible.builtin.assert:
-    that: (rathole_noise_private_key is defined) == (rathole_noise_public_key is defined)
-    fail_msg: "rathole_noise_private_key and rathole_noise_public_key must be set together (or both left out)."
-    quiet: true
-
+# The server of the tuple decides whether the CrowdSec Web UI is part of the tunnel;
+# the client reads the same variables from it, so both build the same services.
 - name: Find hosts of this tunnel tuple
   ansible.builtin.set_fact:
     rathole_tuple_servers: >-
@@ -83,6 +37,102 @@
       (servers: {{ rathole_tuple_servers }}, clients: {{ rathole_tuple_clients }}).
     quiet: true
 
+# The defaults are the ones of roles/crowdsec_web_ui/defaults/main.yml (a test keeps
+# them equal): role defaults of another role are not visible here
+- name: Read the CrowdSec Web UI settings of the server
+  ansible.builtin.set_fact:
+    rathole_web_ui: >-
+      {{ {'enabled': rathole_web_ui_server_vars.enable_crowdsec_web_ui | default(false) | bool,
+          'port': rathole_web_ui_server_vars.crowdsec_web_ui_port | default(3000) | string,
+          'client_port': rathole_web_ui_server_vars.crowdsec_web_ui_client_port | default(3000) | string,
+          'client_listen': rathole_web_ui_server_vars.crowdsec_web_ui_client_listen | default('127.0.0.1') | string} }}
+  vars:
+    rathole_web_ui_server_vars: "{{ hostvars[rathole_tuple_servers[0]] }}"
+
+- name: Validate the CrowdSec Web UI ports and address
+  ansible.builtin.assert:
+    that:
+      - rathole_web_ui.port is match('^[0-9]+$') and rathole_web_ui.port | int >= 1 and rathole_web_ui.port | int <= 65535
+      - rathole_web_ui.client_port is match('^[0-9]+$') and rathole_web_ui.client_port | int >= 1 and rathole_web_ui.client_port | int <= 65535
+      - rathole_web_ui.client_listen is match('^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$')
+    fail_msg: >-
+      crowdsec_web_ui_port ({{ rathole_web_ui.port }}) and crowdsec_web_ui_client_port ({{ rathole_web_ui.client_port }})
+      must be ports (1-65535) and crowdsec_web_ui_client_listen ({{ rathole_web_ui.client_listen }})
+      an IPv4 address, e.g. 127.0.0.1 or 0.0.0.0.
+    quiet: true
+  when: rathole_web_ui.enabled
+
+- name: Ensure no service is named like the CrowdSec Web UI service
+  ansible.builtin.assert:
+    that: tunnel_services | selectattr('name', 'defined') | selectattr('name', 'eq', 'crowdsec-web-ui') | list | length == 0
+    fail_msg: >-
+      enable_crowdsec_web_ui adds a reverse service named 'crowdsec-web-ui' to the tunnel;
+      rename the service of that name in tunnel_services (or set enable_crowdsec_web_ui: false).
+    quiet: true
+  when: rathole_web_ui.enabled
+
+# The UI is reached on the client through a reverse service: the server connects
+# to the app on its loopback, the client listens on its own address and port
+- name: Add the CrowdSec Web UI to the services
+  ansible.builtin.set_fact:
+    rathole_tunnel_services: >-
+      {{ tunnel_services + ([{'name': 'crowdsec-web-ui', 'mode': 'reverse',
+                              'local_addr': '127.0.0.1:' ~ rathole_web_ui.port,
+                              'bind_addr': rathole_web_ui.client_listen ~ ':' ~ rathole_web_ui.client_port}]
+                            if rathole_web_ui.enabled else []) }}
+  no_log: true # Services may carry tokens
+
+- name: Validate tunnel tuple settings
+  ansible.builtin.assert:
+    that:
+      - rathole_tunnel_services | selectattr('name', 'undefined') | list | length == 0
+      - rathole_tunnel_services | selectattr('local_addr', 'undefined') | list | length == 0
+      - rathole_tunnel_services | map(attribute='name') | unique | list | length == rathole_tunnel_services | length
+    fail_msg: "Every service in tunnel_services needs a unique name and a local_addr."
+    quiet: true
+
+# mode: reverse turns a service around: the server exposes its own local_addr
+# and the client binds bind_addr. Such a service has no Caddy site.
+- name: Validate the mode of each service
+  ansible.builtin.assert:
+    that: rathole_tunnel_bad_modes | length == 0
+    fail_msg: "mode must be 'forward' (default) or 'reverse': {{ rathole_tunnel_bad_modes | join(', ') }}"
+    quiet: true
+  vars:
+    rathole_tunnel_bad_modes: >-
+      {{ rathole_tunnel_services | selectattr('mode', 'defined') | rejectattr('mode', 'in', ['forward', 'reverse'])
+         | map(attribute='name') | list }}
+
+- name: Ensure reverse services have no domain
+  ansible.builtin.assert:
+    that: rathole_tunnel_reverse_domains | length == 0
+    fail_msg: >-
+      Reverse services are reached on the client, Caddy on the server cannot serve them;
+      remove domain from: {{ rathole_tunnel_reverse_domains | join(', ') }}
+    quiet: true
+  vars:
+    rathole_tunnel_reverse_domains: >-
+      {{ rathole_tunnel_services | selectattr('mode', 'defined') | selectattr('mode', 'eq', 'reverse')
+         | selectattr('domain', 'defined') | selectattr('domain') | map(attribute='name') | list }}
+
+# Without bind_addr a service listens on loopback, on the port of its local_addr:
+# on the server for forward services, on the client for reverse services
+- name: Determine the bind address of each service
+  ansible.builtin.set_fact:
+    rathole_tunnel_binds: >-
+      {%- set ns = namespace(out={}) -%}
+      {%- for s in rathole_tunnel_services -%}
+        {%- set ns.out = ns.out | combine({s.name: s.bind_addr
+                                            | default('127.0.0.1:' ~ (s.local_addr | regex_replace('^.*:', '')))}) -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
+- name: Ensure both Noise keys are set or none
+  ansible.builtin.assert:
+    that: (rathole_noise_private_key is defined) == (rathole_noise_public_key is defined)
+    fail_msg: "rathole_noise_private_key and rathole_noise_public_key must be set together (or both left out)."
+    quiet: true
+
 # 0.0.0.0 and :: listen on every address, so they collide with any other
 # address on the same port and type. Forward services bind on the server,
 # reverse services on the client, so only services of the same mode collide.
@@ -97,7 +147,7 @@
     rathole_tunnel_bind_conflicts: >-
       {%- set any_addr = ['0.0.0.0', '::', '[::]'] -%}
       {%- set ns = namespace(seen=[], out=[]) -%}
-      {%- for s in tunnel_services -%}
+      {%- for s in rathole_tunnel_services -%}
         {%- set bind = rathole_tunnel_binds[s.name] -%}
         {%- set b = {'name': s.name, 'host': bind | regex_replace(':[^:]*$', ''),
                      'port': bind | regex_replace('^.*:', ''), 'type': s.type | default('tcp'),
@@ -110,20 +160,10 @@
       {%- endfor -%}
       {{ ns.out }}
 
-# A service bound to a port the server already uses cannot start (Rathole
-# reports "Address already in use"), or Caddy reaches the wrong program.
-# 8080 is a common app port and also the CrowdSec Local API. Reverse services
-# bind on the client and may use these ports as their local_addr.
-- name: Ensure no service binds a port the server already uses
-  ansible.builtin.assert:
-    that: rathole_tunnel_reserved_conflicts | length == 0
-    fail_msg: >-
-      Services in tunnel '{{ tunnel_id }}' use a port the server already needs:
-      {{ rathole_tunnel_reserved_conflicts | join(', ') }}.
-      Set bind_addr to a free port, e.g. bind_addr: 127.0.0.1:18080 (Caddy proxies to it).
-    quiet: true
-  vars:
-    rathole_tunnel_server_vars: "{{ hostvars[rathole_tuple_servers[0]] }}"
+# Ports the server already uses; with a service bound to one of them Rathole
+# reports "Address already in use", or Caddy reaches the wrong program
+- name: Determine the ports the server already uses
+  ansible.builtin.set_fact:
     rathole_tunnel_reserved: >-
       {{ [
            {'port': '80', 'type': 'tcp', 'by': 'Caddy'},
@@ -138,12 +178,54 @@
               {'port': crowdsec_appsec_port | default('7422') | string, 'type': 'tcp', 'by': 'CrowdSec AppSec'},
               {'port': '6060', 'type': 'tcp', 'by': 'CrowdSec metrics'},
             ] if enable_crowdsec | default(true) | bool else []) }}
+  vars:
+    rathole_tunnel_server_vars: "{{ hostvars[rathole_tuple_servers[0]] }}"
+
+# 8080 is a common app port and also the CrowdSec Local API. Reverse services
+# bind on the client and may use these ports as their local_addr.
+- name: Ensure no service binds a port the server already uses
+  ansible.builtin.assert:
+    that: rathole_tunnel_reserved_conflicts | length == 0
+    fail_msg: >-
+      Services in tunnel '{{ tunnel_id }}' use a port the server already needs:
+      {{ rathole_tunnel_reserved_conflicts | join(', ') }}.
+      Set bind_addr to a free port, e.g. bind_addr: 127.0.0.1:18080 (Caddy proxies to it).
+    quiet: true
+  vars:
     rathole_tunnel_reserved_conflicts: >-
       {%- set ns = namespace(out=[]) -%}
-      {%- for s in tunnel_services if s.mode | default('forward') == 'forward' -%}
+      {%- for s in rathole_tunnel_services if s.mode | default('forward') == 'forward' -%}
         {%- set port = rathole_tunnel_binds[s.name] | regex_replace('^.*:', '') -%}
         {%- for r in rathole_tunnel_reserved if r.port == port and r.type == (s.type | default('tcp')) -%}
           {%- set ns.out = ns.out + [s.name ~ ' (' ~ port ~ '/' ~ r.type ~ ', ' ~ r.by ~ ')'] -%}
         {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
+# The app of the CrowdSec Web UI listens on 127.0.0.1 of the server, in the
+# same address space as the forward services (which Rathole binds there)
+- name: Ensure the CrowdSec Web UI port is free on the server
+  ansible.builtin.assert:
+    that: rathole_web_ui_conflicts | length == 0
+    fail_msg: >-
+      crowdsec_web_ui_port ({{ rathole_web_ui.port }}) is already used on the server by:
+      {{ rathole_web_ui_conflicts | join(', ') }}.
+      Set crowdsec_web_ui_port to a free port.
+    quiet: true
+  when: rathole_web_ui.enabled
+  vars:
+    rathole_web_ui_loopback: ["0.0.0.0", "::", "[::]", "localhost", "[::1]", "::1"]
+    rathole_web_ui_conflicts: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for r in rathole_tunnel_reserved if r.port == rathole_web_ui.port and r.type == 'tcp' -%}
+        {%- set ns.out = ns.out + [r.by] -%}
+      {%- endfor -%}
+      {%- for s in rathole_tunnel_services if s.mode | default('forward') == 'forward' and (s.type | default('tcp')) == 'tcp' -%}
+        {%- set bind = rathole_tunnel_binds[s.name] -%}
+        {%- set host = bind | regex_replace(':[^:]*$', '') -%}
+        {%- if bind | regex_replace('^.*:', '') == rathole_web_ui.port
+               and (host is match('^127\.') or host in rathole_web_ui_loopback) -%}
+          {%- set ns.out = ns.out + ['service ' ~ s.name ~ ' (' ~ bind ~ ')'] -%}
+        {%- endif -%}
       {%- endfor -%}
       {{ ns.out }}

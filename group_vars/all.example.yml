@@ -22,6 +22,14 @@ enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its 
 # Global toggle for CrowdSec blocklist import integration
 enable_crowdsec_import: false # Set to 'false' to disable CrowdSec blocklist import installation
 
+# Global toggle for the CrowdSec Web UI (Podman container on the server, reached through a Rathole
+# reverse tunnel only). Needs about 250-400 MB more RAM and about 1 GB more disk, see the README.
+# Requires enable_crowdsec, x86_64 or arm64. Ports and client address (also in group_vars/tunnel_<name>.yml):
+# crowdsec_web_ui_port: 3000 # Port on the server (127.0.0.1 only)
+# crowdsec_web_ui_client_port: 3000 # Port the client listens on
+# crowdsec_web_ui_client_listen: "127.0.0.1" # "0.0.0.0" makes it reachable from the whole home LAN
+enable_crowdsec_web_ui: false
+
 # Global toggle for Coraza WAF
 enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
 
