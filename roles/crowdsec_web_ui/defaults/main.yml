@@ -27,6 +27,14 @@ crowdsec_web_ui_memory_max: "512m"
 crowdsec_web_ui_node_heap_mb: 256
 crowdsec_web_ui_pids_limit: 256
 
+# Origins of the alerts the UI loads (crowdsec.alertFilters.includeOrigins of the
+# app; the filter is passed to the Local API). The blocklist import adds tens of
+# thousands of decisions, which do not fit into the Node heap above: with
+# enable_crowdsec_import only the engine's own alerts (crowdsec) and manual bans
+# (cscli) are loaded. The imported lists still block, they are only not shown.
+# [] loads the app's default feed (everything but the community blocklist).
+crowdsec_web_ui_include_origins: "{{ ['crowdsec', 'cscli'] if enable_crowdsec_import | default(false) | bool else [] }}"
+
 crowdsec_web_ui_metrics: true # Show the CrowdSec Prometheus metrics (127.0.0.1:6060) in the UI
 
 crowdsec_web_ui_data_dir: "/var/lib/crowdsec-web-ui" # The UI's SQLite databases (users, settings, cache); back it up

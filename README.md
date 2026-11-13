@@ -337,13 +337,14 @@ Requires `enable_crowdsec: true` and an x86_64 or arm64 server (the upstream ima
 
 **First use**: open `http://<client>:<client port>` (default `http://127.0.0.1:3000` on the client itself, or the client's LAN address with `0.0.0.0`). The first visit asks you to create the admin account; do it right away. Users, settings and the alert cache are in `/var/lib/crowdsec-web-ui` (back it up).
 
-| Variable                        | Default     | Effect                                                                                               |
-| ------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
-| `crowdsec_web_ui_port`          | `3000`      | Port on the server (127.0.0.1)                                                                       |
-| `crowdsec_web_ui_client_port`   | `3000`      | Port the client listens on                                                                           |
-| `crowdsec_web_ui_client_listen` | `127.0.0.1` | Client address: `127.0.0.1` (the client only), `0.0.0.0` (whole LAN) or one of its IPv4 addresses    |
-| `crowdsec_web_ui_memory_max`    | `512m`      | Container memory limit (`podman --memory`); `crowdsec_web_ui_node_heap_mb` (256) keeps Node below it |
-| `crowdsec_web_ui_metrics`       | `true`      | Show the CrowdSec Prometheus metrics (`127.0.0.1:6060`) in the UI                                    |
+| Variable                          | Default                                                  | Effect                                                                                               |
+| --------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `crowdsec_web_ui_port`            | `3000`                                                   | Port on the server (127.0.0.1)                                                                       |
+| `crowdsec_web_ui_client_port`     | `3000`                                                   | Port the client listens on                                                                           |
+| `crowdsec_web_ui_client_listen`   | `127.0.0.1`                                              | Client address: `127.0.0.1` (the client only), `0.0.0.0` (whole LAN) or one of its IPv4 addresses    |
+| `crowdsec_web_ui_memory_max`      | `512m`                                                   | Container memory limit (`podman --memory`); `crowdsec_web_ui_node_heap_mb` (256) keeps Node below it |
+| `crowdsec_web_ui_metrics`         | `true`                                                   | Show the CrowdSec Prometheus metrics (`127.0.0.1:6060`) in the UI                                    |
+| `crowdsec_web_ui_include_origins` | `[crowdsec, cscli]` with the blocklist import, else `[]` | Origins of the alerts the UI loads; `[]` is the app's default feed                                   |
 
 The ports and the client address are read by the server **and** the client, so set them in the tuple file `group_vars/tunnel_<name>.yml` (they are per tuple, not global). The run rejects collisions before anything changes: the client port against other reverse services on the client, the server port against forward services bound on the server's loopback or all addresses and against the ports the server needs itself (80, 443, the Rathole port, SSH, 8080, 7422, 6060). Use another port, e.g. `crowdsec_web_ui_port: 13000`, when your own service uses 3000.
 
@@ -352,6 +353,7 @@ The ports and the client address are read by the server **and** the client, so s
 **Resources** (the reason this is opt-in):
 
 - **RAM**: about 100 MB right after the start and, depending on how many alerts and decisions CrowdSec has, roughly 250-400 MB in steady state, plus Podman's small overhead (it is daemonless). The container is limited to 512 MB (`crowdsec_web_ui_memory_max`), so it is restarted rather than starving CrowdSec or Caddy. Together with the limits in [Resource footprint](#resource-footprint), a 2 GB host with CrowdSec, the blocklist import and the WAF gets tight; use **at least 2 GB RAM plus [swap](#small-host-tuning-system-role)** or 4 GB without swap, or skip the import.
+- **Blocklist import**: the imported lists hold tens of thousands of decisions, and loading them all exceeds the Node heap (`JavaScript heap out of memory`, the service restarts in a loop). With `enable_crowdsec_import` the UI therefore loads only the engine's own alerts and manual bans (`crowdsec_web_ui_include_origins: [crowdsec, cscli]`); the imported lists still block, they are only not shown. To see them too, add `lists` and raise the memory, e.g. `crowdsec_web_ui_node_heap_mb: 768` with `crowdsec_web_ui_memory_max: "1g"` (not measured). When the filter changes, the UI drops cached entries that no longer match on its next start.
 - **Disk**: about 0.5 GB for the image (463 MB measured), plus Podman's storage in `/var/lib/containers` and the databases in `/var/lib/crowdsec-web-ui`. Plan for about 1 GB.
 - **Network**: one pull of the image on the first run and for every new version.
 
