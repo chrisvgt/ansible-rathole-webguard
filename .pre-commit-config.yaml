@@ -21,6 +21,12 @@ repos:
       - id: yamllint
         args: ["-s"]
 
+  # Secret scan of the staged changes; CI scans the whole checkout
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
   - repo: local
     hooks:
       - id: ansible-lint

@@ -51,7 +51,7 @@
       - pipx
       - install
       - --force
-      - "git+{{ crowdsec_import_repo_url }}@{{ crowdsec_import_version }}"
+      - "git+{{ crowdsec_import_repo_url }}@{{ crowdsec_import_commit }}"
   environment:
     PIPX_HOME: "{{ crowdsec_import_install_dir }}/pipx"
     PIPX_BIN_DIR: "{{ crowdsec_import_install_dir }}/bin"

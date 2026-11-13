@@ -1,11 +1,19 @@
 # syntax=docker/dockerfile:1
 
-# The Python version is passed by ./docker.sh from .python-version.
+# Base images are pinned by digest; Renovate updates tag and digest.
+ARG PYTHON_IMAGE=python:3.14-slim-trixie@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+
+FROM docker:29.9.3-cli@sha256:5a7af0dcb0e46c803efe9b45371dd21cb500e5b4453250394ac6f06d49b6e6f1 AS docker-cli
+
+FROM ${PYTHON_IMAGE}
+
+# ./docker.sh and CI pass .python-version; the build fails when it differs from
+# the Python of the pinned image, so the two are bumped together.
 ARG PYTHON_VERSION=3.14
-
-FROM docker:29.9.3-cli AS docker-cli
-
-FROM python:${PYTHON_VERSION}-slim-trixie
+RUN case "$(python -V)" in \
+      "Python ${PYTHON_VERSION}" | "Python ${PYTHON_VERSION}."*) ;; \
+      *) echo "PYTHON_IMAGE ($(python -V)) does not match .python-version (${PYTHON_VERSION})" >&2; exit 1 ;; \
+    esac
 
 ENV DEBIAN_FRONTEND=noninteractive
 
