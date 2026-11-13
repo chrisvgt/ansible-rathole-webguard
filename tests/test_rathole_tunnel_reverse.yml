@@ -1,0 +1,122 @@
+---
+# tests/test_rathole_tunnel_reverse.yml
+# mode: reverse: the server exposes its own local_addr, the client binds bind_addr
+
+- name: Derive reverse services
+  hosts: tunnel_test
+  gather_facts: false
+  vars:
+    enable_crowdsec: true
+    tunnel_services:
+      - { name: web, domain: web.example.com, local_addr: "127.0.0.1:3000" }
+      # The CrowdSec Local API port is fine: the server only connects to it
+      - { name: dashboard, mode: reverse, local_addr: "127.0.0.1:8080" }
+      # Same port as web, but bound on the client, so no conflict
+      - { name: metrics, mode: reverse, local_addr: "127.0.0.1:9100", bind_addr: "0.0.0.0:3000", type: udp }
+      - { name: vpn, mode: forward, local_addr: "127.0.0.1:51820", bind_addr: "0.0.0.0:51820", type: udp }
+  tasks:
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check server config
+      ansible.builtin.assert:
+        that:
+          - >-
+            (rathole_server_config.services | selectattr('name', 'eq', 'dashboard') | first)
+            == {'name': 'dashboard', 'mode': 'reverse', 'local_addr': '127.0.0.1:8080'}
+          - >-
+            (rathole_server_config.services | selectattr('name', 'eq', 'metrics') | first)
+            == {'name': 'metrics', 'mode': 'reverse', 'local_addr': '127.0.0.1:9100', 'type': 'udp'}
+          - >-
+            (rathole_server_config.services | selectattr('name', 'eq', 'web') | first)
+            == {'name': 'web', 'bind_addr': '127.0.0.1:3000'}
+          - (rathole_server_config.services | selectattr('name', 'eq', 'vpn') | first).mode is undefined
+      when: rathole_role == 'server'
+
+    - name: Check client config
+      ansible.builtin.assert:
+        that:
+          - >-
+            (rathole_client_config.services | selectattr('name', 'eq', 'dashboard') | first)
+            == {'name': 'dashboard', 'mode': 'reverse', 'bind_addr': '127.0.0.1:8080'}
+          - >-
+            (rathole_client_config.services | selectattr('name', 'eq', 'metrics') | first)
+            == {'name': 'metrics', 'mode': 'reverse', 'bind_addr': '0.0.0.0:3000', 'type': 'udp'}
+          - >-
+            (rathole_client_config.services | selectattr('name', 'eq', 'web') | first)
+            == {'name': 'web', 'local_addr': '127.0.0.1:3000'}
+      when: rathole_role == 'client'
+
+    - name: Add test secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: secrets
+      vars:
+        rathole_noise_private_key: test-private
+        rathole_noise_public_key: test-public
+        rathole_default_token: test-token
+
+    - name: Render rathole.toml
+      ansible.builtin.template:
+        src: ../roles/rathole/templates/rathole.toml.j2
+        dest: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/rathole-reverse-{{ inventory_hostname }}.toml"
+        mode: "0600"
+      register: rendered
+
+    - name: Check rendered rathole.toml
+      ansible.builtin.assert:
+        that: >-
+          (rathole_role == 'server'
+           and '[server.services.dashboard]\nmode = "reverse"\nlocal_addr = "127.0.0.1:8080"\n' in lookup('file', rendered.dest) ~ '\n')
+          or (rathole_role == 'client'
+           and '[client.services.dashboard]\nmode = "reverse"\nbind_addr = "127.0.0.1:8080"\n' in lookup('file', rendered.dest) ~ '\n')
+        fail_msg: "{{ lookup('file', rendered.dest) }}"
+
+    - name: Remove rendered file
+      ansible.builtin.file:
+        path: "{{ rendered.dest }}"
+        state: absent
+
+    - name: Derive firewall ports
+      ansible.builtin.include_tasks: ../roles/firewall/tasks/ports.yml
+      vars:
+        firewall_sshd_config: { stdout: "port 22\n" }
+        firewall_web_ports: false
+        firewall_allowed_tcp_ports: []
+        firewall_allowed_udp_ports: []
+      when: rathole_role == 'server'
+
+    # Reverse services bind on the client: nothing to open on the server
+    - name: Check firewall ports
+      ansible.builtin.assert:
+        that:
+          - firewall_tcp_ports == [22, 2333]
+          - firewall_udp_ports == [51820]
+        fail_msg: "tcp {{ firewall_tcp_ports }}, udp {{ firewall_udp_ports }}"
+      when: rathole_role == 'server'
+
+- name: Reject invalid reverse services
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Check rejected configurations
+      ansible.builtin.include_tasks: tasks/rathole_reverse_reject_case.yml
+      loop:
+        - name: unknown mode
+          services:
+            - { name: a, mode: sideways, local_addr: "127.0.0.1:80" }
+          expected: "'forward' (default) or 'reverse': a"
+        - name: reverse with a domain
+          services:
+            - { name: dash, mode: reverse, domain: dash.example.com, local_addr: "127.0.0.1:80" }
+          expected: "remove domain from: dash"
+        - name: two reverse services on one client port
+          services:
+            - { name: one, mode: reverse, local_addr: "127.0.0.1:80", bind_addr: "0.0.0.0:3000" }
+            - { name: two, mode: reverse, local_addr: "127.0.0.1:81", bind_addr: "127.0.0.1:3000" }
+          expected: "one and two"
+      loop_control:
+        loop_var: case
+        label: "{{ case.name }}"

@@ -114,14 +114,17 @@
   notify: Restart Rathole
   no_log: true # Do not leak tokens or keys in output/diff
 
+# The server binds its listen address and forward services, the client binds
+# reverse services
 - name: Determine whether Rathole binds to privileged ports (< 1024)
   ansible.builtin.set_fact:
     rathole_privileged_ports: >-
       {{
-        rathole_role == 'server'
-        and (([rathole_server_config.listen_addr | default('')]
-              + (rathole_server_config.services | default([]) | map(attribute='bind_addr', default='') | list))
-             | select | map('regex_replace', '^.*:', '') | map('int') | select('lt', 1024) | list | length > 0)
+        ([rathole_server_config.listen_addr | default('')]
+         + (rathole_server_config.services | default([]) | map(attribute='bind_addr', default='') | list)
+         if rathole_role == 'server'
+         else rathole_client_config.services | default([]) | map(attribute='bind_addr', default='') | list)
+        | select | map('regex_replace', '^.*:', '') | map('int') | select('lt', 1024) | list | length > 0
       }}
 
 - name: Create Systemd unit file for Rathole
