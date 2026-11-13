@@ -1,0 +1,31 @@
+---
+# tests/test_crowdsec_apt.yml
+# The CrowdSec APT repository of Debian and Ubuntu: pinned key fingerprint and
+# the source file (signed by that key, no install script)
+
+- name: Check the CrowdSec APT repository
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Load CrowdSec defaults
+      ansible.builtin.include_vars: ../roles/crowdsec/defaults/main.yml
+
+    - name: Check the pinned fingerprint
+      ansible.builtin.assert:
+        that: crowdsec_apt_key_fingerprint is match('^[0-9A-F]{40}$')
+        fail_msg: crowdsec_apt_key_fingerprint must be the full 40 character fingerprint in capitals
+
+    - name: Check the source file
+      ansible.builtin.assert:
+        that:
+          - "test_sources is search('^URIs: https://packagecloud.io/crowdsec/crowdsec/any/$', multiline=True)"
+          - "test_sources is search('^Signed-By: /etc/apt/keyrings/crowdsec.asc$', multiline=True)"
+          - "test_sources is search('^Suites: any$', multiline=True)"
+      vars:
+        test_sources: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/crowdsec.sources.j2') }}"
+
+    - name: Check that the install script is not used
+      ansible.builtin.assert:
+        that: "'install.crowdsec.net' not in test_tasks"
+      vars:
+        test_tasks: "{{ lookup('ansible.builtin.file', '../roles/crowdsec/tasks/install_debian.yml') }}"

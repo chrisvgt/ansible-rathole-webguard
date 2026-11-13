@@ -294,7 +294,7 @@ Normal use of common self-hosted apps does not get users banned: the official Cr
 
 `enable_crowdsec_import: true` adds [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import), which imports 28+ public feeds (IPsum, Spamhaus DROP, Blocklist.de, Firehol, Abuse.ch, DShield, Tor exit nodes and others) every hour:
 
-- installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, version pinned by `crowdsec_import_version`
+- installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, pinned to the commit `crowdsec_import_commit` (the commit of the tag `crowdsec_import_version`; a tag can be moved, so it is only used to check the installed version)
 - runs as the system user `crowdsec-import` from a sandboxed systemd service and timer
 - creates its own LAPI machine and bouncer, with a generated password (or `crowdsec_machine_password`)
 - imported bans bypass the DDNS whitelist of the engine, so the importer gets its own allowlist: the IPs of `dynamic_ddns_hostnames` (resolved on each playbook run; a changed DDNS address is picked up on the next run) and `crowdsec_import_extra_allowlist` (IPs or CIDRs, e.g. your home or office)
@@ -309,7 +309,7 @@ With `enable_firewall: true` the server drops all incoming connections except:
 - the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000`
 - `firewall_allowed_tcp_ports` / `firewall_allowed_udp_ports`
 
-New connections to SSH are limited per source address (`firewall_conn_limit_rate` 120/minute, burst 120; `firewall_conn_limit_enabled: false` turns it off). The Rathole port, the web ports and public services have no such limit, so many visitors never cut the tunnel; the Rathole port is protected by its keys and CrowdSec. Dropped packets are logged with the prefix `webguard drop: ` (at most 10 per minute, `firewall_log_drops`).
+New connections to SSH are limited per source address (IPv6 per /64 prefix, so rotating addresses inside a prefix does not help; `firewall_conn_limit_rate` 120/minute, burst 120; `firewall_conn_limit_enabled: false` turns it off). The Rathole port, the web ports and public services have no such limit, so many visitors never cut the tunnel; the Rathole port is protected by its keys and CrowdSec. Dropped packets are logged with the prefix `webguard drop: ` (at most 10 per minute, `firewall_log_drops`).
 
 Use it if the provider firewall is not used or not trusted. The home server (client) is not touched. The rules live in their own nftables table (`inet webguard`, file `/etc/nftables.d/webguard.nft`), loaded at boot by `webguard-firewall.service`, so the CrowdSec bouncer keeps working. When the rules change, or are no longer loaded, a timer removes them again after `firewall_rollback_seconds` (120) unless Ansible can open a new SSH connection, and they are then not loaded at boot either, so a mistake does not lock you out.
 
@@ -338,19 +338,24 @@ The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `Prot
 
 Pinned versions are role defaults (`roles/<role>/defaults/main.yml`) and can be overridden in `group_vars/all.yml`, `group_vars/tunnel_<name>.yml` or `host_vars/<host>.yml`, without editing role code:
 
-| Variable                            | Component                 |
-| ----------------------------------- | ------------------------- |
-| `caddy_version`                     | Caddy (triggers rebuild)  |
-| `go_lang_version`                   | Go toolchain              |
-| `xcaddy_version`                    | xcaddy                    |
-| `rathole_version`                   | Rathole                   |
-| `crowdsec_import_version`           | crowdsec-blocklist-import |
-| `crowdsec_version`                  | CrowdSec                  |
-| `crowdsec_firewall_bouncer_version` | CrowdSec firewall bouncer |
+| Variable                            | Component                                                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| `caddy_version`                     | Caddy (triggers rebuild)                                                                      |
+| `go_lang_version`                   | Go toolchain                                                                                  |
+| `xcaddy_version`                    | xcaddy                                                                                        |
+| `rathole_version`                   | Rathole                                                                                       |
+| `crowdsec_import_version`           | crowdsec-blocklist-import                                                                     |
+| `crowdsec_import_commit`            | crowdsec-blocklist-import (commit of the tag, from `git ls-remote <repo> 'refs/tags/<tag>*'`) |
+| `crowdsec_version`                  | CrowdSec                                                                                      |
+| `crowdsec_firewall_bouncer_version` | CrowdSec firewall bouncer                                                                     |
 
 Then run the playbook again. System packages are updated on every run; CrowdSec and its firewall bouncer stay at these versions (on Debian and Ubuntu with an APT pin, so `apt upgrade` and unattended-upgrades leave them alone) until the version changes. Hub rules (whitelists, AppSec and CVE rules) are only updated for the latest CrowdSec version, so keep `crowdsec_version` current.
 
+On Debian and Ubuntu, CrowdSec comes from its APT repository on packagecloud.io, set up without the vendor's install script: the signing key is checked against the pinned fingerprint `crowdsec_apt_key_fingerprint` and stored as `/etc/apt/keyrings/crowdsec.asc`, the source is `/etc/apt/sources.list.d/crowdsec.sources` with `Signed-By`. A different key stops the run. Hosts set up by older versions are migrated (the script's `crowdsec_crowdsec.list` and keyring are removed). If CrowdSec ever rotates its key, check the new fingerprint independently before changing the variable.
+
 With the [Renovate](https://github.com/apps/renovate) app installed on the repository, `renovate.json` opens a pull request against `develop` whenever one of these versions, a GitHub Action or a pre-commit hook has a new release (weekly, Monday morning). A version set in your own files overrides the role default, so remove such overrides to follow these updates.
+
+Container images (development image, test images, gitleaks) are pinned by `tag@sha256` digest; Renovate updates tag and digest together. pre-commit runs gitleaks on staged changes, and CI scans the whole git history.
 
 ### Upgrading existing hosts
 

@@ -9,9 +9,14 @@
 # Installation
 # =============================================================================
 
-# Upstream release (git tag) installed via pipx
+# Upstream release (git tag) installed via pipx. The tag is movable, so pipx
+# installs the pinned commit it pointed to when the version was chosen;
+# the version is only used for the installed-version check. Renovate updates
+# both lines together (the commit is the tag's digest); when changing them by
+# hand: git ls-remote <repo> 'refs/tags/<tag>*' (use the ^{} line for annotated tags)
 # renovate: datasource=github-tags depName=wolffcatskyy/crowdsec-blocklist-import
 crowdsec_import_version: "v3.9.0"
+crowdsec_import_commit: "b0585ff5fecb72a6321756274ba471df39e6fd79"
 crowdsec_import_repo_url: "https://github.com/wolffcatskyy/crowdsec-blocklist-import.git"
 
 # Dedicated system user the importer runs as (no login shell, no write access to its own code)

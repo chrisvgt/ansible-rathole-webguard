@@ -21,6 +21,7 @@ table inet webguard {
     size 65535
   }
 
+  # IPv6 is counted per /64 (the usual end-site allocation), so rotating addresses inside it does not evade the limit
   set {{ name }}_meter6 {
     type ipv6_addr
     flags dynamic,timeout
@@ -46,7 +47,7 @@ table inet webguard {
 {% for name, ports, rate, burst in firewall_meters %}
 {% if ports %}
     tcp dport { {{ ports | join(', ') }} } ct state new update @{{ name }}_meter4 { ip saddr limit rate over {{ rate }} burst {{ burst }} packets } drop
-    tcp dport { {{ ports | join(', ') }} } ct state new update @{{ name }}_meter6 { ip6 saddr limit rate over {{ rate }} burst {{ burst }} packets } drop
+    tcp dport { {{ ports | join(', ') }} } ct state new update @{{ name }}_meter6 { ip6 saddr and ffff:ffff:ffff:ffff:: limit rate over {{ rate }} burst {{ burst }} packets } drop
 {% endif %}
 {% endfor %}
 {% endif %}

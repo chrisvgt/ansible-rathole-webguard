@@ -11,15 +11,28 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Tool versions in role defaults, marked with a '# renovate:' comment",
+      "description": "Tool versions in role defaults, marked with a '# renovate:' comment, optionally followed by the pinned commit (*_commit) as digest",
       "managerFilePatterns": ["/^roles/[^/]+/defaults/main\\.yml$/"],
-      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s+[a-z_]+_version: \"(?<currentValue>[^\"]+)\""]
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s+[a-z_]+_version: \"(?<currentValue>[^\"]+)\"(?:\\s+[a-z_]+_commit: \"(?<currentDigest>[0-9a-f]{40})\")?"]
     },
     {
       "customType": "regex",
-      "description": "Container images in test scripts, marked with a '# renovate:' comment",
+      "description": "Container images (tag and digest) in test scripts, marked with a '# renovate:' comment",
       "managerFilePatterns": ["/^tests/[^/]+\\.sh$/"],
-      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+[a-z_]*image=\\S+:(?<currentValue>\\S+)"]
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+[a-z_]*image=[^\\s:]+:(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?"]
+    },
+    {
+      "customType": "regex",
+      "description": "Container images (tag and digest) in workflow env variables, marked with a '# renovate:' comment",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+[A-Z_]*IMAGE: [^\\s:]+:(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?"]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "The development image checks that .python-version matches PYTHON_IMAGE, so both change in one pull request",
+      "matchDepNames": ["python"],
+      "groupName": "python"
     }
   ]
 }

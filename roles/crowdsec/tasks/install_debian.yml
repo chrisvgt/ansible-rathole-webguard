@@ -2,31 +2,120 @@
 # roles/crowdsec/tasks/install_debian.yml
 # Debian and Ubuntu: CrowdSec and the iptables bouncer from the CrowdSec APT repository
 
-- name: Check for the CrowdSec APT repository
+## CrowdSec APT repository
+
+# packagecloud serves one repository for all releases (suite "any"), as the
+# vendor's install script uses it. The signing key is checked against the
+# pinned fingerprint instead of being trusted blindly.
+- name: Install the packages to verify and fetch the repository key
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+    state: present
+
+# The vendor's install script (before: curl | bash) wrote these files. Apt
+# fails on a second source of the same repository with another Signed-By.
+- name: Remove the repository files of the old install script
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/crowdsec_crowdsec.list
+    - /etc/apt/keyrings/crowdsec_crowdsec-archive-keyring.gpg
+  register: crowdsec_apt_old_files
+
+- name: Ensure the apt keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check for gpg
   ansible.builtin.stat:
-    path: /etc/apt/sources.list.d/crowdsec_crowdsec.list
-  register: crowdsec_apt_repo
+    path: /usr/bin/gpg
+  register: crowdsec_gpg
 
-# Only on the first run: the script is downloaded, run and removed again
-- name: Add the CrowdSec APT repository
-  when: not crowdsec_apt_repo.stat.exists
+- name: Check for the CrowdSec repository key
+  ansible.builtin.stat:
+    path: /etc/apt/keyrings/crowdsec.asc
+  register: crowdsec_apt_key_stat
+
+# The key is only downloaded when the stored one is missing or not the pinned one
+- name: Read the fingerprint of the stored CrowdSec repository key
+  ansible.builtin.command: gpg --show-keys --with-colons /etc/apt/keyrings/crowdsec.asc
+  register: crowdsec_apt_key_stored
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: crowdsec_apt_key_stat.stat.exists and crowdsec_gpg.stat.exists
+
+- name: Fetch and store the CrowdSec repository key
+  # Check mode on a new server: gpg is not installed yet, so the key is not checked
+  when: crowdsec_gpg.stat.exists or not ansible_check_mode
+  vars:
+    crowdsec_apt_key_pattern: "^pub:[^\n]*\nfpr:::::::::{{ crowdsec_apt_key_fingerprint | upper }}:$"
+    crowdsec_apt_key_stored_ok: >-
+      {{ crowdsec_apt_key_stored is not skipped
+         and crowdsec_apt_key_stored.rc == 0
+         and crowdsec_apt_key_stored.stdout is search(crowdsec_apt_key_pattern, multiline=True)
+         and crowdsec_apt_key_stored.stdout_lines | select('match', '^pub:') | list | length == 1 }}
   block:
-    - name: Download CrowdSec APT install script
-      ansible.builtin.get_url:
-        url: https://install.crowdsec.net
-        dest: /tmp/install_crowdsec.sh
-        mode: "0755"
+    - name: Download the CrowdSec repository key
+      ansible.builtin.uri:
+        url: https://packagecloud.io/crowdsec/crowdsec/gpgkey
+        return_content: true
+      register: crowdsec_apt_key_download
+      check_mode: false
+      when: not crowdsec_apt_key_stored_ok | bool
 
-    - name: Add CrowdSec APT repository via script
-      ansible.builtin.command: /bin/bash /tmp/install_crowdsec.sh
+    - name: Show the fingerprint of the downloaded CrowdSec repository key
+      ansible.builtin.command: gpg --show-keys --with-colons
       args:
-        creates: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+        stdin: "{{ crowdsec_apt_key_download.content }}"
+      register: crowdsec_apt_key_new
+      changed_when: false
+      check_mode: false
+      when: not crowdsec_apt_key_stored_ok | bool
 
-  always:
-    - name: Remove the CrowdSec APT install script
-      ansible.builtin.file:
-        path: /tmp/install_crowdsec.sh
-        state: absent
+    # Exactly one key, and it is the pinned one
+    - name: Check the fingerprint of the downloaded CrowdSec repository key
+      ansible.builtin.assert:
+        that:
+          - crowdsec_apt_key_new.stdout is search(crowdsec_apt_key_pattern, multiline=True)
+          - crowdsec_apt_key_new.stdout_lines | select('match', '^pub:') | list | length == 1
+        fail_msg: >-
+          The key from https://packagecloud.io/crowdsec/crowdsec/gpgkey does not have the
+          fingerprint {{ crowdsec_apt_key_fingerprint }} (crowdsec_apt_key_fingerprint).
+          If CrowdSec changed its signing key, check the new fingerprint first.
+        quiet: true
+      when: not crowdsec_apt_key_stored_ok | bool
+
+    - name: Store the CrowdSec repository key
+      ansible.builtin.copy:
+        content: "{{ crowdsec_apt_key_download.content }}"
+        dest: /etc/apt/keyrings/crowdsec.asc
+        owner: root
+        group: root
+        mode: "0644"
+      register: crowdsec_apt_key
+      when: not crowdsec_apt_key_stored_ok | bool
+
+- name: Add the CrowdSec APT repository
+  ansible.builtin.template:
+    src: crowdsec.sources.j2
+    dest: /etc/apt/sources.list.d/crowdsec.sources
+    owner: root
+    group: root
+    mode: "0644"
+  register: crowdsec_apt_sources
+
+- name: Update the APT package lists for the CrowdSec repository
+  ansible.builtin.apt:
+    update_cache: true
+  when: crowdsec_apt_old_files is changed or crowdsec_apt_key is changed or crowdsec_apt_sources is changed
 
 - name: Keep CrowdSec at the versions of the playbook
   ansible.builtin.template:
@@ -37,7 +126,7 @@
     mode: "0644"
   register: crowdsec_apt_pin
 
-# Check mode does not write the new pin, and apt refuses a version the old one excludes
+# Check mode does not write the new pin or repository, and apt refuses a version the old pin excludes
 - name: Install CrowdSec agent and iptables bouncer
   ansible.builtin.apt:
     name:
@@ -47,7 +136,11 @@
     state: present
     allow_downgrade: true # The versions of the playbook win
   notify: Restart CrowdSec
-  when: not (ansible_check_mode and crowdsec_apt_pin is changed)
+  when: >-
+    not (ansible_check_mode
+         and (crowdsec_apt_pin is changed
+              or crowdsec_apt_sources is changed
+              or crowdsec_apt_key is changed))
 
 ## IPv6 bans
 

@@ -42,6 +42,7 @@
           - "'udp dport { 443, 51820 } accept' in test_rules.stdout"
           - "'3000' not in test_rules.stdout"
           - "'@ssh_meter4' in test_rules.stdout and '@ssh_meter6' in test_rules.stdout"
+          - "'ip6 saddr & ffff:ffff:ffff:ffff::' in test_rules.stdout"
           - "'rathole_meter' not in test_rules.stdout"
           - "'webguard drop: ' in test_rules.stdout"
           - test_unit.status.UnitFileState == 'enabled'
