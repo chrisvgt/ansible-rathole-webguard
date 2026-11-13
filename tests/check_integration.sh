@@ -197,6 +197,12 @@ check "HSTS is sent" "https -I | grep -qi '^strict-transport-security: max-age=3
 check "no Server header" "! https -I | grep -qi '^server:'"
 check "Caddy admin API only on its socket" "on $server 'test -S /run/caddy/admin.sock && ! curl -s --max-time 2 http://localhost:2019/config/'"
 check "Caddy sandbox exposure below 2" "on $server \"systemd-analyze security caddy.service | tail -1 | grep -qE 'level for caddy.service: [01]\\.'\""
+# Reverse service: the client listens, the server connects to its own Local API,
+# which answers without a bouncer key with 401 or 403
+lapi_status() { on "$client" "curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:18443/v1/decisions"; }
+check "a reverse service reaches the server's Local API" "lapi_status | grep -qE '^40[13]\$'"
+check "the reverse service does not listen on the server" "! on $server 'exec 3<>/dev/tcp/127.0.0.1/18443'"
+check "the reverse service opens no port on the server" "! on $server 'nft list table inet webguard' | grep -q 18443"
 check "firewall opens the passed-through UDP port" "on $server 'nft list table inet webguard' | grep -q 'udp dport { 443, 51820 }'"
 on "$server" "systemd-run --unit it-probe python3 -m http.server 9000" >/dev/null
 check "firewall drops other ports" "! on $client 'curl -s --max-time 3 http://$server_ip:9000/'"
