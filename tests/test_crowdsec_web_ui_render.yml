@@ -89,12 +89,12 @@
     # test_unit is a fact and would beat task vars, so a new name
     - name: Render with own origins
       ansible.builtin.set_fact:
-        crowdsec_web_ui_include_origins: [crowdsec, cscli, lists]
+        crowdsec_web_ui_include_origins: [crowdsec, cscli, blocklist-import]
 
     - name: Check the unit with own origins
       ansible.builtin.assert:
         that:
-          - '''-e "CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS=[crowdsec, cscli, lists]"'' in test_unit_origins'
+          - '''-e "CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS=[crowdsec, cscli, blocklist-import]"'' in test_unit_origins'
         fail_msg: "{{ test_unit_origins }}"
       vars:
         test_unit_origins: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.service.j2') }}"
