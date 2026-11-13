@@ -22,8 +22,25 @@
 
 # --- Optional swap file ---
 
+# Server only: the memory-hungry parts (Caddy build, CrowdSec, import, Web UI)
+# run there; the client runs Rathole only and may have little disk.
+# Containers (LXC, OpenVZ) cannot enable swap themselves, the host decides.
+- name: Skip the swap file in a container
+  ansible.builtin.debug:
+    msg: >-
+      system_swap_enabled is ignored on {{ inventory_hostname }}: it runs in a
+      {{ ansible_facts['virtualization_type'] }} container, which cannot enable swap.
+      Set swap on the container host instead.
+  when:
+    - system_swap_enabled | bool
+    - rathole_role | default('') == 'server'
+    - system_swap_in_container
+
 - name: Configure swap file
-  when: system_swap_enabled | bool
+  when:
+    - system_swap_enabled | bool
+    - rathole_role | default('') == 'server'
+    - not system_swap_in_container
   block:
     - name: Check whether the swap file exists
       ansible.builtin.stat:
@@ -61,12 +78,24 @@
       changed_when: false
       check_mode: false # Read-only, safe to run in check mode
 
+    # Some virtualised hosts forbid swap without being detected as a container
     - name: Enable swap file
       ansible.builtin.command: "swapon {{ system_swap_file }}"
       when: system_swap_file not in system_swap_active.stdout_lines
-      changed_when: true
+      register: system_swap_on
+      changed_when: system_swap_on.rc == 0
+      failed_when: system_swap_on.rc != 0 and 'Operation not permitted' not in system_swap_on.stderr
+
+    - name: Warn that the host does not allow swap
+      ansible.builtin.debug:
+        msg: >-
+          swapon {{ system_swap_file }} is not permitted on {{ inventory_hostname }}
+          (virtualisation without swap support); the file is kept but not used.
+          Set system_swap_enabled: false or ask the provider for swap.
+      when: system_swap_on.rc | default(0) != 0
 
     - name: Persist swap file in /etc/fstab
+      when: system_swap_on.rc | default(0) == 0
       ansible.builtin.lineinfile:
         path: /etc/fstab
         regexp: '^{{ system_swap_file | regex_escape }}\s'

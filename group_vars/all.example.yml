@@ -1,55 +1,38 @@
+---
 # Copy to group_vars/all.yml (gitignored). Global settings for all hosts;
 # settings that are missing fall back to the defaults shown here.
+# Settings of one server/client pair belong in group_vars/tunnel_<name>.yml.
 
 # --- System maintenance (defaults shown, uncomment to change) ---
 # apt_upgrade_mode: "safe" # apt upgrade on every run: safe | full | dist | yes | no (no = skip)
 # enable_auto_reboot: true # Reboot when package upgrades need it (new kernel); false = only report it
 # enable_system_tuning: true # system role: journald size limit, optional swap file, security updates
 
-# Global toggle for ratelimit
-enable_rate_limit: true
-
-# Global toggle for Cloudflare DNS challenges
-enable_cloudflare: false # 'true' uses Cloudflare DNS for certificates and builds its Caddy plugin
-
-# Global toggle for Wildcard support, requires Cloudflare
-# true: one wildcard certificate per base domain, false: one per domain
-enable_wildcard: false
-
-# Global toggle for CrowdSec integration
-enable_crowdsec: true # Set to 'false' to disable CrowdSec installation and its Caddy plugin
-
-# Global toggle for CrowdSec blocklist import integration
-enable_crowdsec_import: false # Set to 'false' to disable CrowdSec blocklist import installation
-
-# Global toggle for the CrowdSec Web UI (Podman container on the server, reached through a Rathole
-# reverse tunnel only). Needs about 250-400 MB more RAM and about 1 GB more disk, see the README.
-# Requires enable_crowdsec, x86_64 or arm64. Ports and client address (also in group_vars/tunnel_<name>.yml):
-# crowdsec_web_ui_port: 3000 # Port on the server (127.0.0.1 only)
-# crowdsec_web_ui_client_port: 3000 # Port the client listens on
-# crowdsec_web_ui_client_listen: "127.0.0.1" # "0.0.0.0" makes it reachable from the whole home LAN
+# --- Features ---
+enable_rate_limit: true # Rate limiting in Caddy
+enable_cloudflare: false # Cloudflare DNS for certificates (builds its Caddy plugin)
+enable_wildcard: false # true: one wildcard certificate per base domain (requires enable_cloudflare), false: one per domain
+enable_crowdsec: true # CrowdSec engine, bouncers and its Caddy plugin
+enable_crowdsec_import: false # Blocklist import into CrowdSec
+# CrowdSec Web UI: Podman container on the server, reached through a Rathole reverse tunnel only.
+# Needs about 250-400 MB more RAM and about 1 GB more disk; requires enable_crowdsec, x86_64 or arm64.
+# Ports and listen address: group_vars/tunnel_<name>.yml.
 enable_crowdsec_web_ui: false
+enable_coraza_waf: false # Coraza WAF plugin for Caddy
+enable_firewall: false # nftables firewall on the server (if the provider firewall is not used or trusted)
 
-# Global toggle for Coraza WAF
-enable_coraza_waf: false # Set to 'true' to enable Coraza WAF plugin for Caddy
-
-# Global toggle for the nftables firewall on the server (if the provider firewall is not used or trusted)
-enable_firewall: false
-
-# Coraza WAF mode: recommended | minimal | moderate | strict | off
-coraza_mode_default: recommended
-
-# File whitelist: skip WAF for static files (GET only, improves performance)
-# Set to false to disable, or customize the extensions list
+# --- Coraza WAF (only used with enable_coraza_waf: true) ---
+coraza_mode_default: recommended # recommended | minimal | moderate | strict | off
+# File whitelist: skip the WAF for static files (GET only, improves performance)
 coraza_file_whitelist_enabled: true
 coraza_file_whitelist_extensions: "css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv"
-# --- WAF advanced tuning (optional - sensible defaults apply) ---
+# Advanced tuning (optional, sensible defaults apply)
 # coraza_audit_log_enabled: true
 # coraza_audit_log_dir: "/var/log/caddy/coraza" # Keep it outside /var/log/caddy/*.log (CrowdSec reads those)
 # coraza_block_uploads: false # minimal mode only
 # coraza_upload_blocklist: ['php','phtml','phar','exe','jar','war','dmg','msi','vbs','ps1','sh','bat','com','scr','pif','aspx','cer','cfm','cgi','pl','py','rb','jsp']
 
-# Mode-specific request body limits in bytes (uncomment to override defaults)
+# Request body limits per mode in bytes (uncomment to override the defaults)
 # coraza_minimal_body_limit: 536870912
 # coraza_minimal_body_inmemory_limit: 134217728
 # coraza_minimal_nofiles_body_limit: 10485760
