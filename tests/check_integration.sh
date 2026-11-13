@@ -444,6 +444,9 @@ check "turning the Web UI off removes the container" "! on $server 'podman ps -a
 check "turning the Web UI off removes its LAPI machine" "! on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
 check "turning the Web UI off keeps its data" "on $server 'test -d /var/lib/crowdsec-web-ui'"
 check "turning the Web UI off closes the client port" "! on $client 'curl -s --max-time 3 http://127.0.0.1:13001/api/health'"
-check "the site still answers without the Web UI" "https | grep -q 'hello from the client'"
+# The Rathole config changed, so both ends restarted; the client reconnects
+# with a backoff, give it time before checking the site
+site_back() { for _ in $(seq 30); do https | grep -q 'hello from the client' && return 0; sleep 2; done; return 1; }
+check "the site still answers without the Web UI" "site_back"
 
 exit $fail
