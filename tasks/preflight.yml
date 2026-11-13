@@ -62,3 +62,12 @@
   when:
     - rathole_role == 'server'
     - enable_crowdsec | bool
+
+# The ports and the client address are checked with the tunnel services above
+- name: Validate the CrowdSec Web UI settings before changing anything
+  ansible.builtin.import_role:
+    name: crowdsec_web_ui
+    tasks_from: validate
+  when:
+    - rathole_role == 'server'
+    - enable_crowdsec_web_ui | bool

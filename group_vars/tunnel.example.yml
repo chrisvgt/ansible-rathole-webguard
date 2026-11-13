@@ -83,6 +83,16 @@ duration_expr: true # Enable dynamic increase of blocking time
 # crowdsec_allowlist, crowdsec_decision_duration, ... All of them with their
 # defaults are listed in roles/crowdsec_import/defaults/main.yml.
 
+# --- CrowdSec Web UI (needs enable_crowdsec_web_ui: true in group_vars/all.yml) ---
+# A dashboard for CrowdSec in a Podman container on the server. It listens on 127.0.0.1 of
+# the server only; the client listens for it (reverse service named 'crowdsec-web-ui') and
+# you open http://<client>:<client port>. Needs more RAM (see README). These variables are
+# read by both hosts of the tuple, so keep them here or in group_vars/all.yml.
+# crowdsec_web_ui_port: 3000 # Port on the server; must not collide with a service's bind_addr port
+# crowdsec_web_ui_client_port: 3000 # Port on the client; must not collide with another reverse service
+# crowdsec_web_ui_client_listen: "127.0.0.1" # "0.0.0.0": reachable from the whole LAN of the client (no TLS)
+# crowdsec_web_ui_memory_max: "512m" # Container memory limit
+
 # --- CrowdSec whitelist: never ban your own (dynamic) home IP ---
 dynamic_whitelist_enabled: false # Resolve the hostnames below and whitelist their IPs
 dynamic_ddns_hostnames:

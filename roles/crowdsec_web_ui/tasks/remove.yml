@@ -1,0 +1,62 @@
+---
+# roles/crowdsec_web_ui/tasks/remove.yml
+# enable_crowdsec_web_ui: false removes the setup of an earlier run: the service,
+# its files and the LAPI machine. The data directory and Podman (with the image)
+# stay, remove them by hand if wanted (see README).
+
+- name: Check for a CrowdSec Web UI from an earlier run
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: crowdsec_web_ui_leftovers
+  loop:
+    - /etc/systemd/system/crowdsec-web-ui.service
+    - "{{ crowdsec_web_ui_config_dir }}"
+    - "{{ crowdsec_web_ui_machine_password_file }}"
+
+- name: Remove the CrowdSec Web UI
+  when: crowdsec_web_ui_leftovers.results | map(attribute='stat.exists') | select | list | length > 0
+  block:
+    - name: Check for the unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/crowdsec-web-ui.service
+      register: crowdsec_web_ui_unit
+
+    - name: Stop and disable the CrowdSec Web UI
+      ansible.builtin.systemd_service:
+        name: crowdsec-web-ui
+        enabled: false
+        state: stopped
+      when: crowdsec_web_ui_unit.stat.exists
+
+    - name: Remove the unit and the config files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/crowdsec-web-ui.service
+        - "{{ crowdsec_web_ui_config_dir }}"
+
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    # Without CrowdSec (cscli) there is no machine left to delete
+    - name: List CrowdSec machines
+      ansible.builtin.command: cscli machines list -o json
+      register: crowdsec_web_ui_machines_list
+      changed_when: false
+      failed_when: false
+      check_mode: false # Read-only, safe to run in check mode
+
+    - name: Remove the CrowdSec Web UI machine
+      ansible.builtin.command:
+        argv: [cscli, machines, delete, "{{ crowdsec_web_ui_machine_id }}"]
+      changed_when: true
+      when:
+        - crowdsec_web_ui_machines_list.rc == 0
+        - crowdsec_web_ui_machine_id in (crowdsec_web_ui_machines_list.stdout | from_json | default([], true) | map(attribute='machineId') | list)
+
+    - name: Remove the stored machine password
+      ansible.builtin.file:
+        path: "{{ crowdsec_web_ui_machine_password_file }}"
+        state: absent

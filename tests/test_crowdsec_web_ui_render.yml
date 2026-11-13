@@ -1,0 +1,100 @@
+---
+# tests/test_crowdsec_web_ui_render.yml
+# Rendered systemd unit and env file of the crowdsec_web_ui role, the role's own
+# validation and the removal when the feature is off
+
+- name: Render the CrowdSec Web UI files
+  hosts: srv
+  gather_facts: false
+  vars:
+    crowdsec_web_ui_lapi_password: s3cretPassw0rd
+  tasks:
+    - name: Load the defaults of the role
+      ansible.builtin.include_vars: ../roles/crowdsec_web_ui/defaults/main.yml
+
+    - name: Render with the defaults
+      ansible.builtin.set_fact:
+        test_unit: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.service.j2') }}"
+        test_env: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.env.j2') }}"
+
+    - name: Check the unit
+      ansible.builtin.assert:
+        that:
+          - "'ExecStart=/usr/bin/podman --cgroup-manager cgroupfs run --rm --replace --name crowdsec-web-ui' in test_unit"
+          - "'--network host' in test_unit"
+          - "'--user 62500:62500' in test_unit"
+          - "'--cap-drop all' in test_unit"
+          - "'--security-opt no-new-privileges' in test_unit"
+          - "'--read-only --tmpfs /tmp' in test_unit"
+          - "'--memory 512m' in test_unit"
+          - "'--pids-limit 256' in test_unit"
+          - "'--log-driver journald' in test_unit"
+          - "'-e CONFIG_SERVER_PORT=3000' in test_unit"
+          - "'-e CONFIG_UPDATES_ENABLED=false' in test_unit"
+          - "'-e CONFIG_INSTANCE_LAPI_URL=http://127.0.0.1:8080' in test_unit"
+          - "'-e CONFIG_INSTANCE_LAPI_AUTH_USERNAME=crowdsec-web-ui' in test_unit"
+          - "'-e CONFIG_INSTANCE_METRICS_URL=http://127.0.0.1:6060/metrics' in test_unit"
+          - "'-e \"NODE_OPTIONS=--require=/opt/loopback.cjs --max-old-space-size=256\"' in test_unit"
+          - "'--env-file /etc/crowdsec-web-ui/env' in test_unit"
+          - "'-v /var/lib/crowdsec-web-ui:/app/data' in test_unit"
+          - "'-v /etc/crowdsec-web-ui/loopback.cjs:/opt/loopback.cjs:ro' in test_unit"
+          - "'ghcr.io/theduffman85/crowdsec-web-ui:2026.11.10@sha256:' in test_unit"
+          - "'After=network-online.target crowdsec.service' in test_unit"
+          - "'Restart=on-failure' in test_unit"
+          - "'ExecStop=/usr/bin/podman stop --time 20 crowdsec-web-ui' in test_unit"
+          # The password only goes into the env file, which is readable by root only
+          - "'s3cretPassw0rd' not in test_unit"
+          - test_env is search('(?m)^CONFIG_INSTANCE_LAPI_AUTH_PASSWORD=s3cretPassw0rd$')
+        fail_msg: "{{ test_unit }}"
+
+    # Every line of ExecStart but the last continues on the next one
+    - name: Check the ExecStart lines are joined
+      ansible.builtin.assert:
+        that:
+          - test_unit_lines | reject('match', '^(ExecStart=|  )') | list | length == 0
+          - test_unit_lines[:-1] | reject('search', ' \\\\$') | list | length == 0
+        fail_msg: "{{ test_unit_lines }}"
+      vars:
+        test_exec: "{{ test_unit | regex_search('(?s)ExecStart=.*?\\n(?=ExecStop)') }}"
+        test_unit_lines: "{{ test_exec.split('\n') | select | list }}"
+
+    # set_fact beats include_vars
+    - name: Render with custom settings
+      ansible.builtin.set_fact:
+        crowdsec_web_ui_port: 13000
+        crowdsec_web_ui_metrics: false
+        crowdsec_web_ui_memory_max: 768m
+        crowdsec_web_ui_node_heap_mb: 400
+        crowdsec_lapi_port: "18080"
+
+    - name: Render the unit with custom settings
+      ansible.builtin.set_fact:
+        test_unit: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.service.j2') }}"
+
+    - name: Check the unit with custom settings
+      ansible.builtin.assert:
+        that:
+          - "'-e CONFIG_SERVER_PORT=13000' in test_unit"
+          - "'CONFIG_INSTANCE_METRICS_URL' not in test_unit"
+          - "'--memory 768m' in test_unit"
+          - "'--max-old-space-size=400' in test_unit"
+          - "'-e CONFIG_INSTANCE_LAPI_URL=http://127.0.0.1:18080' in test_unit"
+        fail_msg: "{{ test_unit }}"
+
+- name: Check the validation of the CrowdSec Web UI role
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Check the cases
+      ansible.builtin.include_tasks: tasks/web_ui_validate_case.yml
+      loop:
+        - { name: valid, arch: x86_64, crowdsec: true, expected: "" }
+        - { name: valid on arm64, arch: aarch64, crowdsec: true, expected: "" }
+        - { name: armv7, arch: armv7l, crowdsec: true, expected: "x86_64 and aarch64 (arm64) only" }
+        - { name: without CrowdSec, arch: x86_64, crowdsec: false, expected: "requires enable_crowdsec: true" }
+        - { name: password with a space, arch: x86_64, crowdsec: true, password: "a b", expected: "may only contain" }
+        - { name: password with a quote, arch: x86_64, crowdsec: true, password: "a'b", expected: "may only contain" }
+        - { name: own password, arch: x86_64, crowdsec: true, password: "Ab1._~+=:@%^-", expected: "" }
+      loop_control:
+        loop_var: case
+        label: "{{ case.name }}"

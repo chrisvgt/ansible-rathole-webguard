@@ -186,7 +186,7 @@ diagnose() {
 }
 
 echo "== checks"
-check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer rathole'"
+check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer crowdsec-web-ui rathole'"
 check "client tunnel is active" "on $client 'systemctl is-active rathole'"
 check "site answers through the tunnel" "https | grep -q 'hello from the client'"
 https | grep -q 'hello from the client' || diagnose
@@ -203,6 +203,22 @@ lapi_status() { on "$client" "curl -s -o /dev/null -w '%{http_code}' --max-time 
 check "a reverse service reaches the server's Local API" "lapi_status | grep -qE '^40[13]\$'"
 check "the reverse service does not listen on the server" "! on $server 'exec 3<>/dev/tcp/127.0.0.1/18443'"
 check "the reverse service opens no port on the server" "! on $server 'nft list table inet webguard' | grep -q 18443"
+# CrowdSec Web UI: a Podman container on the server, reached through the reverse
+# service 'crowdsec-web-ui' (server port 13000, client port 13001 on all addresses)
+ui_health() { curl -s --max-time 5 "http://$1/api/health" | grep -q '"status":"ok"'; }
+ui_listeners() { on "$server" "ss -ltnH 'sport = :13000'" | awk '{print $4}'; }
+ui_files() { on "$server" 'stat -c %a:%U /etc/crowdsec-web-ui/env /etc/crowdsec/web-ui.machine.password' | tr '\n' ' '; }
+ui_user() { on "$server" "podman exec crowdsec-web-ui grep -E '^(Uid|CapEff)' /proc/1/status" | awk '{printf "%s ", $2}'; }
+ui_logs() { on "$server" 'journalctl -u crowdsec-web-ui --no-pager'; }
+check "the Web UI answers on the client through the tunnel" "on $client 'curl -s --max-time 5 http://127.0.0.1:13001/api/health' | grep -q '\"status\":\"ok\"'"
+check "the Web UI answers on the client's LAN address" "on $server 'curl -s --max-time 5 http://$client_ip:13001/api/health' | grep -q '\"status\":\"ok\"'"
+check "the Web UI listens on the server's loopback only" "test \"\$(ui_listeners)\" = 127.0.0.1:13000"
+check "the Web UI port is closed to the network" "! on $client 'curl -s --max-time 3 http://$server_ip:13000/api/health'"
+check "the Web UI runs without root and capabilities" "test \"\$(ui_user)\" = '62500 0000000000000000 '"
+check "the Web UI has its own LAPI machine" "on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
+check "the Web UI logs in to the Local API" "ui_logs | grep -q 'backend running' && ! ui_logs | grep -q 'Authentication failed'"
+check "the Web UI env file and password file are root only" "test \"\$(ui_files)\" = '600:root 600:root '"
+check "the Web UI opens no port in the firewall" "! on $server 'nft list table inet webguard' | grep -qE '1300[01]'"
 check "firewall opens the passed-through UDP port" "on $server 'nft list table inet webguard' | grep -q 'udp dport { 443, 51820 }'"
 on "$server" "systemd-run --unit it-probe python3 -m http.server 9000" >/dev/null
 check "firewall drops other ports" "! on $client 'curl -s --max-time 3 http://$server_ip:9000/'"
@@ -405,5 +421,18 @@ playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
 }
 check "turning the firewall off removes it" "! on $server 'nft list tables' | grep -q webguard"
 check "the site still answers" "https | grep -q 'hello from the client'"
+
+echo "== CrowdSec Web UI off"
+playbook -e enable_crowdsec_web_ui=false --tags crowdsec_web_ui,rathole >"$logs/web-ui-off.log" 2>&1 || {
+  tail -30 "$logs/web-ui-off.log"
+  fail=1
+}
+check "turning the Web UI off stops the service" "! on $server 'systemctl is-active crowdsec-web-ui'"
+check "turning the Web UI off removes the unit and the config" "on $server '! test -e /etc/systemd/system/crowdsec-web-ui.service && ! test -e /etc/crowdsec-web-ui'"
+check "turning the Web UI off removes the container" "! on $server 'podman ps -a --format {{.Names}}' | grep -q crowdsec-web-ui"
+check "turning the Web UI off removes its LAPI machine" "! on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
+check "turning the Web UI off keeps its data" "on $server 'test -d /var/lib/crowdsec-web-ui'"
+check "turning the Web UI off closes the client port" "! on $client 'curl -s --max-time 3 http://127.0.0.1:13001/api/health'"
+check "the site still answers without the Web UI" "https | grep -q 'hello from the client'"
 
 exit $fail

@@ -1,0 +1,29 @@
+---
+# tests/tasks/web_ui_validate_case.yml
+# One configuration for the validation of the crowdsec_web_ui role, for
+# tests/test_crowdsec_web_ui_render.yml; case.expected is '' when it must pass
+
+- name: Set the variables ({{ case.name }})
+  ansible.builtin.set_fact:
+    rejected_msg: ""
+    enable_crowdsec: "{{ case.crowdsec }}"
+
+- name: Run the validation ({{ case.name }})
+  block:
+    - name: Run the validation ({{ case.name }})
+      ansible.builtin.include_role:
+        name: crowdsec_web_ui
+        tasks_from: validate
+      vars:
+        crowdsec_web_ui_machine_password: "{{ case.password | default('') }}"
+        ansible_facts: "{{ {'architecture': case.arch} }}"
+  rescue:
+    - name: Remember failure message ({{ case.name }})
+      ansible.builtin.set_fact:
+        rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+- name: Check the result ({{ case.name }})
+  ansible.builtin.assert:
+    that:
+      - (case.expected == '' and rejected_msg == '') or (case.expected != '' and case.expected in rejected_msg)
+    fail_msg: "{{ rejected_msg or 'not rejected' }}"
