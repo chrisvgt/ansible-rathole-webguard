@@ -12,6 +12,9 @@ system_swap_enabled: false # Set to 'true' to create and enable a swap file
 system_swap_file: "/swapfile" # Path of the swap file
 system_swap_size: "1G" # Size of the swap file (fallocate syntax); not resized once created
 system_swappiness: 10 # vm.swappiness: lower values prefer RAM over swap
+# Swap is set up on the server only (the client runs just Rathole). LXC and
+# OpenVZ containers cannot enable swap, the container host decides there.
+system_swap_in_container: "{{ ansible_facts['virtualization_role'] | default('') == 'guest' and ansible_facts['virtualization_type'] | default('') in ['lxc', 'openvz'] }}"
 
 # Automatic security updates between playbook runs (unattended-upgrades)
 system_unattended_upgrades: true # Install security updates daily; false leaves the host's setting untouched

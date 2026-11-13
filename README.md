@@ -25,7 +25,7 @@ Caddy proxies each site to a local port on the VPS. Rathole binds that port to `
 
 ## Quickstart
 
-A **tuple** is one server (VPS) and one client (home server) connected by one tunnel. You configure a tuple in two places: a group in `inventory.ini` and one file `group_vars/tunnel_<name>.yml`. Global switches live in `group_vars/all.yml`.
+A **tuple** is one server (VPS) and one client (home server) connected by one tunnel. You configure a tuple in two places: a group in `inventory.ini` and one file `group_vars/tunnel_<name>.yml`. Global settings (feature flags, Coraza WAF) live in `group_vars/all.yml`; everything that belongs to one tuple (tunnel, services, CrowdSec, Web UI ports, Cloudflare token, swap) lives in the tuple file.
 
 ### Before you start
 
@@ -153,20 +153,20 @@ The Cloudflare token only needs to be set as `cloudflare_api_token`. Ansible wri
 | ------------------------ | ------------- | ------------------------------------------------------------------------------------------------- |
 | `enable_crowdsec`        | `true`        | CrowdSec engine, firewall bouncer, AppSec and the Caddy bouncer plugin                            |
 | `enable_firewall`        | `false`       | nftables firewall on the server, see [Firewall](#firewall)                                        |
-| `enable_rate_limit`      | `true`        | Per-site rate limit (default 500 requests per minute per IP) and the ratelimit plugin             |
+| `enable_rate_limit`      | `true`        | Per-site rate limit (see [Services](#services)) and the ratelimit plugin                          |
 | `enable_cloudflare`      | `false`       | Cloudflare DNS-01 challenge for all certificates (plugin + `cloudflare_api_token`)                |
 | `enable_wildcard`        | `false`       | One wildcard certificate per base domain, see [Services](#services). Requires `enable_cloudflare` |
 | `enable_coraza_waf`      | `false`       | WAF for every site that does not set `coraza_mode` itself                                         |
 | `coraza_mode_default`    | `recommended` | WAF mode used by `enable_coraza_waf`                                                              |
 | `enable_crowdsec_import` | `false`       | Hourly import of public blocklists into CrowdSec. Requires `enable_crowdsec`                      |
 | `enable_crowdsec_web_ui` | `false`       | CrowdSec Web UI in a Podman container, see [CrowdSec Web UI](#crowdsec-web-ui). Needs more RAM    |
-| `enable_system_tuning`   | `true`        | `system` role: journald size limit, optional swap file, automatic security updates                |
+| `enable_system_tuning`   | `true`        | `system` role, see [Small host tuning](#small-host-tuning-system-role)                            |
 | `apt_upgrade_mode`       | `safe`        | `apt upgrade` mode on every run: `safe`, `full`, `dist`, `yes`, or `no` to skip                   |
 | `enable_auto_reboot`     | `true`        | Reboot only if package upgrades require it. `false` only reports a pending reboot                 |
 
-Without `group_vars/all.yml` these defaults apply. Flags can also be set per tuple in `group_vars/tunnel_<name>.yml` or per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml`, for example the CrowdSec limits (`crowdsec_memory_max`, `crowdsec_db_flush_max_age`), the Rathole memory limit (`rathole_memory_max`) or the Caddy build settings.
+Without `group_vars/all.yml` these defaults apply. Flags can also be set per tuple in `group_vars/tunnel_<name>.yml` or per host in `host_vars/<host>.yml`. The same goes for every role setting in `roles/<role>/defaults/main.yml` (memory limits, Caddy build settings, ...). Settings of the Coraza WAF (`coraza_file_whitelist_*`, audit log, body limits) are in `group_vars/all.example.yml`.
 
-Server options in the tuple file: `ntfy_enabled` (a push message per ban with service, rule, request, origin and the `cscli decisions delete --ip` command to lift it), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders). See `group_vars/tunnel.example.yml`.
+Settings that belong to one tuple are in `group_vars/tunnel.example.yml`: the tunnel (`rathole_*`), `tunnel_services`, the CrowdSec keys, `crowdsec_web_ui_*`, `cloudflare_api_token` and the [swap](#small-host-tuning-system-role) settings. Server options there: `ntfy_enabled` (a push message per ban with service, rule, request, origin and the `cscli decisions delete --ip` command to lift it), `dynamic_whitelist_enabled` with `dynamic_ddns_hostnames` (never ban your own DDNS IPs), `duration_expr` (longer bans for repeat offenders).
 
 ### Services
 
@@ -191,7 +191,7 @@ All other keys are Caddy site options:
 | `coraza_mode`                                                       | `off`, `minimal`, `recommended`, `moderate`, `strict` (see below)                     |
 | `stream: true`                                                      | No response buffering (media), also disables AppSec                                   |
 | `disable_appsec: true`                                              | Skip CrowdSec AppSec for this site                                                    |
-| `rate_limit_events`, `rate_limit_window`                            | Rate limit, default `500` per `1m`                                                    |
+| `rate_limit_events`, `rate_limit_window`                            | Rate limit per IP, default `500` per `1m`                                             |
 | `cache_paths`                                                       | Paths that get `Cache-Control: max-age=86400` (Jellyfin defaults)                     |
 | `proxy_timeout`                                                     | Dial and response header timeout for the backend                                      |
 | `enable_forward`, `forward_path`, `forward_path_port`, `forward_ip` | Send `forward_path*` to another local port, optionally with a fixed `X-Forwarded-For` |
@@ -234,7 +234,7 @@ tunnel_services:
 | Variable                        | Default     | Effect                                                                                                                                                                                                                |
 | ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `system_journald_max_use`       | `200M`      | Cap for persistent journal logs                                                                                                                                                                                       |
-| `system_swap_enabled`           | `false`     | Create and enable a swap file                                                                                                                                                                                         |
+| `system_swap_enabled`           | `false`     | Create and enable a swap file (server only)                                                                                                                                                                           |
 | `system_swap_file`              | `/swapfile` | Swap file path                                                                                                                                                                                                        |
 | `system_swap_size`              | `1G`        | Swap size (not resized once created)                                                                                                                                                                                  |
 | `system_swappiness`             | `10`        | `vm.swappiness`, set only when swap is enabled                                                                                                                                                                        |
@@ -244,6 +244,8 @@ tunnel_services:
 | `system_unattended_reboot_time` | `04:00`     | Time of that reboot                                                                                                                                                                                                   |
 
 The role runs before Caddy, so swap is available for the Caddy build.
+
+The swap file is set up on the **server only**: the client runs just Rathole and needs none, so the setting can stay in the tuple file. Servers with 2 GB RAM or less should enable it, mainly for the Caddy build, and also when the Web UI runs. In an LXC or OpenVZ container the role skips it with a message (the container host decides about swap); when `swapon` is not permitted on other virtualised hosts, the run warns instead of failing and leaves `/etc/fstab` alone. A swap file created on a client by an older version is not removed: `swapoff /swapfile`, delete it and its line in `/etc/fstab`.
 
 ## Arch Linux
 
@@ -301,7 +303,7 @@ Audit logs (relevant events only, no request headers or bodies, so no cookies or
 
 ## CrowdSec
 
-With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall bouncer (iptables; nftables on Arch Linux), the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. Bans apply to IPv4 and IPv6. Private, loopback and link-local addresses are never banned. On Debian and Ubuntu without `/var/log/auth.log`, SSH logins are read from the journal. The Local API and AppSec must listen on loopback (`crowdsec_lapi_ip`, `crowdsec_appsec_ip`); the preflight checks reject other addresses. The database is flushed (5000 alerts, 7 days) and the service is limited to 800 MB RAM (`MemoryMax`; `GOMEMLIMIT=500MiB` keeps it below that without throttling).
+With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall bouncer (iptables; nftables on Arch Linux), the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. Bans apply to IPv4 and IPv6. Private, loopback and link-local addresses are never banned. On Debian and Ubuntu without `/var/log/auth.log`, SSH logins are read from the journal. The Local API and AppSec must listen on loopback (`crowdsec_lapi_ip`, `crowdsec_appsec_ip`); the preflight checks reject other addresses. The database is flushed (5000 alerts, 7 days: `crowdsec_db_flush_max_items`, `crowdsec_db_flush_max_age`). Memory limits: see [Resource footprint](#resource-footprint).
 
 Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (a path segment such as `login`, `sign-in`, `auth`, `AuthenticateByName` or `token`; `/api/token-refresh` or `/author/` do not count); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
 
@@ -322,7 +324,7 @@ Normal use of common self-hosted apps does not get users banned: the official Cr
 [crowdsec-web-ui](https://github.com/TheDuffman85/crowdsec-web-ui) is a dashboard for CrowdSec: alerts, decisions, statistics, metrics, allowlists and manual bans. It is optional and off by default. It needs **more resources** than the rest of the server, see below.
 
 ```yaml
-# group_vars/all.yml (or the tuple file)
+# group_vars/all.yml
 enable_crowdsec_web_ui: true
 ```
 
@@ -343,13 +345,13 @@ Requires `enable_crowdsec: true` and an x86_64 or arm64 server (the upstream ima
 | `crowdsec_web_ui_memory_max`    | `512m`      | Container memory limit (`podman --memory`); `crowdsec_web_ui_node_heap_mb` (256) keeps Node below it |
 | `crowdsec_web_ui_metrics`       | `true`      | Show the CrowdSec Prometheus metrics (`127.0.0.1:6060`) in the UI                                    |
 
-The ports and the client address are read by the server **and** the client, so set them where both see them: `group_vars/all.yml` or `group_vars/tunnel_<name>.yml` (they are per tuple). The run rejects collisions before anything changes: the client port against other reverse services on the client, the server port against forward services bound on the server's loopback or all addresses and against the ports the server needs itself (80, 443, the Rathole port, SSH, 8080, 7422, 6060). Use another port, e.g. `crowdsec_web_ui_port: 13000`, when your own service uses 3000.
+The ports and the client address are read by the server **and** the client, so set them in the tuple file `group_vars/tunnel_<name>.yml` (they are per tuple, not global). The run rejects collisions before anything changes: the client port against other reverse services on the client, the server port against forward services bound on the server's loopback or all addresses and against the ports the server needs itself (80, 443, the Rathole port, SSH, 8080, 7422, 6060). Use another port, e.g. `crowdsec_web_ui_port: 13000`, when your own service uses 3000.
 
 > **Warning:** with `crowdsec_web_ui_client_listen: "0.0.0.0"` everybody in the client's network can open the UI. There is no TLS, and the only protection is the admin login. Use `127.0.0.1` unless you need LAN access, and put it behind a VPN or an own reverse proxy with TLS if the LAN is not trusted. Whoever logs in can ban and unban IPs.
 
 **Resources** (the reason this is opt-in):
 
-- **RAM**: about 100 MB right after the start and, depending on how many alerts and decisions CrowdSec has, roughly 250-400 MB in steady state, plus Podman's small overhead (it is daemonless). The container is limited to 512 MB (`crowdsec_web_ui_memory_max`), so it is restarted rather than starving CrowdSec or Caddy. It adds to the 800 MB limit of CrowdSec and the 300 MB of the import: a 2 GB host with CrowdSec, the blocklist import and the WAF gets tight; use **at least 2 GB RAM plus swap** (`system_swap_enabled: true`) or 4 GB without swap, or skip the import.
+- **RAM**: about 100 MB right after the start and, depending on how many alerts and decisions CrowdSec has, roughly 250-400 MB in steady state, plus Podman's small overhead (it is daemonless). The container is limited to 512 MB (`crowdsec_web_ui_memory_max`), so it is restarted rather than starving CrowdSec or Caddy. Together with the limits in [Resource footprint](#resource-footprint), a 2 GB host with CrowdSec, the blocklist import and the WAF gets tight; use **at least 2 GB RAM plus [swap](#small-host-tuning-system-role)** or 4 GB without swap, or skip the import.
 - **Disk**: about 0.5 GB for the image (463 MB measured), plus Podman's storage in `/var/lib/containers` and the databases in `/var/lib/crowdsec-web-ui`. Plan for about 1 GB.
 - **Network**: one pull of the image on the first run and for every new version.
 
@@ -396,9 +398,9 @@ The service runs as user `rathole` with systemd sandboxing (`ProtectHome`, `Prot
 ## Resource footprint
 
 - Caddy is compiled on the server with Go. The build needs about 2.5-3 GB of free disk space for the module and build caches in `/var/tmp/caddy-build`, which is removed after the build. The Go toolchain stays in `/usr/local/go`.
-- The build runs with one compile job and a low GC target (`caddy_build_jobs`, `caddy_build_gogc`) to fit into 2 GB RAM. On 2 GB hosts, set `system_swap_enabled: true` as a safety margin.
-- Steady state limits: CrowdSec 800 MB, blocklist import 300 MB, Rathole 256 MB (systemd `MemoryMax`), journald 200 MB on disk.
-- The optional CrowdSec Web UI adds a container of up to 512 MB (about 250-400 MB in use) and about 1 GB of disk; see [CrowdSec Web UI](#crowdsec-web-ui).
+- The build runs with one compile job and a low GC target (`caddy_build_jobs`, `caddy_build_gogc`) to fit into 2 GB RAM. On 2 GB hosts, enable [swap](#small-host-tuning-system-role) as a safety margin.
+- Steady state limits (systemd `MemoryMax`): CrowdSec 800 MB (`crowdsec_memory_max`; `GOMEMLIMIT=500MiB` keeps it below that without throttling), blocklist import 300 MB (`crowdsec_import_memory_max`), Rathole 256 MB (`rathole_memory_max`); journald 200 MB on disk (`system_journald_max_use`).
+- The optional CrowdSec Web UI adds a container of up to 512 MB and about 1 GB of disk; see [CrowdSec Web UI](#crowdsec-web-ui).
 
 ## Updating
 
@@ -453,8 +455,6 @@ sudo rm -f /var/log/caddy/modsec_*.log
 
 ```bash
 sudo systemctl status rathole caddy crowdsec
-sudo systemctl status crowdsec-web-ui   # with enable_crowdsec_web_ui
-sudo journalctl -u crowdsec-web-ui
 sudo journalctl -u caddy -f
 sudo cscli metrics
 sudo cscli decisions list
@@ -462,6 +462,8 @@ sudo cscli decisions list --origin blocklist-import
 sudo systemctl list-timers crowdsec-blocklist-import.timer
 sudo journalctl -u crowdsec-blocklist-import.service
 ```
+
+Commands for the Web UI are in [CrowdSec Web UI](#crowdsec-web-ui).
 
 | Problem                      | Check                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------- |
@@ -499,15 +501,15 @@ Lint, tests and pre-commit can run locally in a Docker image. On the host you ne
 ├── inventory.example.ini       # Copy to inventory.ini
 ├── site.yml                    # Main playbook (preflight, upgrade, roles, reboot)
 ├── group_vars/
-│   ├── all.example.yml         # Copy to all.yml: feature flags
-│   └── tunnel.example.yml      # Copy to tunnel_<name>.yml: one tuple
+│   ├── all.example.yml         # Copy to all.yml: global settings (feature flags, WAF)
+│   └── tunnel.example.yml      # Copy to tunnel_<name>.yml: one tuple (tunnel, services, CrowdSec, swap)
 ├── host_vars/                  # Optional per-host overrides
 ├── tasks/global_defaults.yml   # Defaults when group_vars/all.yml is missing
 ├── tasks/preflight.yml         # Configuration checks, also run on the examples
 ├── docker/                     # Development image (Dockerfile, pinned tools)
-├── tests/                      # Derivation tests (tests/run.sh)
+├── tests/                      # Test playbooks and scripts (tests/run.sh)
 ├── roles/
-│   ├── system/                 # journald limit, optional swap, security updates
+│   ├── system/                 # journald limit, optional swap, sysctl hardening, security updates
 │   ├── caddy/                  # Caddy build, Caddyfile, service
 │   ├── go_lang/                # Go toolchain for the Caddy build
 │   ├── xcaddy/                 # Caddy builder
