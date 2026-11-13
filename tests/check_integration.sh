@@ -190,7 +190,9 @@ diagnose() {
 echo "== checks"
 check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer crowdsec-web-ui rathole'"
 check "client tunnel is active" "on $client 'systemctl is-active rathole'"
-check "site answers through the tunnel" "https | grep -q 'hello from the client'"
+# Rathole may still be reconnecting after the handlers of the run
+site_up() { for _ in $(seq 15); do https | grep -q 'hello from the client' && return 0; sleep 2; done; return 1; }
+check "site answers through the tunnel" "site_up"
 https | grep -q 'hello from the client' || diagnose
 headers=$(on "$client" "curl -sk --max-time 5 --resolve web.test:443:$server_ip https://web.test/headers" || true)
 check "the app sees the client IP, the scheme and the host" \
@@ -440,7 +442,9 @@ check "the site still answers" "https | grep -q 'hello from the client'"
 
 echo "== CrowdSec Web UI image of an earlier version"
 # A tiny image under the same repository (no download) stands for the old version
-on "$server" "printf 'FROM scratch\\nLABEL old=1\\n' | podman build --quiet --tag ghcr.io/theduffman85/crowdsec-web-ui:old -f - /tmp" >/dev/null
+# (an empty import: podman build mounts an overlay over its context, which fails
+# on Arch in CI)
+on "$server" "tar -cf - --files-from /dev/null | podman import --quiet - ghcr.io/theduffman85/crowdsec-web-ui:old" >/dev/null
 playbook --tags crowdsec_web_ui >"$logs/web-ui-old-image.log" 2>&1 || {
   tail -30 "$logs/web-ui-old-image.log"
   fail=1
@@ -462,7 +466,6 @@ check "turning the Web UI off keeps its data" "on $server 'test -d /var/lib/crow
 check "turning the Web UI off closes the client port" "! on $client 'curl -s --max-time 3 http://127.0.0.1:13001/api/health'"
 # The Rathole config changed, so both ends restarted; the client reconnects
 # with a backoff, give it time before checking the site
-site_back() { for _ in $(seq 30); do https | grep -q 'hello from the client' && return 0; sleep 2; done; return 1; }
-check "the site still answers without the Web UI" "site_back"
+check "the site still answers without the Web UI" "site_up"
 
 exit $fail
