@@ -135,6 +135,9 @@ rathole() {
 }
 for i in $(seq 1 25); do rathole 198.51.100.60 'Failed to do transport handshake: Failed to do noise handshake: decrypt error'; done
 for i in 1 2 3 4 5 6 7 8; do rathole 198.51.100.61 'Transport handshake timeout: deadline has elapsed'; done
+# After a successful Noise handshake: own client with an old token or a removed service
+for i in $(seq 1 25); do rathole 198.51.100.62 'Service home/jellyfin failed the authentication'; done
+for i in $(seq 1 25); do rathole 198.51.100.63 'No such a service 3f2a9c'; done
 sleep 10
 
 decisions=$(cscli decisions list -o raw 2>/dev/null)
@@ -161,6 +164,8 @@ check "basic auth guessing: ban" has_alert 198.51.100.40 crowdsecurity/http-gene
 check "probing unknown paths: ban" has_alert 198.51.100.41 crowdsecurity/http-probing
 check "failed Rathole handshakes: ban" has_alert 198.51.100.60 local/rathole-bf
 check "Rathole handshake timeouts: no ban" no_decision 198.51.100.61
+check "Rathole wrong token (own client): no ban" no_decision 198.51.100.62
+check "Rathole unknown service (own client): no ban" no_decision 198.51.100.63
 # profiles.yaml with duration_expr: first ban lasts 4h
 # ntfy message for the login ban
 # (toJson escapes ">" as >)
