@@ -82,6 +82,24 @@
         mode: "0644"
       notify: Apply Swap Sysctl Settings
 
+# --- Kernel hardening ---
+
+- name: Configure kernel hardening
+  ansible.builtin.template:
+    src: sysctl-hardening.conf.j2
+    dest: /etc/sysctl.d/60-webguard-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: system_sysctl_hardening | bool
+  notify: Apply Hardening Sysctl Settings
+
+- name: Remove kernel hardening
+  ansible.builtin.file:
+    path: /etc/sysctl.d/60-webguard-hardening.conf
+    state: absent
+  when: not system_sysctl_hardening | bool
+
 # --- Automatic security updates ---
 
 # Debian and Ubuntu only: Arch Linux has no separate security updates, it is

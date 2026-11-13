@@ -48,8 +48,9 @@
       mode: "0750"
     - path: "{{ caddy_data_dir }}/caddy"
       mode: "0750"
+    # Logs hold client IPs and URLs; CrowdSec reads them as root
     - path: "{{ caddy_log_dir }}"
-      mode: "0755"
+      mode: "0750"
 
 - name: Check installed Caddy version
   ansible.builtin.command:
@@ -88,14 +89,17 @@
   ansible.builtin.set_fact:
     caddy_plugins_effective: >-
       {{ caddy_plugins
-         + (enable_cloudflare | default(false) | bool | ternary(['github.com/caddy-dns/cloudflare'], []))
+         + (enable_cloudflare | default(false) | bool | ternary(
+              ['github.com/caddy-dns/cloudflare@' ~ caddy_plugin_cloudflare_version], []))
          + (enable_crowdsec | default(true) | bool | ternary([
-              'github.com/hslatman/caddy-crowdsec-bouncer/http',
-              'github.com/hslatman/caddy-crowdsec-bouncer/layer4',
-              'github.com/hslatman/caddy-crowdsec-bouncer/appsec'
+              'github.com/hslatman/caddy-crowdsec-bouncer/http@' ~ caddy_plugin_crowdsec_version,
+              'github.com/hslatman/caddy-crowdsec-bouncer/layer4@' ~ caddy_plugin_crowdsec_version,
+              'github.com/hslatman/caddy-crowdsec-bouncer/appsec@' ~ caddy_plugin_crowdsec_version
             ], []))
-         + (caddy_coraza_needed | bool | ternary(['github.com/corazawaf/coraza-caddy/v2'], []))
-         + (enable_rate_limit | default(true) | bool | ternary(['github.com/mholt/caddy-ratelimit'], [])) }}
+         + (caddy_coraza_needed | bool | ternary(
+              ['github.com/corazawaf/coraza-caddy/v2@' ~ caddy_plugin_coraza_version], []))
+         + (enable_rate_limit | default(true) | bool | ternary(
+              ['github.com/mholt/caddy-ratelimit@' ~ caddy_plugin_ratelimit_version], [])) }}
 
 - name: Compute hash of effective Caddy plugins
   ansible.builtin.set_fact:

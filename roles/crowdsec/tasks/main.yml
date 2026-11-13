@@ -3,12 +3,9 @@
 
 # --- CrowdSec Role: Installation and Configuration ---
 
-- name: Validate required variables
-  ansible.builtin.assert:
-    that:
-      - crowdsec_lapi_ip | default('') != ''
-      - crowdsec_lapi_port | default('') != ''
-    fail_msg: "Required CrowdSec variables (LAPI ip/port) are missing or empty."
+# Also run by tasks/preflight.yml, before anything is changed
+- name: Validate the CrowdSec variables
+  ansible.builtin.import_tasks: validate.yml
 
 ## Installation
 
@@ -100,7 +97,8 @@
   retries: 3
   delay: 5 # The hub CDN drops a connection now and then
   notify: Restart CrowdSec
-  loop: "{{ crowdsec_collections }}"
+  # Debian and Ubuntu: crowdsecurity/linux (sshd and syslog scenarios) too; Arch Linux installs it itself
+  loop: "{{ crowdsec_collections + (['crowdsecurity/linux'] if ansible_facts['os_family'] == 'Debian' else []) }}"
   when: item not in (crowdsec_cscli_collections_list.stdout | default(''))
 
 # Failed login detection relies on these scenarios from crowdsecurity/caddy
@@ -135,11 +133,14 @@
   failed_when: false
   check_mode: false # Read-only, safe to run in check mode
 
+# The key is a command line argument and the output may repeat it: no_log
 - name: Enroll CrowdSec engine with the Console
-  ansible.builtin.command: "cscli console enroll --enable context {{ crowdsec_enrollment_key }}"
+  ansible.builtin.command:
+    argv: [cscli, console, enroll, --enable, context, "{{ crowdsec_enrollment_key }}"]
   register: crowdsec_console_enroll_output
   changed_when: "'Successfully enrolled with the Console' in crowdsec_console_enroll_output.stdout"
   failed_when: "crowdsec_console_enroll_output.rc != 0 and 'already enrolled' not in crowdsec_console_enroll_output.stderr and 'You are already enrolled' not in crowdsec_console_enroll_output.stdout"
+  no_log: true
   when:
     - crowdsec_enrollment_key is defined and (crowdsec_enrollment_key | length > 0)
     - crowdsec_cscli_console_status.rc == 0
@@ -266,6 +267,7 @@
     group: root
     mode: "0600" # May contain the Ntfy auth token
   diff: false
+  no_log: true
   notify: Restart CrowdSec
   when: ntfy_enabled | default(false) | bool
 
@@ -276,7 +278,9 @@
   failed_when: false
   check_mode: false # Read-only, safe to run in check mode
 
-- name: Create/update CrowdSec profiles.yaml for Ntfy or dynamic blocking
+# Always written: besides Ntfy and the ban duration it keeps private and
+# loopback addresses from ever being banned
+- name: Create/update CrowdSec profiles.yaml
   ansible.builtin.template:
     src: profiles.yaml.j2
     dest: /etc/crowdsec/profiles.yaml
@@ -284,7 +288,6 @@
     group: root
     mode: "0644"
   notify: Restart CrowdSec
-  when: (ntfy_enabled | default(false) | bool) or (duration_expr | default(false) | bool)
 
 ## CrowdSec Whitelist Configuration
 

@@ -53,3 +53,12 @@
   when:
     - rathole_role == 'server'
     - enable_crowdsec_import | bool
+
+# The Local API and AppSec have no TLS: they must stay on the host itself
+- name: Validate the CrowdSec variables before changing anything
+  ansible.builtin.import_role:
+    name: crowdsec
+    tasks_from: validate
+  when:
+    - rathole_role == 'server'
+    - enable_crowdsec | bool

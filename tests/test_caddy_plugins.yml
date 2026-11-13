@@ -1,0 +1,36 @@
+---
+# tests/test_caddy_plugins.yml
+# Built-in Caddy plugins are pinned: each module in the effective plugin list
+# carries @version from a role default that Renovate keeps current
+
+- name: Check plugin pins
+  hosts: srv
+  gather_facts: false
+  vars:
+    tasks_main: "{{ lookup('ansible.builtin.file', '../roles/caddy/tasks/main.yml') }}"
+    defaults_main: "{{ lookup('ansible.builtin.file', '../roles/caddy/defaults/main.yml') }}"
+    modules:
+      cloudflare: github.com/caddy-dns/cloudflare
+      crowdsec: github.com/hslatman/caddy-crowdsec-bouncer
+      coraza: github.com/corazawaf/coraza-caddy/v2
+      ratelimit: github.com/mholt/caddy-ratelimit
+  tasks:
+    - name: Load Caddy role defaults
+      ansible.builtin.include_vars: ../roles/caddy/defaults/main.yml
+
+    - name: Check versions and Renovate markers
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.vars', 'caddy_plugin_' ~ item.key ~ '_version') is match('^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9a-z.-]+)?$')
+          - >-
+            defaults_main is search('# renovate: datasource=go depName=' ~ item.value ~ '\n' ~ 'caddy_plugin_' ~ item.key ~ '_version: "')
+          # Every module is built with its version in the xcaddy --with argument
+          - tasks_main is search("'" ~ item.value ~ "(/[a-z0-9]+)?@' ~ caddy_plugin_" ~ item.key ~ "_version")
+      loop: "{{ modules | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Check no plugin is built unpinned
+      ansible.builtin.assert:
+        that:
+          - tasks_main | regex_findall("'github\.com/[^']*'") | reject('search', '@') | list == []

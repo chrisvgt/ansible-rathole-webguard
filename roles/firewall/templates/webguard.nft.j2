@@ -6,7 +6,31 @@
 table inet webguard
 delete table inet webguard
 
+{% set firewall_meters = [
+  ['ssh', firewall_ssh_ports, firewall_conn_limit_rate, firewall_conn_limit_burst],
+] %}
 table inet webguard {
+{% if firewall_conn_limit_enabled | bool %}
+{% for name, ports, rate, burst in firewall_meters %}
+{% if ports %}
+  # Sources over the new-connection rate of the {{ name }} ports; entries expire when idle
+  set {{ name }}_meter4 {
+    type ipv4_addr
+    flags dynamic,timeout
+    timeout 2m
+    size 65535
+  }
+
+  set {{ name }}_meter6 {
+    type ipv6_addr
+    flags dynamic,timeout
+    timeout 2m
+    size 65535
+  }
+
+{% endif %}
+{% endfor %}
+{% endif %}
   chain input {
     type filter hook input priority filter; policy drop;
 
@@ -18,11 +42,22 @@ table inet webguard {
     meta l4proto { 1, 58 } accept
     # DHCPv6 replies answer a multicast request, so conntrack does not match them
     ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+{% if firewall_conn_limit_enabled | bool %}
+{% for name, ports, rate, burst in firewall_meters %}
+{% if ports %}
+    tcp dport { {{ ports | join(', ') }} } ct state new update @{{ name }}_meter4 { ip saddr limit rate over {{ rate }} burst {{ burst }} packets } drop
+    tcp dport { {{ ports | join(', ') }} } ct state new update @{{ name }}_meter6 { ip6 saddr limit rate over {{ rate }} burst {{ burst }} packets } drop
+{% endif %}
+{% endfor %}
+{% endif %}
 {% if firewall_tcp_ports %}
     tcp dport { {{ firewall_tcp_ports | join(', ') }} } accept
 {% endif %}
 {% if firewall_udp_ports %}
     udp dport { {{ firewall_udp_ports | join(', ') }} } accept
+{% endif %}
+{% if firewall_log_drops | bool %}
+    limit rate 10/minute log prefix "webguard drop: "
 {% endif %}
   }
 }

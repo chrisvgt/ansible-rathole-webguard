@@ -201,6 +201,16 @@ check "firewall opens the passed-through UDP port" "on $server 'nft list table i
 on "$server" "systemd-run --unit it-probe python3 -m http.server 9000" >/dev/null
 check "firewall drops other ports" "! on $client 'curl -s --max-time 3 http://$server_ip:9000/'"
 check "firewall leaves local access" "on $server 'curl -s --max-time 3 http://127.0.0.1:9000/'"
+# A script that logs in over and over without a persistent connection must not hit
+# the new-connection limit (burst 120, 120/minute); 150 is clearly above the old
+# burst of 20 and above the burst, and the logins take long enough to refill it
+many_logins() {
+  local i
+  for i in $(seq 150); do
+    ssh -F "$logs/ssh_config" -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 "$server" true || return 1
+  done
+}
+check "many quick SSH logins pass the limit" many_logins
 check "Caddy bouncer is registered" "on $server 'cscli bouncers list -o raw' | grep -q caddy-bouncer"
 check "failed login scenario is loaded" "on $server 'cscli scenarios list -o raw' | grep -q local/login-bf"
 # A failed handshake on the Rathole port as CrowdSec reads it from the journal; the
@@ -340,6 +350,47 @@ playbook --tags rathole,firewall >"$logs/reload.log" 2>&1 || {
   fail=1
 }
 check "a removed firewall is loaded again" "on $server 'nft list table inet webguard' >/dev/null"
+
+# Rules that lock out the SSH connection must be rolled back. A limit of one new
+# connection per hour does that: with a connection per module call (no
+# ControlMaster), the first new connection after loading passes (the reconnect
+# check), the next one (cancelling the rollback) is dropped, so the playbook
+# fails and the timer removes the table again.
+echo "== rollback on lockout"
+ssh_server() { ssh -F "$logs/ssh_config" -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 "$server" "$@"; }
+if ANSIBLE_SSH_ARGS='-o ControlMaster=no -o ControlPath=none' \
+  playbook --tags rathole,firewall -e firewall_rollback_seconds=30 \
+  -e firewall_conn_limit_rate=1/hour -e firewall_conn_limit_burst=1 >"$logs/lockout.log" 2>&1; then
+  echo "FAIL lockout: the playbook fails"
+  fail=1
+else
+  echo "ok   lockout: the playbook fails"
+fi
+# The rollback runs 30 s after loading
+back=0
+for _ in $(seq 30); do
+  if ssh_server true >/dev/null 2>&1; then
+    back=1
+    break
+  fi
+  sleep 2
+done
+check "lockout: SSH works again after the rollback" "test $back -eq 1"
+check "lockout: rules removed" "! on $server 'nft list table inet webguard'"
+check "lockout: not loaded at boot" "! on $server 'systemctl is-enabled webguard-firewall'"
+if [[ $back -eq 0 ]]; then
+  tail -30 "$logs/lockout.log"
+  # Never leave the server locked out for the next sections
+  on "$server" 'nft delete table inet webguard' || true
+fi
+# Restore: the rules file still has the limit of one per hour, so this changes it
+playbook --tags rathole,firewall >"$logs/restore.log" 2>&1 || {
+  tail -30 "$logs/restore.log"
+  fail=1
+}
+check "the firewall is loaded again after the lockout test" "on $server 'nft list table inet webguard' | grep -q 'rate over 120/minute'"
+check "the firewall is loaded at boot again" "on $server 'systemctl is-enabled webguard-firewall'"
+check "the site answers after the lockout test" "https | grep -q 'hello from the client'"
 
 echo "== firewall off"
 playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {

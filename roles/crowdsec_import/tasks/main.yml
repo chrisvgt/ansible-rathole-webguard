@@ -160,6 +160,11 @@
     crowdsec_import_blocklist_bouncer_key: "{{ crowdsec_import_bouncer_key_slurp.content | b64decode | trim }}"
   no_log: true
 
+## Allowlist
+
+- name: Resolve the DDNS addresses for the importer allowlist
+  ansible.builtin.include_tasks: allowlist.yml
+
 ## Configuration and systemd Units
 
 # Contains the machine password and bouncer key: readable by root and the service group only
@@ -171,6 +176,7 @@
     group: "{{ crowdsec_import_user }}"
     mode: "0640"
   diff: false
+  no_log: true
   register: crowdsec_import_env
   notify: Restart CrowdSec Blocklist Import Timer
 

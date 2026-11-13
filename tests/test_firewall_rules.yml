@@ -6,9 +6,14 @@
   hosts: srv
   gather_facts: false
   vars:
-    firewall_tcp_ports: [22, 80, 443, 7000]
+    firewall_ssh_ports: [22, 2222]
+    firewall_rathole_ports: [7000]
+    firewall_tcp_ports: [22, 80, 443, 2222, 7000]
     firewall_udp_ports: [443]
   tasks:
+    - name: Load firewall role defaults
+      ansible.builtin.include_vars: ../roles/firewall/defaults/main.yml
+
     - name: Render ruleset
       ansible.builtin.template:
         src: ../roles/firewall/templates/webguard.nft.j2
@@ -21,12 +26,33 @@
         that:
           - "'flush ruleset' not in rules"
           - "'policy drop;' in rules"
-          - "'tcp dport { 22, 80, 443, 7000 } accept' in rules"
+          - "'tcp dport { 22, 80, 443, 2222, 7000 } accept' in rules"
           - "'udp dport { 443 } accept' in rules"
           # DHCPv6 replies do not match an outgoing connection
           - "'ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept' in rules"
+          # New-connection limit per source for SSH only (Rathole carries every visitor), before the accept rules
+          - "'set ssh_meter4 {' in rules and 'set ssh_meter6 {' in rules"
+          - "'rathole_meter' not in rules"
+          - "'type ipv4_addr' in rules and 'type ipv6_addr' in rules"
+          - "'flags dynamic,timeout' in rules and 'timeout 2m' in rules"
+          - "'tcp dport { 22, 2222 } ct state new update @ssh_meter4 { ip saddr limit rate over 120/minute burst 120 packets } drop' in rules"
+          - "'tcp dport { 22, 2222 } ct state new update @ssh_meter6 { ip6 saddr limit rate over 120/minute burst 120 packets } drop' in rules"
+          - rules.index('@ssh_meter4') < rules.index('tcp dport { 22, 80')
+          - '''limit rate 10/minute log prefix "webguard drop: "'' in rules'
+          - rules.index('log prefix') > rules.index('udp dport')
       vars:
         rules: "{{ lookup('file', rendered.dest) }}"
+
+    - name: Check rules with limit and log turned off
+      ansible.builtin.assert:
+        that:
+          - "'meter' not in rules"
+          - "'log prefix' not in rules"
+          - "'tcp dport { 22, 80, 443, 2222, 7000 } accept' in rules"
+      vars:
+        rules: >-
+          {{ lookup('ansible.builtin.template', '../roles/firewall/templates/webguard.nft.j2',
+                    template_vars={'firewall_conn_limit_enabled': false, 'firewall_log_drops': false}) }}
 
     # nft needs CAP_NET_ADMIN and the conntrack module even for a dry run: probe
     # with sudo, then a user namespace; fail in CI when neither can load nft_ct

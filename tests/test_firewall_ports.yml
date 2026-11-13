@@ -34,6 +34,8 @@
         that:
           - firewall_tcp_ports == [22, 80, 443, 2222, 7000, 8443, 9100, 30000]
           - firewall_udp_ports == [443, 30000, 51000]
+          - firewall_ssh_ports == [22, 2222]
+          - firewall_rathole_ports == [7000]
         fail_msg: "tcp {{ firewall_tcp_ports }}, udp {{ firewall_udp_ports }}"
 
 - name: Derive firewall ports without web ports
@@ -61,6 +63,8 @@
         that:
           - firewall_tcp_ports == [22, 2333]
           - firewall_udp_ports == []
+          - firewall_ssh_ports == [22]
+          - firewall_rathole_ports == [2333]
         fail_msg: "tcp {{ firewall_tcp_ports }}, udp {{ firewall_udp_ports }}"
 
 # SSH ports: where sshd listens (sshd -T), ansible_port and the port of the

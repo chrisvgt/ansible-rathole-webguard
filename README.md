@@ -208,20 +208,23 @@ The base domain is the domain without its first label, so wildcard mode does not
 
 A service with several domains gets one site per domain, named `<name>_<domain>` (dots replaced by `_`). Site names are used for log files and rate limit zones.
 
-WebSocket upgrades skip rate limiting, WAF and AppSec (they cannot inspect the stream); the CrowdSec IP check still applies.
+WebSocket upgrades skip WAF and AppSec (they cannot inspect the stream); the CrowdSec IP check and the rate limit (own zone `<site>_ws`, one event per upgrade) still apply. Only a complete handshake counts as an upgrade (`GET`, `Connection: Upgrade`, `Upgrade: websocket`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version: 13`); a request that only carries an `Upgrade` header goes through the full pipeline.
+
+Behind a CDN or another proxy (e.g. the Cloudflare proxy), set `caddy_trusted_proxies` (CIDRs) and `caddy_client_ip_headers` (e.g. `[CF-Connecting-IP]`). Otherwise the rate limit and CrowdSec see only the proxy's addresses and ban it for all users. Without these settings a client's `X-Forwarded-For` is ignored.
 
 ### Small host tuning (`system` role)
 
-| Variable                        | Default     | Effect                                                                                                                |
-| ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| `system_journald_max_use`       | `200M`      | Cap for persistent journal logs                                                                                       |
-| `system_swap_enabled`           | `false`     | Create and enable a swap file                                                                                         |
-| `system_swap_file`              | `/swapfile` | Swap file path                                                                                                        |
-| `system_swap_size`              | `1G`        | Swap size (not resized once created)                                                                                  |
-| `system_swappiness`             | `10`        | `vm.swappiness`, set only when swap is enabled                                                                        |
-| `system_unattended_upgrades`    | `true`      | Debian/Ubuntu: install security updates daily with `unattended-upgrades`; `false` leaves the host's setting untouched |
-| `system_unattended_reboot`      | `false`     | Reboot automatically when such an update requires it                                                                  |
-| `system_unattended_reboot_time` | `04:00`     | Time of that reboot                                                                                                   |
+| Variable                        | Default     | Effect                                                                                                                                                                                                                |
+| ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `system_journald_max_use`       | `200M`      | Cap for persistent journal logs                                                                                                                                                                                       |
+| `system_swap_enabled`           | `false`     | Create and enable a swap file                                                                                                                                                                                         |
+| `system_swap_file`              | `/swapfile` | Swap file path                                                                                                                                                                                                        |
+| `system_swap_size`              | `1G`        | Swap size (not resized once created)                                                                                                                                                                                  |
+| `system_swappiness`             | `10`        | `vm.swappiness`, set only when swap is enabled                                                                                                                                                                        |
+| `system_unattended_upgrades`    | `true`      | Debian/Ubuntu: install security updates daily with `unattended-upgrades`; `false` leaves the host's setting untouched                                                                                                 |
+| `system_sysctl_hardening`       | `true`      | Kernel and network hardening in `/etc/sysctl.d/60-webguard-hardening.conf` (no redirects or source routing, SYN cookies, loose `rp_filter`, restricted kernel pointers/dmesg/BPF); IPv6 and forwarding stay untouched |
+| `system_unattended_reboot`      | `false`     | Reboot automatically when such an update requires it                                                                                                                                                                  |
+| `system_unattended_reboot_time` | `04:00`     | Time of that reboot                                                                                                                                                                                                   |
 
 The role runs before Caddy, so swap is available for the Caddy build.
 
@@ -258,7 +261,7 @@ Caddy is built on the server with xcaddy, because the plugins are not in the sto
 | Coraza WAF                              | `enable_coraza_waf` or any site with a `coraza_mode` other than `off` |
 | anything in `caddy_plugins`             | always (default: empty list)                                          |
 
-Caddy is only rebuilt when `caddy_version` or the plugin list changes. The Caddyfile is validated before it is written and Caddy is reloaded, not restarted.
+Plugin versions are pinned (`caddy_plugin_*_version` in `roles/caddy/defaults/main.yml`, updated by Renovate). Caddy is only rebuilt when `caddy_version`, the plugin list or a plugin version changes. The Caddyfile is validated before it is written and Caddy is reloaded, not restarted.
 
 ## Coraza WAF
 
@@ -275,15 +278,17 @@ A small custom ruleset, not the full OWASP CRS, to keep CPU and memory low (meas
 
 Static files (`GET` with a whitelisted extension) skip the WAF; see `coraza_file_whitelist_*` in `group_vars/all.yml`.
 
-Audit logs (relevant events only, no bodies) are written to `/var/log/caddy/coraza/modsec_<site>.log` and rotated by `/etc/logrotate.d/caddy-coraza` (10 MB, 3 rotations). They are kept outside `/var/log/caddy/*.log`, which CrowdSec parses.
+Static files are matched by path only, and only with a plain query string (cache busters like `?v=3`); a query string such as `?x=.txt` or one with other characters does not skip the WAF.
+
+Audit logs (relevant events only, no request headers or bodies, so no cookies or tokens) are written to `/var/log/caddy/coraza/modsec_<site>.log` and rotated by `/etc/logrotate.d/caddy-coraza` (10 MB, 3 rotations). They are kept outside `/var/log/caddy/*.log`, which CrowdSec parses. `/var/log/caddy` is readable only by `caddy` and root (mode 0750, `UMask=0027`); add other log readers (e.g. promtail) to the `caddy` group.
 
 ## CrowdSec
 
-With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall bouncer (iptables; nftables on Arch Linux), the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. The database is flushed (5000 alerts, 7 days) and the service is limited to 800 MB RAM (`MemoryMax`; `GOMEMLIMIT=500MiB` keeps it below that without throttling).
+With `enable_crowdsec: true` the server gets the CrowdSec engine, the firewall bouncer (iptables; nftables on Arch Linux), the Caddy collection, AppSec (virtual patching, generic rules, HTTP CVEs) and the Caddy bouncer. Bans apply to IPv4 and IPv6. Private, loopback and link-local addresses are never banned. On Debian and Ubuntu without `/var/log/auth.log`, SSH logins are read from the journal. The Local API and AppSec must listen on loopback (`crowdsec_lapi_ip`, `crowdsec_appsec_ip`); the preflight checks reject other addresses. The database is flushed (5000 alerts, 7 days) and the service is limited to 800 MB RAM (`MemoryMax`; `GOMEMLIMIT=500MiB` keeps it below that without throttling).
 
-Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (`login`, `sign-in`, `auth`, `token`); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
+Failed logins are detected without any setup. CrowdSec reads the Caddy access logs and bans an IP after 5 failed `POST`s (`400`, `401`, `403`) to a login-like path (a path segment such as `login`, `sign-in`, `auth`, `AuthenticateByName` or `token`; `/api/token-refresh` or `/author/` do not count); one attempt is forgotten per minute. A successful login on the same path resets the count, so users who retry after a dropped connection are not banned. Apps that answer a wrong password with `200` or a redirect cannot be told apart from a successful login in the access log. Turn it off with `crowdsec_login_detection: false`; check with `sudo cscli alerts list`.
 
-Failed handshakes on the Rathole port are detected the same way: CrowdSec reads the Rathole log from the journal and bans an IP after 5 failed handshakes (wrong key or token, another protocol); one is forgotten per minute. Timeouts do not count, so your own client on a slow connection is not banned; to be safe from a wrong key after a config change, set `dynamic_ddns_hostnames`. Turn it off with `crowdsec_rathole_detection: false`.
+Failed handshakes on the Rathole port are detected the same way: CrowdSec reads the Rathole log from the journal and bans an IP after 20 failed handshakes (wrong key or token, another protocol); one is forgotten per minute. Timeouts do not count, so your own client on a slow connection is not banned. Neither do a wrong token or an unknown service: they need the server's key, so they come from your own client while server and client configs differ (token rotation, removed service). To be safe from a wrong key after a config change, set `dynamic_ddns_hostnames`. Turn it off with `crowdsec_rathole_detection: false`.
 
 Normal use of common self-hosted apps does not get users banned: the official CrowdSec whitelists for Nextcloud, Jellyfin, Plex, Jellyseerr, Overseerr and a few others are installed (`crowdsec_hub_whitelists`), and a `POST` answered with `401` outside a login path counts as an expired session, not as an attack. The package's `crowdsec-hubupdate.timer` updates collections and whitelists daily.
 
@@ -292,6 +297,7 @@ Normal use of common self-hosted apps does not get users banned: the official Cr
 - installed with pipx into `/opt/crowdsec-blocklist-import`, owned by root, version pinned by `crowdsec_import_version`
 - runs as the system user `crowdsec-import` from a sandboxed systemd service and timer
 - creates its own LAPI machine and bouncer, with a generated password (or `crowdsec_machine_password`)
+- imported bans bypass the DDNS whitelist of the engine, so the importer gets its own allowlist: the IPs of `dynamic_ddns_hostnames` (resolved on each playbook run; a changed DDNS address is picked up on the next run) and `crowdsec_import_extra_allowlist` (IPs or CIDRs, e.g. your home or office)
 - feeds can be switched off one by one, e.g. `crowdsec_enable_tor: false`; all options and their defaults are in `roles/crowdsec_import/defaults/main.yml`
 
 ## Firewall
@@ -302,6 +308,8 @@ With `enable_firewall: true` the server drops all incoming connections except:
 - 80/tcp, 443/tcp and 443/udp (HTTP/3) for Caddy (`firewall_web_ports: false` closes them)
 - the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000`
 - `firewall_allowed_tcp_ports` / `firewall_allowed_udp_ports`
+
+New connections to SSH are limited per source address (`firewall_conn_limit_rate` 120/minute, burst 120; `firewall_conn_limit_enabled: false` turns it off). The Rathole port, the web ports and public services have no such limit, so many visitors never cut the tunnel; the Rathole port is protected by its keys and CrowdSec. Dropped packets are logged with the prefix `webguard drop: ` (at most 10 per minute, `firewall_log_drops`).
 
 Use it if the provider firewall is not used or not trusted. The home server (client) is not touched. The rules live in their own nftables table (`inet webguard`, file `/etc/nftables.d/webguard.nft`), loaded at boot by `webguard-firewall.service`, so the CrowdSec bouncer keeps working. When the rules change, or are no longer loaded, a timer removes them again after `firewall_rollback_seconds` (120) unless Ansible can open a new SSH connection, and they are then not loaded at boot either, so a mistake does not lock you out.
 

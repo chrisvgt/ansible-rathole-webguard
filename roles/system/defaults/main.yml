@@ -17,3 +17,9 @@ system_swappiness: 10 # vm.swappiness: lower values prefer RAM over swap
 system_unattended_upgrades: true # Install security updates daily; false leaves the host's setting untouched
 system_unattended_reboot: false # Reboot automatically when an update requires it
 system_unattended_reboot_time: "04:00" # Time of that reboot
+
+# Kernel hardening: /etc/sysctl.d/60-webguard-hardening.conf (rp_filter loose, no redirects
+# or source routing, restricted kernel pointers and dmesg, protected links and files).
+# Leaves ip_forward, accept_ra and disable_ipv6 untouched. false removes the file; the
+# running values stay until the next reboot.
+system_sysctl_hardening: true

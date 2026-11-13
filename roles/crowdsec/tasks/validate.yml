@@ -1,0 +1,25 @@
+---
+# roles/crowdsec/tasks/validate.yml
+# Checks of the role variables; included by main.yml and tasks/preflight.yml
+
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - crowdsec_lapi_ip | default('') != ''
+      - crowdsec_lapi_port | default('') != ''
+    fail_msg: "Required CrowdSec variables (LAPI ip/port) are missing or empty."
+
+# LAPI and AppSec have no TLS and the bouncer key is sent in the clear: they
+# must only listen on the host itself
+- name: Validate that the LAPI and AppSec addresses are loopback addresses
+  ansible.builtin.assert:
+    that:
+      - crowdsec_lapi_ip | string is match(crowdsec_loopback_regex)
+      - crowdsec_appsec_ip | string is match(crowdsec_loopback_regex)
+    fail_msg: >-
+      crowdsec_lapi_ip ({{ crowdsec_lapi_ip }}) and crowdsec_appsec_ip ({{ crowdsec_appsec_ip }})
+      must be loopback addresses (127.0.0.0/8 or ::1): the Local API and AppSec have no TLS
+      and are not meant to be reachable from the network.
+    quiet: true
+  vars:
+    crowdsec_loopback_regex: '^(127(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|::1)$'
