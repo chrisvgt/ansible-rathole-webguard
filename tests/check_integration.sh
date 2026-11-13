@@ -228,6 +228,10 @@ sys.exit(0 if m and m[0].get("last_heartbeat") else 1)'
 }
 ui_connected() { for _ in $(seq 1 12); do ui_heartbeat && return 0; sleep 5; done; return 1; }
 check "the Web UI is connected to the Local API (heartbeat)" "ui_connected"
+# With the blocklist import on, the UI loads only the engine's alerts and manual bans
+check "the Web UI skips the imported blocklists" "ui_logs | grep -q 'CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS'"
+# The log goes to the unit's journal once (the journald log driver wrote every line twice)
+check "the Web UI logs each line once" "test \"\$(ui_logs | grep -c 'Loaded application configuration')\" -ge 1 && ! ui_logs | grep 'Loaded application configuration' | sed 's/^.*crowdsec-web-ui\\[[0-9]*\\]: //' | sort | uniq -d | grep -q ."
 check "the Web UI env file and password file are root only" "test \"\$(ui_files)\" = '600:root 600:root '"
 check "the Web UI opens no port in the firewall" "! on $server 'nft list table inet webguard' | grep -qE '1300[01]'"
 check "firewall opens the passed-through UDP port" "on $server 'nft list table inet webguard' | grep -q 'udp dport { 443, 51820 }'"

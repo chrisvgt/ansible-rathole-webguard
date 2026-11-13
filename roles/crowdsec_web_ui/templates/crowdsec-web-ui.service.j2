@@ -18,7 +18,10 @@ TimeoutStopSec=30
 #   preloaded script (see loopback.cjs) binds it to 127.0.0.1.
 # --user, --cap-drop all: no root and no capabilities in the container (the image's
 #   entrypoint only needs root to chown the data directory, which the playbook does)
-# --log-driver journald: logs go to the journal (journalctl -u {{ crowdsec_web_ui_container_name }}), no log file grows
+# --log-driver none: podman stays attached and passes the output to the unit's
+#   stdout, so each line reaches the journal once (journalctl -u {{ crowdsec_web_ui_container_name }})
+#   and no log file grows. The journald driver logged every line twice (conmon and
+#   podman); passthrough loses the unit in the journal with --cgroup-manager cgroupfs.
 # --cgroup-manager cgroupfs: the default (systemd) needs D-Bus, which a minimal or freshly
 #   provisioned host may not run yet
 # --replace: take over a container left behind by a crash
@@ -30,7 +33,7 @@ ExecStart={{ crowdsec_web_ui_podman }} --cgroup-manager cgroupfs run --rm --repl
   --read-only --tmpfs /tmp \
   --pids-limit {{ crowdsec_web_ui_pids_limit }} \
   --memory {{ crowdsec_web_ui_memory_max }} \
-  --log-driver journald \
+  --log-driver none \
   --env-file {{ crowdsec_web_ui_config_dir }}/env \
   -e CONFIG_SERVER_PORT={{ crowdsec_web_ui_port }} \
   -e CONFIG_UPDATES_ENABLED=false \
@@ -38,6 +41,9 @@ ExecStart={{ crowdsec_web_ui_podman }} --cgroup-manager cgroupfs run --rm --repl
   -e CONFIG_INSTANCE_LAPI_AUTH_USERNAME={{ crowdsec_web_ui_machine_id }} \
 {% if crowdsec_web_ui_metrics | bool %}
   -e CONFIG_INSTANCE_METRICS_URL={{ crowdsec_web_ui_metrics_url }} \
+{% endif %}
+{% if crowdsec_web_ui_include_origins | length > 0 %}
+  -e "CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS=[{{ crowdsec_web_ui_include_origins | join(', ') }}]" \
 {% endif %}
   -e "NODE_OPTIONS=--require=/opt/loopback.cjs --max-old-space-size={{ crowdsec_web_ui_node_heap_mb }}" \
   -v {{ crowdsec_web_ui_data_dir }}:/app/data \

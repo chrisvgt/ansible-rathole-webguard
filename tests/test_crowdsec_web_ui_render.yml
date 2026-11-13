@@ -28,7 +28,9 @@
           - "'--read-only --tmpfs /tmp' in test_unit"
           - "'--memory 512m' in test_unit"
           - "'--pids-limit 256' in test_unit"
-          - "'--log-driver journald' in test_unit"
+          - "'--log-driver none' in test_unit"
+          # Without the blocklist import the app's default feed is loaded
+          - "'ALERT_FILTERS' not in test_unit"
           - "'-e CONFIG_SERVER_PORT=3000' in test_unit"
           - "'-e CONFIG_UPDATES_ENABLED=false' in test_unit"
           - "'-e CONFIG_INSTANCE_LAPI_URL=http://127.0.0.1:8080' in test_unit"
@@ -66,6 +68,7 @@
         crowdsec_web_ui_memory_max: 768m
         crowdsec_web_ui_node_heap_mb: 400
         crowdsec_lapi_port: "18080"
+        enable_crowdsec_import: true
 
     - name: Render the unit with custom settings
       ansible.builtin.set_fact:
@@ -79,7 +82,22 @@
           - "'--memory 768m' in test_unit"
           - "'--max-old-space-size=400' in test_unit"
           - "'-e CONFIG_INSTANCE_LAPI_URL=http://127.0.0.1:18080' in test_unit"
+          # The blocklist import is on: its decisions are not loaded
+          - '''-e "CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS=[crowdsec, cscli]"'' in test_unit'
         fail_msg: "{{ test_unit }}"
+
+    # test_unit is a fact and would beat task vars, so a new name
+    - name: Render with own origins
+      ansible.builtin.set_fact:
+        crowdsec_web_ui_include_origins: [crowdsec, cscli, lists]
+
+    - name: Check the unit with own origins
+      ansible.builtin.assert:
+        that:
+          - '''-e "CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS=[crowdsec, cscli, lists]"'' in test_unit_origins'
+        fail_msg: "{{ test_unit_origins }}"
+      vars:
+        test_unit_origins: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.service.j2') }}"
 
 - name: Check the validation of the CrowdSec Web UI role
   hosts: srv
