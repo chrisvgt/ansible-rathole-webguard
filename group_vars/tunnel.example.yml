@@ -29,6 +29,9 @@ tunnel_id: home
 #             without a domain that must be reachable directly (VPN, games).
 # domain:     one domain or a list. Without a domain the service is tunnel-only (no Caddy site).
 # type:       tcp (default) or udp; token, nodelay, retry_interval are optional Rathole settings.
+# mode:       forward (default) or reverse. Reverse: the server exposes its own local_addr
+#             and the client listens on bind_addr (default 127.0.0.1:<port>); no domain,
+#             nothing opened on the server. Needs Rathole 0.7.0 or later (the default).
 # All other keys are Caddy site options, see "Services" in the README:
 #   coraza_mode: off | minimal | recommended | moderate | strict
 #   stream: true, disable_appsec: true, cache_paths: "...", rate_limit_events: 500, ...

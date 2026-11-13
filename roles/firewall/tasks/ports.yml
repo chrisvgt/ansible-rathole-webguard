@@ -29,10 +29,11 @@
                       + (connection[3:4] if connection | length == 4 else []) -%}
       {{ ports or [22] }}
     firewall_rathole_found: "{{ [rathole_server_config.listen_addr | regex_replace('^.*:', '')] }}"
-    # Services bound to anything but loopback are meant to be reachable
+    # Services bound to anything but loopback are meant to be reachable.
+    # Reverse services bind on the client, so they open nothing here.
     firewall_service_ports: >-
       {%- set ns = namespace(tcp=[], udp=[]) -%}
-      {%- for s in rathole_server_config.services | default([]) -%}
+      {%- for s in rathole_server_config.services | default([]) if s.bind_addr is defined -%}
         {%- set host = s.bind_addr | regex_replace(':[^:]*$', '') -%}
         {%- if not (host is match('^127\.') or host in ['[::1]', '::1', 'localhost']) -%}
           {%- if (s.type | default('tcp')) == 'udp' -%}

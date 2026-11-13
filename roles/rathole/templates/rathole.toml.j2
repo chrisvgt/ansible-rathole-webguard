@@ -49,6 +49,9 @@ tls = {{ rathole_server_config.transport.websocket.tls | lower }}
 {% if rathole_server_config.services is defined %}
 {% for service in rathole_server_config.services %}
 [server.services.{{ service.name }}]
+{% if service.mode is defined %}
+mode = "{{ service.mode }}"
+{% endif %}
 {% if service.type is defined %}
 type = "{{ service.type }}"
 {% endif %}
@@ -57,6 +60,9 @@ token = "{{ service.token }}"
 {% endif %}
 {% if service.bind_addr is defined %}
 bind_addr = "{{ service.bind_addr }}"
+{% endif %}
+{% if service.local_addr is defined %}
+local_addr = "{{ service.local_addr }}"
 {% endif %}
 {% if service.nodelay is defined %}
 nodelay = {{ service.nodelay | lower }}
@@ -120,6 +126,9 @@ tls = {{ rathole_client_config.transport.websocket.tls | lower }}
 {% if rathole_client_config.services is defined %}
 {% for service in rathole_client_config.services %}
 [client.services.{{ service.name }}]
+{% if service.mode is defined %}
+mode = "{{ service.mode }}"
+{% endif %}
 {% if service.type is defined %}
 type = "{{ service.type }}"
 {% endif %}
@@ -128,6 +137,9 @@ token = "{{ service.token }}"
 {% endif %}
 {% if service.local_addr is defined %}
 local_addr = "{{ service.local_addr }}"
+{% endif %}
+{% if service.bind_addr is defined %}
+bind_addr = "{{ service.bind_addr }}"
 {% endif %}
 {% if service.nodelay is defined %}
 nodelay = {{ service.nodelay | lower }}

@@ -2,6 +2,8 @@
 # roles/rathole/tasks/tunnel.yml
 # Build rathole_server_config / rathole_client_config from tunnel_services.
 # The server of a tuple is the host with the same tunnel_id and rathole_role 'server'.
+# Forward services: the server binds bind_addr, the client connects to local_addr.
+# Reverse services (mode: reverse): the server connects to local_addr, the client binds bind_addr.
 
 - name: Validate tunnel tuple
   ansible.builtin.include_tasks: tunnel_validate.yml
@@ -13,14 +15,22 @@
       {%- set ns = namespace(out=[]) -%}
       {%- for s in tunnel_services -%}
         {%- set extra = s | dict2items | selectattr('key', 'in', ['type', 'token', 'nodelay']) | items2dict -%}
-        {%- set ns.out = ns.out + [{'name': s.name, 'bind_addr': rathole_tunnel_binds[s.name]} | combine(extra)] -%}
+        {%- if s.mode | default('forward') == 'reverse' -%}
+          {%- set ns.out = ns.out + [{'name': s.name, 'mode': 'reverse', 'local_addr': s.local_addr} | combine(extra)] -%}
+        {%- else -%}
+          {%- set ns.out = ns.out + [{'name': s.name, 'bind_addr': rathole_tunnel_binds[s.name]} | combine(extra)] -%}
+        {%- endif -%}
       {%- endfor -%}
       {{ ns.out }}
     rathole_tunnel_client_services: >-
       {%- set ns = namespace(out=[]) -%}
       {%- for s in tunnel_services -%}
         {%- set extra = s | dict2items | selectattr('key', 'in', ['type', 'token', 'nodelay', 'retry_interval']) | items2dict -%}
-        {%- set ns.out = ns.out + [{'name': s.name, 'local_addr': s.local_addr} | combine(extra)] -%}
+        {%- if s.mode | default('forward') == 'reverse' -%}
+          {%- set ns.out = ns.out + [{'name': s.name, 'mode': 'reverse', 'bind_addr': rathole_tunnel_binds[s.name]} | combine(extra)] -%}
+        {%- else -%}
+          {%- set ns.out = ns.out + [{'name': s.name, 'local_addr': s.local_addr} | combine(extra)] -%}
+        {%- endif -%}
       {%- endfor -%}
       {{ ns.out }}
   no_log: true # Services may carry tokens

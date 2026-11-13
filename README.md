@@ -9,7 +9,7 @@ Ansible playbook that publishes services from a home network through a small VPS
 - **CrowdSec** (optional, on by default) blocks bad IPs and inspects requests (AppSec).
 - **Coraza WAF**, **Cloudflare DNS-01**, wildcard certificates and blocklist import are opt-in.
 
-Supported: Debian 12 and 13 and Ubuntu 22.04 and 24.04 LTS on x86_64, arm64 and armv6/armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
+Supported: Debian 12 and 13 and Ubuntu 22.04 and 24.04 LTS on x86_64, arm64 and armv7, and Arch Linux on x86_64. Server and client may run different systems. The playbook stops on other OS families. See [Arch Linux](#arch-linux) for what differs there.
 
 Target server size: 2 vCPU, 2 GB RAM, about 10 GB disk. See [Resource footprint](#resource-footprint).
 
@@ -177,6 +177,7 @@ Each entry in `tunnel_services`:
 | `bind_addr`                          | no       | Where Rathole exposes it on the server, default `127.0.0.1:<port of local_addr>`. Caddy proxies here |
 | `domain`                             | no       | One domain or a list. Without a domain the service is tunnel-only (no Caddy site)                    |
 | `type`                               | no       | `tcp` (default) or `udp`                                                                             |
+| `mode`                               | no       | `forward` (default) or `reverse`, see [Reverse services](#reverse-services)                          |
 | `token`, `nodelay`, `retry_interval` | no       | Rathole settings for this service                                                                    |
 
 Keep `bind_addr` on `127.0.0.1` for web services, so they are only reachable through Caddy. Use `0.0.0.0:<port>` only for tunnel-only services that must be reachable directly (VPN, game servers): they need no `domain`, only a DNS record; the run warns about a service with both. The same port may be used once for `tcp` and once for `udp`. Ports the server needs itself are rejected: 80 and 443 (Caddy), the Rathole port, SSH and, with CrowdSec, 8080, 7422 and 6060. For an app on port 80 or 8080 at home, set a free port on the server, e.g. `bind_addr: 127.0.0.1:18080`.
@@ -212,6 +213,20 @@ WebSocket upgrades skip WAF and AppSec (they cannot inspect the stream); the Cro
 
 Behind a CDN or another proxy (e.g. the Cloudflare proxy), set `caddy_trusted_proxies` (CIDRs) and `caddy_client_ip_headers` (e.g. `[CF-Connecting-IP]`). Otherwise the rate limit and CrowdSec see only the proxy's addresses and ban it for all users. Without these settings a client's `X-Forwarded-For` is ignored.
 
+#### Reverse services
+
+With `mode: reverse` a service goes the other way: the **server** exposes one of its own local services and the **client** listens for it, e.g. to reach a dashboard that only listens on `127.0.0.1` of the VPS from the home network. Nothing is opened on the server, the connection goes through the Rathole port with the same transport and keys.
+
+```yaml
+tunnel_services:
+  - name: crowdsec-dashboard
+    mode: reverse
+    local_addr: 127.0.0.1:3000 # Where the service runs, seen from the server
+    bind_addr: 0.0.0.0:3000 # Where the client listens, default 127.0.0.1:<port of local_addr>
+```
+
+`local_addr` and `bind_addr` swap sides: the server connects to `local_addr`, the client binds `bind_addr`. A reverse service has no Caddy site, so `domain` is rejected. Its `bind_addr` is checked for conflicts only against other reverse services (all on the client); the ports the server needs itself are allowed as `local_addr`. The firewall opens nothing for it. Both hosts need Rathole 0.7.0 or later (the default); an older Rathole rejects the config.
+
 ### Small host tuning (`system` role)
 
 | Variable                        | Default     | Effect                                                                                                                                                                                                                |
@@ -242,7 +257,7 @@ Moving the VPS to another system: install the new system, keep the inventory ent
 
 ## What happens on every run
 
-1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, each `bind_addr` and `type` is used once (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and the server's `/etc/resolv.conf` lists a nameserver (Caddy reads only that file). The roles also check that the CPU architecture is supported and that the import password is set.
+1. **Preflight checks** (before anything changes): Debian, Ubuntu or Arch Linux (x86_64), `rathole_role` is `server` or `client`, `enable_wildcard` has `enable_cloudflare`, `cloudflare_api_token` is set when Cloudflare is enabled, `enable_crowdsec_import` has `enable_crowdsec`, a server in traditional mode has at least one site, `tunnel_id` and `tunnel_services` are set, the tuple has one server and at most one client, service names are unique, `mode` is `forward` or `reverse` and reverse services have no `domain`, each `bind_addr` and `type` is used once per side (`0.0.0.0:<port>` counts for every address on that port), both Noise keys are set together, and the server's `/etc/resolv.conf` lists a nameserver (Caddy reads only that file). The roles also check that the CPU architecture is supported and that the import password is set.
 2. **System upgrade**: `apt upgrade` (mode `apt_upgrade_mode`) and `autoremove`; on Arch Linux `pacman -Syu`, and with a new kernel a reboot right away (if `enable_auto_reboot` is true), because Arch Linux removes the modules of the running kernel that the firewall needs.
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.
@@ -306,7 +321,7 @@ With `enable_firewall: true` the server drops all incoming connections except:
 
 - SSH: every port `sshd` listens on (including `ListenAddress` with its own port), `ansible_port` and the port Ansible is connected on, so a non-default port set only in `~/.ssh/config` is kept open too
 - 80/tcp, 443/tcp and 443/udp (HTTP/3) for Caddy (`firewall_web_ports: false` closes them)
-- the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000`
+- the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000` (not reverse services, they listen on the client)
 - `firewall_allowed_tcp_ports` / `firewall_allowed_udp_ports`
 
 New connections to SSH are limited per source address (`firewall_conn_limit_rate` 120/minute, burst 120; `firewall_conn_limit_enabled: false` turns it off). The Rathole port, the web ports and public services have no such limit, so many visitors never cut the tunnel; the Rathole port is protected by its keys and CrowdSec. Dropped packets are logged with the prefix `webguard drop: ` (at most 10 per minute, `firewall_log_drops`).

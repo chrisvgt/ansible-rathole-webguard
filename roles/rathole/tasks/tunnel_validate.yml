@@ -20,7 +20,32 @@
     fail_msg: "Every service in tunnel_services needs a unique name and a local_addr."
     quiet: true
 
-# Without bind_addr a service listens on loopback, on the port of its local_addr
+# mode: reverse turns a service around: the server exposes its own local_addr
+# and the client binds bind_addr. Such a service has no Caddy site.
+- name: Validate the mode of each service
+  ansible.builtin.assert:
+    that: rathole_tunnel_bad_modes | length == 0
+    fail_msg: "mode must be 'forward' (default) or 'reverse': {{ rathole_tunnel_bad_modes | join(', ') }}"
+    quiet: true
+  vars:
+    rathole_tunnel_bad_modes: >-
+      {{ tunnel_services | selectattr('mode', 'defined') | rejectattr('mode', 'in', ['forward', 'reverse'])
+         | map(attribute='name') | list }}
+
+- name: Ensure reverse services have no domain
+  ansible.builtin.assert:
+    that: rathole_tunnel_reverse_domains | length == 0
+    fail_msg: >-
+      Reverse services are reached on the client, Caddy on the server cannot serve them;
+      remove domain from: {{ rathole_tunnel_reverse_domains | join(', ') }}
+    quiet: true
+  vars:
+    rathole_tunnel_reverse_domains: >-
+      {{ tunnel_services | selectattr('mode', 'defined') | selectattr('mode', 'eq', 'reverse')
+         | selectattr('domain', 'defined') | selectattr('domain') | map(attribute='name') | list }}
+
+# Without bind_addr a service listens on loopback, on the port of its local_addr:
+# on the server for forward services, on the client for reverse services
 - name: Determine the bind address of each service
   ansible.builtin.set_fact:
     rathole_tunnel_binds: >-
@@ -59,7 +84,8 @@
     quiet: true
 
 # 0.0.0.0 and :: listen on every address, so they collide with any other
-# address on the same port and type
+# address on the same port and type. Forward services bind on the server,
+# reverse services on the client, so only services of the same mode collide.
 - name: Ensure each bind address and protocol is used once
   ansible.builtin.assert:
     that: rathole_tunnel_bind_conflicts | length == 0
@@ -74,8 +100,9 @@
       {%- for s in tunnel_services -%}
         {%- set bind = rathole_tunnel_binds[s.name] -%}
         {%- set b = {'name': s.name, 'host': bind | regex_replace(':[^:]*$', ''),
-                     'port': bind | regex_replace('^.*:', ''), 'type': s.type | default('tcp')} -%}
-        {%- for o in ns.seen if o.port == b.port and o.type == b.type
+                     'port': bind | regex_replace('^.*:', ''), 'type': s.type | default('tcp'),
+                     'mode': s.mode | default('forward')} -%}
+        {%- for o in ns.seen if o.port == b.port and o.type == b.type and o.mode == b.mode
                                 and (o.host == b.host or o.host in any_addr or b.host in any_addr) -%}
           {%- set ns.out = ns.out + [o.name ~ ' and ' ~ b.name ~ ' (' ~ b.port ~ '/' ~ b.type ~ ')'] -%}
         {%- endfor -%}
@@ -85,7 +112,8 @@
 
 # A service bound to a port the server already uses cannot start (Rathole
 # reports "Address already in use"), or Caddy reaches the wrong program.
-# 8080 is a common app port and also the CrowdSec Local API.
+# 8080 is a common app port and also the CrowdSec Local API. Reverse services
+# bind on the client and may use these ports as their local_addr.
 - name: Ensure no service binds a port the server already uses
   ansible.builtin.assert:
     that: rathole_tunnel_reserved_conflicts | length == 0
@@ -112,7 +140,7 @@
             ] if enable_crowdsec | default(true) | bool else []) }}
     rathole_tunnel_reserved_conflicts: >-
       {%- set ns = namespace(out=[]) -%}
-      {%- for s in tunnel_services -%}
+      {%- for s in tunnel_services if s.mode | default('forward') == 'forward' -%}
         {%- set port = rathole_tunnel_binds[s.name] | regex_replace('^.*:', '') -%}
         {%- for r in rathole_tunnel_reserved if r.port == port and r.type == (s.type | default('tcp')) -%}
           {%- set ns.out = ns.out + [s.name ~ ' (' ~ port ~ '/' ~ r.type ~ ', ' ~ r.by ~ ')'] -%}
