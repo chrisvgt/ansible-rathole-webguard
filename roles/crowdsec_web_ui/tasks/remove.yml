@@ -28,6 +28,14 @@
         state: stopped
       when: crowdsec_web_ui_unit.stat.exists
 
+    # --rm of the unit does not always remove the stopped container
+    - name: Remove the CrowdSec Web UI container
+      ansible.builtin.command:
+        argv: ["{{ crowdsec_web_ui_podman }}", rm, --force, --ignore, "{{ crowdsec_web_ui_container_name }}"]
+      register: crowdsec_web_ui_container_rm
+      changed_when: crowdsec_web_ui_container_rm.stdout | trim | length > 0
+      failed_when: false # No Podman, no container
+
     - name: Remove the unit and the config files
       ansible.builtin.file:
         path: "{{ item }}"

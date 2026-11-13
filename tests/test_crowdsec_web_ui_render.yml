@@ -34,7 +34,7 @@
           - "'-e CONFIG_INSTANCE_LAPI_URL=http://127.0.0.1:8080' in test_unit"
           - "'-e CONFIG_INSTANCE_LAPI_AUTH_USERNAME=crowdsec-web-ui' in test_unit"
           - "'-e CONFIG_INSTANCE_METRICS_URL=http://127.0.0.1:6060/metrics' in test_unit"
-          - "'-e \"NODE_OPTIONS=--require=/opt/loopback.cjs --max-old-space-size=256\"' in test_unit"
+          - '''-e "NODE_OPTIONS=--require=/opt/loopback.cjs --max-old-space-size=256"'' in test_unit'
           - "'--env-file /etc/crowdsec-web-ui/env' in test_unit"
           - "'-v /var/lib/crowdsec-web-ui:/app/data' in test_unit"
           - "'-v /etc/crowdsec-web-ui/loopback.cjs:/opt/loopback.cjs:ro' in test_unit"

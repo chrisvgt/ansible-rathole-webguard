@@ -24,7 +24,7 @@ client=it-client
 
 cleanup() {
   docker exec "$server" swapoff /swap/swapfile >/dev/null 2>&1 || true
-  docker rm -f "$server" "$client" >/dev/null 2>&1 || true
+  docker rm -f -v "$server" "$client" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
 }
 cleanup # Leftovers of an aborted run
@@ -74,8 +74,10 @@ client_image=$(image_for "$client_os")
 echo "== server: $server_os, client: $client_os"
 
 docker network create "$net" >/dev/null
+# /var/lib/containers as a volume: Podman cannot put its overlay storage on the
+# container's overlayfs (fails on Arch Linux), a real host has no such problem
 docker run -d --name "$server" --hostname "$server" --network "$net" --privileged \
-  --tmpfs /run --tmpfs /run/lock ${mounts[@]+"${mounts[@]}"} "$server_image" /lib/systemd/systemd >/dev/null
+  --tmpfs /run --tmpfs /run/lock -v /var/lib/containers ${mounts[@]+"${mounts[@]}"} "$server_image" /lib/systemd/systemd >/dev/null
 docker run -d --name "$client" --hostname "$client" --network "$net" --privileged \
   --tmpfs /run --tmpfs /run/lock "$client_image" /lib/systemd/systemd >/dev/null
 for host in "$server" "$client"; do
@@ -216,7 +218,16 @@ check "the Web UI listens on the server's loopback only" "test \"\$(ui_listeners
 check "the Web UI port is closed to the network" "! on $client 'curl -s --max-time 3 http://$server_ip:13000/api/health'"
 check "the Web UI runs without root and capabilities" "test \"\$(ui_user)\" = '62500 0000000000000000 '"
 check "the Web UI has its own LAPI machine" "on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
-check "the Web UI logs in to the Local API" "ui_logs | grep -q 'backend running' && ! ui_logs | grep -q 'Authentication failed'"
+# The UI sends a heartbeat every 30s after a successful login; the Local API
+# records it on the machine, so a heartbeat proves the connection
+ui_heartbeat() {
+  on "$server" "cscli machines list -o json" | python3 -c '
+import json, sys
+m = [x for x in json.load(sys.stdin) if x.get("machineId") == "crowdsec-web-ui"]
+sys.exit(0 if m and m[0].get("last_heartbeat") else 1)'
+}
+ui_connected() { for _ in $(seq 1 12); do ui_heartbeat && return 0; sleep 5; done; return 1; }
+check "the Web UI is connected to the Local API (heartbeat)" "ui_connected"
 check "the Web UI env file and password file are root only" "test \"\$(ui_files)\" = '600:root 600:root '"
 check "the Web UI opens no port in the firewall" "! on $server 'nft list table inet webguard' | grep -qE '1300[01]'"
 check "firewall opens the passed-through UDP port" "on $server 'nft list table inet webguard' | grep -q 'udp dport { 443, 51820 }'"

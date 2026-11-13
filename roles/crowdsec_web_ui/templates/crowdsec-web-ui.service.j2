@@ -44,6 +44,8 @@ ExecStart={{ crowdsec_web_ui_podman }} --cgroup-manager cgroupfs run --rm --repl
   -v {{ crowdsec_web_ui_config_dir }}/loopback.cjs:/opt/loopback.cjs:ro \
   {{ crowdsec_web_ui_image }}
 ExecStop={{ crowdsec_web_ui_podman }} stop --time 20 {{ crowdsec_web_ui_container_name }}
+# --rm is done by conmon and can be skipped (seen with Podman 4.9 on Ubuntu 24.04)
+ExecStopPost=-{{ crowdsec_web_ui_podman }} rm --force --ignore {{ crowdsec_web_ui_container_name }}
 SyslogIdentifier={{ crowdsec_web_ui_container_name }}
 
 [Install]
