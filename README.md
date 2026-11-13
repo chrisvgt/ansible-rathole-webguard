@@ -309,7 +309,7 @@ With `enable_firewall: true` the server drops all incoming connections except:
 - the Rathole port and services with a public `bind_addr`, e.g. `0.0.0.0:30000`
 - `firewall_allowed_tcp_ports` / `firewall_allowed_udp_ports`
 
-New connections to SSH are limited per source address (`firewall_conn_limit_rate` 30/minute, burst 20; `firewall_conn_limit_enabled: false` turns it off). The Rathole port, the web ports and public services have no such limit, so many visitors never cut the tunnel; the Rathole port is protected by its keys and CrowdSec. Dropped packets are logged with the prefix `webguard drop: ` (at most 10 per minute, `firewall_log_drops`).
+New connections to SSH are limited per source address (`firewall_conn_limit_rate` 120/minute, burst 120; `firewall_conn_limit_enabled: false` turns it off). The Rathole port, the web ports and public services have no such limit, so many visitors never cut the tunnel; the Rathole port is protected by its keys and CrowdSec. Dropped packets are logged with the prefix `webguard drop: ` (at most 10 per minute, `firewall_log_drops`).
 
 Use it if the provider firewall is not used or not trusted. The home server (client) is not touched. The rules live in their own nftables table (`inet webguard`, file `/etc/nftables.d/webguard.nft`), loaded at boot by `webguard-firewall.service`, so the CrowdSec bouncer keeps working. When the rules change, or are no longer loaded, a timer removes them again after `firewall_rollback_seconds` (120) unless Ansible can open a new SSH connection, and they are then not loaded at boot either, so a mistake does not lock you out.
 

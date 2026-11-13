@@ -35,8 +35,8 @@
           - "'rathole_meter' not in rules"
           - "'type ipv4_addr' in rules and 'type ipv6_addr' in rules"
           - "'flags dynamic,timeout' in rules and 'timeout 2m' in rules"
-          - "'tcp dport { 22, 2222 } ct state new update @ssh_meter4 { ip saddr limit rate over 30/minute burst 20 packets } drop' in rules"
-          - "'tcp dport { 22, 2222 } ct state new update @ssh_meter6 { ip6 saddr limit rate over 30/minute burst 20 packets } drop' in rules"
+          - "'tcp dport { 22, 2222 } ct state new update @ssh_meter4 { ip saddr limit rate over 120/minute burst 120 packets } drop' in rules"
+          - "'tcp dport { 22, 2222 } ct state new update @ssh_meter6 { ip6 saddr limit rate over 120/minute burst 120 packets } drop' in rules"
           - rules.index('@ssh_meter4') < rules.index('tcp dport { 22, 80')
           - '''limit rate 10/minute log prefix "webguard drop: "'' in rules'
           - rules.index('log prefix') > rules.index('udp dport')
