@@ -17,6 +17,16 @@
         test_unit: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.service.j2') }}"
         test_env: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_web_ui/templates/crowdsec-web-ui.env.j2') }}"
 
+    # Old images are found by the repository without tag and digest
+    - name: Check the image repository
+      ansible.builtin.assert:
+        that:
+          - crowdsec_web_ui_image_repo == 'ghcr.io/theduffman85/crowdsec-web-ui'
+          - (test_repo_with_port | regex_replace('@.*$', '') | regex_replace(':[^:/]+$', '')) == 'registry.local:5000/a/b'
+        fail_msg: "{{ crowdsec_web_ui_image_repo }}"
+      vars:
+        test_repo_with_port: "registry.local:5000/a/b:1.0@sha256:abc"
+
     - name: Check the unit
       ansible.builtin.assert:
         that:

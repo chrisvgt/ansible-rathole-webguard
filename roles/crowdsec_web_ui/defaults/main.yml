@@ -50,3 +50,8 @@ crowdsec_web_ui_metrics_url: "http://127.0.0.1:6060/metrics"
 
 crowdsec_web_ui_container_name: "crowdsec-web-ui"
 crowdsec_web_ui_podman: "/usr/bin/podman"
+
+# Repository of crowdsec_web_ui_image without tag and digest. Images of it that are
+# not the configured one (earlier versions) are removed after the service runs, and
+# all of them when the UI is turned off.
+crowdsec_web_ui_image_repo: "{{ crowdsec_web_ui_image | regex_replace('@.*$', '') | regex_replace(':[^:/]+$', '') }}"
