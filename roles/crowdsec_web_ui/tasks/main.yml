@@ -164,6 +164,34 @@
   changed_when: false
   when: not ansible_check_mode
 
+# Every update pulls a new image and keeps the old one (it still has its tag, so
+# "podman image prune" does not see it). Remove the images of earlier versions
+# once the service runs the configured one; an image still in use stays.
+- name: Get the ID of the configured CrowdSec Web UI image
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", image, inspect, "{{ crowdsec_web_ui_image }}"]
+  register: crowdsec_web_ui_image_id
+  changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+  when: not ansible_check_mode or crowdsec_web_ui_image_check.rc == 0
+
+- name: List the CrowdSec Web UI images
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", images, --quiet, --no-trunc, "{{ crowdsec_web_ui_image_repo }}"]
+  register: crowdsec_web_ui_images
+  changed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+  when: crowdsec_web_ui_image_id is not skipped
+
+- name: Remove the CrowdSec Web UI images of earlier versions
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", rmi, "{{ item }}"]
+  loop: "{{ crowdsec_web_ui_images.stdout_lines | map('regex_replace', '^sha256:', '') | unique | reject('equalto', (crowdsec_web_ui_image_id.stdout | from_json)[0].Id | regex_replace('^sha256:', '')) | list }}"
+  register: crowdsec_web_ui_image_rm
+  changed_when: crowdsec_web_ui_image_rm.rc == 0
+  failed_when: false # Still used by a container: it stays, the next run removes it
+  when: crowdsec_web_ui_images is not skipped
+
 # The app has no listen address setting, loopback.cjs forces it. Never leave it
 # running when it is reachable from the network.
 - name: List the listeners on the CrowdSec Web UI port

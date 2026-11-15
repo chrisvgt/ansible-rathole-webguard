@@ -1,8 +1,8 @@
 ---
 # roles/crowdsec_web_ui/tasks/remove.yml
 # enable_crowdsec_web_ui: false removes the setup of an earlier run: the service,
-# its files and the LAPI machine. The data directory and Podman (with the image)
-# stay, remove them by hand if wanted (see README).
+# its files, the LAPI machine and the images. The data directory and Podman stay,
+# remove them by hand if wanted (see README).
 
 - name: Check for a CrowdSec Web UI from an earlier run
   ansible.builtin.stat:
@@ -68,3 +68,20 @@
       ansible.builtin.file:
         path: "{{ crowdsec_web_ui_machine_password_file }}"
         state: absent
+
+# Outside the block: also cleans up hosts where an earlier run already removed the
+# service but kept the images
+- name: List the CrowdSec Web UI images
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", images, --quiet, --no-trunc, "{{ crowdsec_web_ui_image_repo }}"]
+  register: crowdsec_web_ui_images
+  changed_when: false
+  failed_when: false # No Podman, no images
+  check_mode: false # Read-only, safe to run in check mode
+
+- name: Remove the CrowdSec Web UI images
+  ansible.builtin.command:
+    argv: ["{{ crowdsec_web_ui_podman }}", rmi, --force, "{{ item }}"]
+  loop: "{{ crowdsec_web_ui_images.stdout_lines | default([]) | unique | list }}"
+  changed_when: true
+  when: crowdsec_web_ui_images.rc | default(1) == 0

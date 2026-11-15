@@ -190,7 +190,9 @@ diagnose() {
 echo "== checks"
 check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer crowdsec-web-ui rathole'"
 check "client tunnel is active" "on $client 'systemctl is-active rathole'"
-check "site answers through the tunnel" "https | grep -q 'hello from the client'"
+# Rathole may still be reconnecting after the handlers of the run
+site_up() { for _ in $(seq 15); do https | grep -q 'hello from the client' && return 0; sleep 2; done; return 1; }
+check "site answers through the tunnel" "site_up"
 https | grep -q 'hello from the client' || diagnose
 headers=$(on "$client" "curl -sk --max-time 5 --resolve web.test:443:$server_ip https://web.test/headers" || true)
 check "the app sees the client IP, the scheme and the host" \
@@ -232,6 +234,7 @@ check "the Web UI is connected to the Local API (heartbeat)" "ui_connected"
 check "the Web UI skips the imported blocklists" "ui_logs | grep -q 'CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS'"
 # The log goes to the unit's journal once (the journald log driver wrote every line twice)
 check "the Web UI logs each line once" "test \"\$(ui_logs | grep -c 'Loaded application configuration')\" -ge 1 && ! ui_logs | grep 'Loaded application configuration' | sed 's/^.*crowdsec-web-ui\\[[0-9]*\\]: //' | sort | uniq -d | grep -q ."
+check "the Web UI keeps only the configured image" "test \"\$(on $server 'podman images --quiet ghcr.io/theduffman85/crowdsec-web-ui' | sort -u | wc -l)\" = 1"
 check "the Web UI env file and password file are root only" "test \"\$(ui_files)\" = '600:root 600:root '"
 check "the Web UI opens no port in the firewall" "! on $server 'nft list table inet webguard' | grep -qE '1300[01]'"
 check "firewall opens the passed-through UDP port" "on $server 'nft list table inet webguard' | grep -q 'udp dport { 443, 51820 }'"
@@ -437,6 +440,18 @@ playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
 check "turning the firewall off removes it" "! on $server 'nft list tables' | grep -q webguard"
 check "the site still answers" "https | grep -q 'hello from the client'"
 
+echo "== CrowdSec Web UI image of an earlier version"
+# A tiny image under the same repository (no download) stands for the old version
+# (an empty import: podman build mounts an overlay over its context, which fails
+# on Arch in CI)
+on "$server" "tar -cf - --files-from /dev/null | podman import --quiet - ghcr.io/theduffman85/crowdsec-web-ui:old" >/dev/null
+playbook --tags crowdsec_web_ui >"$logs/web-ui-old-image.log" 2>&1 || {
+  tail -30 "$logs/web-ui-old-image.log"
+  fail=1
+}
+check "an image of an earlier version is removed" "! on $server 'podman images --format {{.Tag}} ghcr.io/theduffman85/crowdsec-web-ui' | grep -qx old"
+check "the configured image stays" "on $server 'curl -s --max-time 5 http://127.0.0.1:13000/api/health' | grep -q '\"status\":\"ok\"'"
+
 echo "== CrowdSec Web UI off"
 playbook -e enable_crowdsec_web_ui=false --tags crowdsec_web_ui,rathole >"$logs/web-ui-off.log" 2>&1 || {
   tail -30 "$logs/web-ui-off.log"
@@ -446,11 +461,11 @@ check "turning the Web UI off stops the service" "! on $server 'systemctl is-act
 check "turning the Web UI off removes the unit and the config" "on $server '! test -e /etc/systemd/system/crowdsec-web-ui.service && ! test -e /etc/crowdsec-web-ui'"
 check "turning the Web UI off removes the container" "! on $server 'podman ps -a --format {{.Names}}' | grep -q crowdsec-web-ui"
 check "turning the Web UI off removes its LAPI machine" "! on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
+check "turning the Web UI off removes its image" "test -z \"\$(on $server 'podman images --quiet ghcr.io/theduffman85/crowdsec-web-ui')\""
 check "turning the Web UI off keeps its data" "on $server 'test -d /var/lib/crowdsec-web-ui'"
 check "turning the Web UI off closes the client port" "! on $client 'curl -s --max-time 3 http://127.0.0.1:13001/api/health'"
 # The Rathole config changed, so both ends restarted; the client reconnects
 # with a backoff, give it time before checking the site
-site_back() { for _ in $(seq 30); do https | grep -q 'hello from the client' && return 0; sleep 2; done; return 1; }
-check "the site still answers without the Web UI" "site_back"
+check "the site still answers without the Web UI" "site_up"
 
 exit $fail
