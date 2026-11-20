@@ -29,7 +29,7 @@ A **tuple** is one server (VPS) and one client (home server) connected by one tu
 
 ### Before you start
 
-- A computer with Ansible (`ansible-core`, tested with 2.21) that reaches both hosts over SSH, as `root` or as a user with `sudo`. Python is installed on the hosts if it is missing.
+- A computer with Ansible (`ansible-core`, tested with 2.22) that reaches both hosts over SSH, as `root` or as a user with `sudo`. Python is installed on the hosts if it is missing.
 - A VPS and a home server with a supported OS (see above).
 - For each domain a DNS record that points to the VPS (A, and AAAA if the VPS has IPv6). Without Cloudflare, Caddy needs it before the first run to get its certificates.
 - On the VPS, these ports reachable from the internet: 80/tcp, 443/tcp and 443/udp for Caddy, and the Rathole port (default 2333/tcp). Open them in the provider firewall, or let the playbook manage the host firewall (`enable_firewall: true`, see [Firewall](#firewall)).
@@ -266,7 +266,7 @@ Moving the VPS to another system: install the new system, keep the inventory ent
 3. **Roles**: `system`, then on the server `caddy` (with `go_lang` and `xcaddy`), `crowdsec`, `crowdsec_import`, `crowdsec_web_ui` (also to remove it again), `rathole` on both hosts, and `firewall` on the server if enabled.
 4. **Reboot** if an upgrade requires it (`/var/run/reboot-required`; on Arch Linux a new kernel) and `enable_auto_reboot` is true.
 
-Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./run-playbook.sh --no-vault --tags caddy`. Tags: `system`, `caddy`, `crowdsec`, `crowdsec_import`, `crowdsec_web_ui`, `rathole`, `firewall`, `reboot`, `cleanup`. A change of the Web UI ports or client address also needs `rathole` (`--tags crowdsec_web_ui,rathole`). The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
+Hosts are processed one at a time and the play stops on the first error. Run single parts with tags, for example `./run-playbook.sh --no-vault --tags caddy`. Tags: `base` (base packages), `system`, `caddy`, `crowdsec`, `crowdsec_import`, `crowdsec_web_ui`, `rathole`, `firewall`, `reboot`, `cleanup`. A change of the Web UI ports or client address also needs `rathole` (`--tags crowdsec_web_ui,rathole`). The `firewall` tag needs `rathole` too (`--tags rathole,firewall`).
 
 ## Caddy build
 
