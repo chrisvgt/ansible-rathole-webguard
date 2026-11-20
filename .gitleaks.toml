@@ -1,0 +1,9 @@
+# gitleaks: default rules plus false positives of this repository
+[extend]
+useDefault = true
+
+# The fingerprint of the public CrowdSec APT signing key is no secret
+[[allowlists]]
+description = "Public GPG key fingerprint"
+regexTarget = "line"
+regexes = ['''^\s*crowdsec_apt_key_fingerprint: "[0-9A-F]{40}"''']

@@ -10,7 +10,7 @@ rathole_config_path_default: "/etc/rathole" # Default of rathole_config_path, us
 # - rathole-x86_64-unknown-linux-musl.zip
 # - rathole-aarch64-unknown-linux-musl.zip
 # - rathole-armv7-unknown-linux-musleabihf.zip
-# - rathole-arm-unknown-linux-musleabi.zip
+# Since 0.7.0 there is no armv6 (arm-unknown-linux-musleabi) build.
 rathole_target_map:
   Linux:
     x86_64: x86_64-unknown-linux-gnu
@@ -18,4 +18,3 @@ rathole_target_map:
     aarch64: aarch64-unknown-linux-musl
     arm64: aarch64-unknown-linux-musl
     armv7l: armv7-unknown-linux-musleabihf
-    armv6l: arm-unknown-linux-musleabi

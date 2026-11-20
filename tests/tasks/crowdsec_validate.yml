@@ -1,0 +1,22 @@
+---
+# tests/tasks/crowdsec_validate.yml
+# Shared by tests/test_crowdsec_hardening.yml: run the CrowdSec variable checks
+# and compare the outcome with test_expect_ok
+
+- name: Run and check
+  block:
+    - name: Run the CrowdSec variable checks
+      ansible.builtin.include_role:
+        name: crowdsec
+        tasks_from: validate
+
+    - name: Fail if the values should have been rejected
+      ansible.builtin.fail:
+        msg: "{{ crowdsec_lapi_ip }} / {{ crowdsec_appsec_ip }} was accepted"
+      when: not test_expect_ok | bool
+
+  rescue:
+    - name: Fail if the values should have been accepted
+      ansible.builtin.fail:
+        msg: "{{ crowdsec_lapi_ip }} / {{ crowdsec_appsec_ip }} was rejected: {{ ansible_failed_result.msg | default('') }}"
+      when: test_expect_ok | bool

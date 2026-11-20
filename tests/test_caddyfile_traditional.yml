@@ -32,3 +32,45 @@
           - caddyfile | regex_findall('id:100040,') | length == 3
           - "'SecAuditLog /var/log/caddy/coraza/modsec_web.log' in caddyfile"
           - "'zone shop_shop_example_org {' in caddyfile"
+          # WebSocket: complete handshake only, with rate limit and CrowdSec, never Coraza
+          - caddyfile | regex_findall('(?m)^\s*header Sec-WebSocket-Key \*$') | length == 4
+          - caddyfile | regex_findall('(?m)^\s*header Sec-WebSocket-Version 13$') | length == 4
+          - caddyfile | regex_findall('(?m)^\s*method GET$') | length == 4
+          - caddyfile | regex_findall('(?m)^\s*header_regexp Connection \(\?i\)') | length == 4
+          - caddyfile | regex_findall('(?m)^\s*header_regexp Upgrade \(\?i\)\^websocket\$$') | length == 4
+          - "'header Upgrade websocket' not in caddyfile"
+          - "'zone shop_shop_example_org_ws {' in caddyfile"
+          - caddyfile | regex_findall('(?m)^\s*zone \S+_ws \{$') | length == 4
+          - caddyfile | regex_findall('(?m)^\s*zone \S+ \{$') | length == 8
+          # Rate limit by client IP (the peer address unless trusted proxies are set)
+          - "'{http.request.remote.ip}' not in caddyfile"
+          - caddyfile | regex_findall('key "\{http.request.client_ip\}"') | length == 8
+          # No trusted proxies by default
+          - caddyfile is not search('(?m)^\s*servers \{$')
+          - "'trusted_proxies' not in caddyfile"
+
+- name: Render with trusted proxies and client IP headers
+  hosts: srv
+  gather_facts: false
+  vars:
+    enable_wildcard: false
+    enable_crowdsec: true
+    enable_rate_limit: true
+    enable_coraza_waf: false
+    enable_cloudflare: false
+  tasks:
+    - name: Set trusted proxies
+      ansible.builtin.set_fact:
+        caddy_trusted_proxies: [192.0.2.0/24, 2001:db8::/32]
+        caddy_client_ip_headers: [CF-Connecting-IP, X-Forwarded-For]
+
+    - name: Render and check structure
+      ansible.builtin.include_tasks: tasks/render_caddyfile.yml
+
+    - name: Check the servers block
+      ansible.builtin.assert:
+        that:
+          - caddyfile | regex_findall('(?m)^\s*servers \{$') | length == 1
+          - caddyfile is search('(?m)^\s*trusted_proxies static 192.0.2.0/24 2001:db8::/32$')
+          - caddyfile is search('(?m)^\s*trusted_proxies_strict$')
+          - caddyfile is search('(?m)^\s*client_ip_headers CF-Connecting-IP X-Forwarded-For$')

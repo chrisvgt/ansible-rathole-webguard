@@ -1,0 +1,35 @@
+---
+# tests/rathole_reverse_render.yml
+# Renders rathole.toml for the server and the client of the test tuple into
+# out_dir, for tests/check_rathole_reverse.sh. Not run on its own.
+# Both ends run on 127.0.0.1: forward and reverse services over TCP and UDP.
+
+- name: Render Rathole server and client config
+  hosts: tunnel_test
+  gather_facts: false
+  vars:
+    rathole_port: "{{ test_port }}"
+    rathole_listen_addr: "127.0.0.1:{{ test_port }}"
+    rathole_public_addr: 127.0.0.1
+    tunnel_services:
+      # The server exposes its own service, the client listens
+      - { name: rev-tcp, mode: reverse, local_addr: "127.0.0.1:19001", bind_addr: "127.0.0.1:19101" }
+      - { name: rev-udp, mode: reverse, type: udp, local_addr: "127.0.0.1:19002", bind_addr: "127.0.0.1:19102" }
+      # The usual direction in the same tunnel
+      - { name: fwd-tcp, local_addr: "127.0.0.1:19003", bind_addr: "127.0.0.1:19103" }
+  tasks:
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Add the secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: secrets
+
+    - name: Render rathole.toml
+      ansible.builtin.template:
+        src: ../roles/rathole/templates/rathole.toml.j2
+        dest: "{{ out_dir }}/{{ rathole_role }}.toml"
+        mode: "0600"

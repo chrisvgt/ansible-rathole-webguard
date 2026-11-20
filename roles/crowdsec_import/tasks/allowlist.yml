@@ -1,0 +1,24 @@
+---
+# roles/crowdsec_import/tasks/allowlist.yml
+# Sets crowdsec_import_ddns_ips for the importer ALLOWLIST
+
+# Decisions the importer creates skip the postoverflow whitelist, so the own
+# DDNS addresses go to the importer's ALLOWLIST (IPs and CIDRs only, no hostnames).
+# Failing lookups are skipped: a DNS hiccup must not stop the deployment.
+- name: Resolve the DDNS hostnames for the blocklist allowlist
+  ansible.builtin.command:
+    argv: [getent, ahosts, "{{ item }}"]
+  register: crowdsec_import_ddns_lookup
+  changed_when: false
+  failed_when: false
+  check_mode: false # Read-only, safe to run in check mode
+  loop: "{{ dynamic_ddns_hostnames | default([]) }}"
+  when: dynamic_whitelist_enabled | default(false) | bool
+
+- name: Collect the resolved DDNS addresses
+  ansible.builtin.set_fact:
+    crowdsec_import_ddns_ips: >-
+      {{ crowdsec_import_ddns_lookup.results | default([])
+         | rejectattr('skipped', 'defined')
+         | map(attribute='stdout_lines') | flatten
+         | map('regex_search', '^[0-9a-fA-F:.]+') | select | unique | sort | list }}

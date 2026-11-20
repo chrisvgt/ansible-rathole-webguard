@@ -1,0 +1,35 @@
+---
+# roles/crowdsec_web_ui/tasks/validate.yml
+# Checks for enable_crowdsec_web_ui; included by main.yml and tasks/preflight.yml.
+# The ports and the client address are checked by the rathole role (tunnel_validate.yml).
+
+- name: Validate that the CrowdSec Web UI has CrowdSec enabled
+  ansible.builtin.assert:
+    that: enable_crowdsec | bool
+    fail_msg: "enable_crowdsec_web_ui requires enable_crowdsec: true (the UI reads the Local API of the CrowdSec engine)."
+    quiet: true
+
+# The upstream image is published for these two only
+- name: Validate that the CrowdSec Web UI image exists for this CPU
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] in ['x86_64', 'aarch64']
+    fail_msg: >-
+      enable_crowdsec_web_ui is not available on {{ ansible_facts['architecture'] }}: the container image
+      exists for x86_64 and aarch64 (arm64) only. Set enable_crowdsec_web_ui: false for this host.
+    quiet: true
+
+# The password goes into a Podman env file, which has no quoting
+- name: Validate the machine password of the CrowdSec Web UI
+  ansible.builtin.assert:
+    that: crowdsec_web_ui_machine_password | string is match('^[A-Za-z0-9._~+=:@%^-]+$')
+    fail_msg: "crowdsec_web_ui_machine_password may only contain letters, digits and . _ ~ + = : @ % ^ - (no spaces or quotes)."
+    quiet: true
+  when: crowdsec_web_ui_machine_password | default('') | length > 0
+
+- name: Validate the memory settings of the CrowdSec Web UI
+  ansible.builtin.assert:
+    that:
+      - crowdsec_web_ui_memory_max | string is match('^[0-9]+[bkmg]$')
+      - crowdsec_web_ui_node_heap_mb | int > 0
+    fail_msg: "crowdsec_web_ui_memory_max must look like 512m and crowdsec_web_ui_node_heap_mb must be a number of MB (keep it below the memory limit)."
+    quiet: true

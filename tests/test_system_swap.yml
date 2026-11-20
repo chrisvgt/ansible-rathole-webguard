@@ -1,0 +1,24 @@
+---
+# tests/test_system_swap.yml
+# Swap file: detection of containers that cannot enable swap
+
+- name: Swap in containers
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Load system role defaults
+      ansible.builtin.include_vars: ../roles/system/defaults/main.yml
+
+    - name: Check the container detection
+      ansible.builtin.assert:
+        that: (system_swap_in_container | bool) == item.expected
+        fail_msg: "{{ item.facts }} should give {{ item.expected }}"
+        quiet: true
+      vars:
+        ansible_facts: "{{ item.facts }}"
+      loop:
+        - { facts: {}, expected: false }
+        - { facts: { virtualization_role: guest, virtualization_type: kvm }, expected: false }
+        - { facts: { virtualization_role: guest, virtualization_type: lxc }, expected: true }
+        - { facts: { virtualization_role: guest, virtualization_type: openvz }, expected: true }
+        - { facts: { virtualization_role: host, virtualization_type: lxc }, expected: false }

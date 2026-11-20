@@ -30,6 +30,27 @@ caddy_no_log: true
 # Core plugins based on enable flags are resolved at runtime in tasks.
 caddy_plugins: []
 
+# Versions of the built-in plugins (xcaddy --with module@version). A change
+# rebuilds Caddy once, because the plugin list hash changes.
+# renovate: datasource=go depName=github.com/hslatman/caddy-crowdsec-bouncer
+caddy_plugin_crowdsec_version: "v0.15.0"
+# renovate: datasource=go depName=github.com/caddy-dns/cloudflare
+caddy_plugin_cloudflare_version: "v0.2.4"
+# renovate: datasource=go depName=github.com/corazawaf/coraza-caddy/v2
+caddy_plugin_coraza_version: "v2.6.2"
+# caddy-ratelimit has a single old tag (v0.1.0); this is the pseudo-version of
+# the current main commit. Renovate's go datasource tracks it.
+# renovate: datasource=go depName=github.com/mholt/caddy-ratelimit
+caddy_plugin_ratelimit_version: "v0.1.1-0.20260612195517-5625512f24f6"
+
+# --- Client IP behind a CDN / reverse proxy (off by default) ---
+# Source ranges of the proxy in front of Caddy, e.g. Cloudflare's. Only requests
+# from these ranges may set the client IP via the headers below; the rate limit
+# and CrowdSec then see the real visitor. Empty: the TCP peer address is used.
+caddy_trusted_proxies: []
+# Headers carrying the client IP, e.g. [CF-Connecting-IP] or [X-Forwarded-For]
+caddy_client_ip_headers: []
+
 # --- Coraza Audit Log Rotation (logrotate, checked daily) ---
 caddy_coraza_audit_log_max_size: 10M # Rotate once a file exceeds this size
 caddy_coraza_audit_log_rotate: 3 # Number of compressed rotations to keep

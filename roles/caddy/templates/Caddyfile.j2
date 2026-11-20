@@ -48,6 +48,17 @@
     }
     {% endif %}
 
+    {% if caddy_trusted_proxies | length > 0 %}
+    # Client IP behind a CDN/proxy: headers are only trusted from these ranges
+    servers {
+        trusted_proxies static {{ caddy_trusted_proxies | join(' ') }}
+        trusted_proxies_strict
+        {% if caddy_client_ip_headers | length > 0 %}
+        client_ip_headers {{ caddy_client_ip_headers | join(' ') }}
+        {% endif %}
+    }
+
+    {% endif %}
     {% if enable_cloudflare | default(false) | bool %}
     # Token comes from the systemd EnvironmentFile ({{ caddy_env_file }})
     acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
@@ -79,16 +90,9 @@ coraza_waf {
         SecResponseBodyAccess Off
         SecDefaultAction "phase:2,deny,log,status:403"
 
-        # === EARLY STREAMING BYPASSES (all modes) ===
-        # WebSocket upgrade bypass
-        SecRule REQUEST_HEADERS:Upgrade "@streq websocket" \
-            "id:100001,phase:1,nolog,pass,t:none,t:lowercase,ctl:ruleEngine=Off"
-        # SSE / event-stream bypass (ntfy subscribe, live logs)
-        SecRule REQUEST_HEADERS:Accept "@rx text/event-stream" \
-            "id:100002,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
-        # Socket.IO long-polling bypass
-        SecRule REQUEST_URI "@beginsWith /socket.io/" \
-            "id:100003,phase:1,nolog,pass,t:none,ctl:ruleEngine=Off"
+        # No header- or path-triggered engine bypass: WebSocket upgrades are
+        # handled by the @ws matcher outside the WAF, SSE and Socket.IO
+        # long-polling are ordinary GET/POST requests the rules below let pass.
 
         {% if effective_mode == 'minimal' %}
 
@@ -104,8 +108,9 @@ coraza_waf {
 
         # Static file whitelist: skip WAF for all GET static assets
         {% if coraza_file_whitelist_enabled | default(true) | bool %}
-        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
-            SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|mp4|webm|ogg|mp3|m3u8|ts|wasm|pdf|txt|csv') }})$" "t:none"
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_FILENAME "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|mp4|webm|ogg|mp3|m3u8|ts|wasm|pdf|txt|csv') }})$" "t:none,chain"
+                SecRule QUERY_STRING "@rx ^[A-Za-z0-9._~=&-]*$" "t:none,ctl:ruleEngine=Off"
         {% endif %}
 
         # Block dangerous file uploads
@@ -131,8 +136,9 @@ coraza_waf {
 
         # Static file whitelist: skip WAF for GET on static assets
         {% if coraza_file_whitelist_enabled | default(true) | bool %}
-        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
-            SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_FILENAME "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none,chain"
+                SecRule QUERY_STRING "@rx ^[A-Za-z0-9._~=&-]*$" "t:none,ctl:ruleEngine=Off"
         {% endif %}
 
         # Null byte and control character detection
@@ -169,8 +175,9 @@ coraza_waf {
 
         # Static file whitelist
         {% if coraza_file_whitelist_enabled | default(true) | bool %}
-        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
-            SecRule REQUEST_URI "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none"
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_FILENAME "@rx \.({{ coraza_file_whitelist_extensions | default('css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv') }})$" "t:none,chain"
+                SecRule QUERY_STRING "@rx ^[A-Za-z0-9._~=&-]*$" "t:none,ctl:ruleEngine=Off"
         {% endif %}
 
         # Null byte + control characters
@@ -219,8 +226,9 @@ coraza_waf {
 
         # Static file whitelist (only common static extensions)
         {% if coraza_file_whitelist_enabled | default(true) | bool %}
-        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain,ctl:ruleEngine=Off"
-            SecRule REQUEST_URI "@rx \.(css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv)$" "t:none"
+        SecRule REQUEST_METHOD "@streq GET" "id:100020,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_FILENAME "@rx \.(css|js|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|pdf|txt|csv)$" "t:none,chain"
+                SecRule QUERY_STRING "@rx ^[A-Za-z0-9._~=&-]*$" "t:none,ctl:ruleEngine=Off"
         {% endif %}
 
         # Null byte + all control characters
@@ -254,6 +262,13 @@ coraza_waf {
             "id:100050,phase:2,deny,log,msg:'Template injection marker detected',severity:CRITICAL"
 
         # === Content-Type enforcement for POST/PUT ===
+        # Socket.IO long-polling posts binary attachments as application/octet-stream,
+        # which strict mode would otherwise refuse. Allowed only for that exact
+        # combination (path below /socket.io/ and that one type), nothing else.
+        SecRule REQUEST_FILENAME "@beginsWith /socket.io/" \
+            "id:100046,phase:1,pass,nolog,t:none,chain"
+            SecRule REQUEST_HEADERS:Content-Type "@rx ^application/octet-stream" \
+                "t:none,ctl:ruleRemoveById=100045"
         # Disruptive actions only in the first rule of a chain
         SecRule REQUEST_METHOD "@rx ^(POST|PUT|PATCH)$" \
             "id:100045,phase:1,deny,log,msg:'Unexpected Content-Type',severity:WARNING,t:none,chain"
@@ -268,10 +283,11 @@ coraza_waf {
         # === AUDIT LOG (all modes) ===
         {% if coraza_audit_log_enabled | default(true) | bool %}
         SecAuditEngine RelevantOnly
-        # Header, request headers and trailer only (no bodies) to keep the log small.
+        # Header and trailer only: no request headers (Cookie, Authorization) and no
+        # bodies, to keep secrets out of the log and the log small.
         # Separate dir so CrowdSec's /var/log/caddy/*.log glob does not pick it up;
         # rotated by /etc/logrotate.d/caddy-coraza.
-        SecAuditLogParts ABHZ
+        SecAuditLogParts AHZ
         SecAuditLog {{ caddy_coraza_audit_log_dir }}/modsec_{{ site_name }}.log
         {% else %}
         SecAuditEngine Off
@@ -286,12 +302,29 @@ WebSocket matcher (unique within a site block).
 #}
 {% macro site_handlers(site, port, id, ws) %}
 # === WebSocket detection (must be evaluated first) ===
-# WS upgrades bypass rate_limit + Coraza + AppSec (they cannot inspect
-# a WS stream and will refuse the 101). CrowdSec IP block stays (cheap/safe).
-@{{ ws }} header Upgrade websocket
+# Only a complete RFC 6455 handshake skips Coraza + AppSec (they cannot inspect
+# a WS stream and will refuse the 101). Anything else carrying an Upgrade
+# header goes through the full pipeline. CrowdSec IP block and rate limit
+# stay; the upgrade request counts as one event.
+@{{ ws }} {
+    method GET
+    header_regexp Connection (?i)(^|,)\s*upgrade\s*(,|$)
+    header_regexp Upgrade (?i)^websocket$
+    header Sec-WebSocket-Key *
+    header Sec-WebSocket-Version 13
+}
 handle @{{ ws }} {
     {% if enable_crowdsec | bool %}
     crowdsec
+    {% endif %}
+    {% if enable_rate_limit | default(true) | bool %}
+    rate_limit {
+        zone {{ id }}_ws {
+            key "{http.request.client_ip}"
+            window {{ site.rate_limit_window | default('1m') }}
+            events {{ site.rate_limit_events | default(500) }}
+        }
+    }
     {% endif %}
     reverse_proxy localhost:{{ port }} {
         header_up X-Request-ID {http.request.id}
@@ -310,7 +343,7 @@ handle {
     # 2. Rate limiting: Prevent brute force and DDoS (also cheap)
     rate_limit {
         zone {{ id }} {
-            key "{http.request.remote.ip}"
+            key "{http.request.client_ip}"
             window {{ site.rate_limit_window | default('1m') }}
             events {{ site.rate_limit_events | default(500) }}
         }

@@ -6,6 +6,7 @@ enable_cloudflare: false
 enable_wildcard: false
 enable_crowdsec: true
 enable_crowdsec_import: true
+enable_crowdsec_web_ui: true # Podman container, reached through a reverse tunnel
 enable_coraza_waf: true
 enable_firewall: true
 enable_auto_reboot: false # Containers cannot reboot

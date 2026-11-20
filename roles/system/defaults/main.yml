@@ -12,8 +12,17 @@ system_swap_enabled: false # Set to 'true' to create and enable a swap file
 system_swap_file: "/swapfile" # Path of the swap file
 system_swap_size: "1G" # Size of the swap file (fallocate syntax); not resized once created
 system_swappiness: 10 # vm.swappiness: lower values prefer RAM over swap
+# Swap is set up on the server only (the client runs just Rathole). LXC and
+# OpenVZ containers cannot enable swap, the container host decides there.
+system_swap_in_container: "{{ ansible_facts['virtualization_role'] | default('') == 'guest' and ansible_facts['virtualization_type'] | default('') in ['lxc', 'openvz'] }}"
 
 # Automatic security updates between playbook runs (unattended-upgrades)
 system_unattended_upgrades: true # Install security updates daily; false leaves the host's setting untouched
 system_unattended_reboot: false # Reboot automatically when an update requires it
 system_unattended_reboot_time: "04:00" # Time of that reboot
+
+# Kernel hardening: /etc/sysctl.d/60-webguard-hardening.conf (rp_filter loose, no redirects
+# or source routing, restricted kernel pointers and dmesg, protected links and files).
+# Leaves ip_forward, accept_ra and disable_ipv6 untouched. false removes the file; the
+# running values stay until the next reboot.
+system_sysctl_hardening: true

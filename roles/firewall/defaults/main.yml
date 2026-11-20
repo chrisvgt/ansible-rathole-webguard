@@ -10,3 +10,13 @@ firewall_allowed_tcp_ports: [] # Additional TCP ports to open
 firewall_allowed_udp_ports: [] # Additional UDP ports to open
 firewall_rules_file: /etc/nftables.d/webguard.nft # Loaded at boot by webguard-firewall.service
 firewall_rollback_seconds: 120 # New rules are removed again if Ansible cannot reconnect within this time
+
+# Per-source limit for new connections to the SSH ports (not Rathole, 80/443 or services).
+# Sources above the rate are dropped until they slow down; a normal client, also Ansible with
+# a persistent SSH connection, stays far below it. Tracked per IPv4 address and per IPv6 address.
+firewall_conn_limit_enabled: true
+firewall_conn_limit_rate: "120/minute"
+firewall_conn_limit_burst: 120 # Packets (new connections) allowed above the rate at once
+# The Rathole port has no limit: the client opens one connection per visitor, so a
+# visitor flood would cut the tunnel. Token auth and CrowdSec cover that port.
+firewall_log_drops: true # Log dropped packets, at most 10 per minute

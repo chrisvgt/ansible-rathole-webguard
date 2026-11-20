@@ -12,6 +12,8 @@ StartLimitIntervalSec=30s
 [Service]
 User={{ caddy_user }}
 Group={{ caddy_group }}
+# Files Caddy creates (logs, certificates) are not world-readable
+UMask=0027
 ExecStart={{ caddy_install_path }} run --config {{ caddy_config_file }} --adapter caddyfile
 ExecReload={{ caddy_install_path }} reload --config {{ caddy_config_file }} --force --adapter caddyfile
 # /run/caddy holds the admin API socket, reachable only by the caddy user

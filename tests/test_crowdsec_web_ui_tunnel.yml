@@ -1,0 +1,205 @@
+---
+# tests/test_crowdsec_web_ui_tunnel.yml
+# enable_crowdsec_web_ui on the server adds the reverse service 'crowdsec-web-ui' to the
+# tunnel, on the server and on the client; ports and client address are validated
+
+# The variables belong to the server, the client reads them from its hostvars
+- name: Derive the CrowdSec Web UI service with defaults
+  hosts: tunnel_test
+  gather_facts: false
+  vars:
+    tunnel_services: # None of them uses 3000 on the server
+      - { name: web, domain: web.example.com, local_addr: "127.0.0.1:2368" }
+      - { name: shop, domain: shop.example.com, local_addr: "192.168.1.10:3000", bind_addr: "127.0.0.1:3001" }
+  tasks:
+    - name: Enable the CrowdSec Web UI on the server
+      ansible.builtin.set_fact:
+        enable_crowdsec_web_ui: "{{ inventory_hostname == 'srv' }}"
+
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check server config
+      ansible.builtin.assert:
+        that: >-
+          (rathole_server_config.services | selectattr('name', 'eq', 'crowdsec-web-ui') | first)
+          == {'name': 'crowdsec-web-ui', 'mode': 'reverse', 'local_addr': '127.0.0.1:3000'}
+      when: rathole_role == 'server'
+
+    - name: Check client config
+      ansible.builtin.assert:
+        that: >-
+          (rathole_client_config.services | selectattr('name', 'eq', 'crowdsec-web-ui') | first)
+          == {'name': 'crowdsec-web-ui', 'mode': 'reverse', 'bind_addr': '127.0.0.1:3000'}
+      when: rathole_role == 'client'
+
+    - name: Check the other services are untouched
+      ansible.builtin.assert:
+        that:
+          - (rathole_server_config.services | default(rathole_client_config.services) | length) == (tunnel_services | length) + 1
+          - >-
+            (rathole_server_config.services | default(rathole_client_config.services) | selectattr('name', 'eq', 'web') | list | length) == 1
+
+    # The defaults of the rathole role are the ones of the crowdsec_web_ui role
+    - name: Read the defaults of the crowdsec_web_ui role
+      ansible.builtin.include_vars:
+        file: ../roles/crowdsec_web_ui/defaults/main.yml
+        name: web_ui_defaults
+
+    - name: Check the defaults are the same
+      ansible.builtin.assert:
+        that:
+          - web_ui_defaults.crowdsec_web_ui_port == 3000
+          - web_ui_defaults.crowdsec_web_ui_client_port == 3000
+          - web_ui_defaults.crowdsec_web_ui_client_listen == '127.0.0.1'
+
+    - name: Derive firewall ports
+      ansible.builtin.include_tasks: ../roles/firewall/tasks/ports.yml
+      vars:
+        firewall_sshd_config: { stdout: "port 22\n" }
+        firewall_web_ports: false
+        firewall_allowed_tcp_ports: []
+        firewall_allowed_udp_ports: []
+      when: rathole_role == 'server'
+
+    # A reverse service binds on the client: nothing is opened on the server
+    - name: Check firewall ports
+      ansible.builtin.assert:
+        that:
+          - firewall_tcp_ports == [22, 2333]
+          - 3000 not in firewall_udp_ports
+        fail_msg: "tcp {{ firewall_tcp_ports }}, udp {{ firewall_udp_ports }}"
+      when: rathole_role == 'server'
+
+- name: Derive the CrowdSec Web UI service with custom ports and address
+  hosts: tunnel_test
+  gather_facts: false
+  tasks:
+    - name: Set the variables on the server
+      ansible.builtin.set_fact:
+        enable_crowdsec_web_ui: true
+        crowdsec_web_ui_port: 13000
+        crowdsec_web_ui_client_port: "18000"
+        crowdsec_web_ui_client_listen: "0.0.0.0"
+      when: inventory_hostname == 'srv'
+
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check server config
+      ansible.builtin.assert:
+        that: >-
+          (rathole_server_config.services | selectattr('name', 'eq', 'crowdsec-web-ui') | first)
+          == {'name': 'crowdsec-web-ui', 'mode': 'reverse', 'local_addr': '127.0.0.1:13000'}
+      when: rathole_role == 'server'
+
+    - name: Check client config
+      ansible.builtin.assert:
+        that: >-
+          (rathole_client_config.services | selectattr('name', 'eq', 'crowdsec-web-ui') | first)
+          == {'name': 'crowdsec-web-ui', 'mode': 'reverse', 'bind_addr': '0.0.0.0:18000'}
+      when: rathole_role == 'client'
+
+    - name: Add test secrets
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: secrets
+      vars:
+        rathole_noise_private_key: test-private
+        rathole_noise_public_key: test-public
+        rathole_default_token: test-token
+
+    - name: Render rathole.toml
+      ansible.builtin.template:
+        src: ../roles/rathole/templates/rathole.toml.j2
+        dest: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/rathole-web-ui-{{ inventory_hostname }}.toml"
+        mode: "0600"
+      register: rendered
+
+    - name: Check rendered rathole.toml
+      ansible.builtin.assert:
+        that: >-
+          (rathole_role == 'server'
+           and '[server.services.crowdsec-web-ui]\nmode = "reverse"\nlocal_addr = "127.0.0.1:13000"\n' in lookup('file', rendered.dest) ~ '\n')
+          or (rathole_role == 'client'
+           and '[client.services.crowdsec-web-ui]\nmode = "reverse"\nbind_addr = "0.0.0.0:18000"\n' in lookup('file', rendered.dest) ~ '\n')
+        fail_msg: "{{ lookup('file', rendered.dest) }}"
+
+    - name: Remove rendered file
+      ansible.builtin.file:
+        path: "{{ rendered.dest }}"
+        state: absent
+
+- name: Derive nothing when the CrowdSec Web UI is off
+  hosts: tunnel_test
+  gather_facts: false
+  tasks:
+    - name: Turn it off on the server
+      ansible.builtin.set_fact:
+        enable_crowdsec_web_ui: false
+      when: inventory_hostname == 'srv'
+
+    - name: Run tunnel derivation
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel
+
+    - name: Check no service was added
+      ansible.builtin.assert:
+        that: (rathole_server_config.services | default(rathole_client_config.services) | selectattr('name', 'eq', 'crowdsec-web-ui') | list | length) == 0
+
+- name: Reject invalid CrowdSec Web UI configurations
+  hosts: cli
+  gather_facts: false
+  tasks:
+    - name: Check rejected configurations
+      ansible.builtin.include_tasks: tasks/web_ui_case.yml
+      loop:
+        - name: service with the same name
+          services:
+            - { name: crowdsec-web-ui, local_addr: "127.0.0.1:9999" }
+          expected: "adds a reverse service named 'crowdsec-web-ui'"
+        - name: client port used by another reverse service
+          services:
+            - { name: dash, mode: reverse, local_addr: "127.0.0.1:80", bind_addr: "0.0.0.0:3000" }
+          expected: "dash and crowdsec-web-ui (3000/tcp)"
+        - name: client port used by another reverse service, custom port
+          client_port: 18000
+          client_listen: "0.0.0.0"
+          services:
+            - { name: dash, mode: reverse, local_addr: "127.0.0.1:80", bind_addr: "127.0.0.1:18000" }
+          expected: "dash and crowdsec-web-ui (18000/tcp)"
+        - name: server port used by a forward service
+          port: 13000
+          services:
+            - { name: app, local_addr: "192.168.1.10:80", bind_addr: "127.0.0.1:13000" }
+          expected: "already used on the server by: service app (127.0.0.1:13000)"
+        - name: server port used by a forward service on all addresses
+          services:
+            - { name: app, local_addr: "192.168.1.10:80", bind_addr: "0.0.0.0:3000" }
+          expected: "service app (0.0.0.0:3000)"
+        - name: server port is the Local API
+          port: 8080
+          expected: "already used on the server by: CrowdSec Local API"
+        - name: server port is HTTPS
+          port: 443
+          expected: "already used on the server by: Caddy"
+        - name: server port is the Rathole port
+          port: 2333
+          expected: "already used on the server by: Rathole"
+        - name: server port is the metrics port
+          port: 6060
+          expected: "already used on the server by: CrowdSec metrics"
+        - name: port out of range
+          port: 70000
+          expected: "must be ports (1-65535)"
+        - name: client address that is not an IPv4 address
+          client_listen: "lan"
+          expected: "an IPv4 address"
+      loop_control:
+        loop_var: case
+        label: "{{ case.name }}"

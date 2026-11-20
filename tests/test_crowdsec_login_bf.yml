@@ -25,7 +25,22 @@
           - /Users/AuthenticateByName
           - /identity/connect/token
           - /api/v1/oauth/token
-        test_other_paths: [/api/items, /Sessions/Playing/Progress, /upload, /api/search]
+          - /oauth/token
+          - /index.php/login
+          - /api/v1/auth/login
+          - /login/
+          - /wp-login.php
+          - /login_check
+        test_other_paths:
+          - /api/items
+          - /Sessions/Playing/Progress
+          - /upload
+          - /api/search
+          - /api/token-refresh
+          - /author/x
+          - /authors
+          - /blog/catalog
+          - /tokens
 
     - name: Create temporary file
       ansible.builtin.tempfile:

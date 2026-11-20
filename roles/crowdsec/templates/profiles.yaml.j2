@@ -1,10 +1,21 @@
 # File Managed by Ansible
 # roles/crowdsec/templates/profiles.yaml.j2
+{% set private_ranges = [
+  '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16',
+  '::1/128', 'fc00::/7', 'fe80::/10'
+] %}
+{#
+  Never ban private, loopback or link-local addresses (the own LAN, VPN, the
+  host itself), whatever scenario fired. For a Range alert the network address
+  of the CIDR is checked.
+#}
+{% set ip_private = private_ranges | map('regex_replace', '^(.*)$', 'IpInRange(Alert.GetValue(), "\\1")') | join(' || ') %}
+{% set range_private = private_ranges | map('regex_replace', '^(.*)$', 'IpInRange(Split(Alert.GetValue(), "/")[0], "\\1")') | join(' || ') %}
 
 name: default_ip_remediation
 #debug: true
 filters:
- - Alert.Remediation == true && Alert.GetScope() == "Ip"
+ - {{ ('Alert.Remediation == true && Alert.GetScope() == "Ip" && !(' ~ ip_private ~ ')') | to_json }}
 decisions:
  - type: ban
    duration: 4h
@@ -20,7 +31,7 @@ on_success: break
 name: default_range_remediation
 #debug: true
 filters:
- - Alert.Remediation == true && Alert.GetScope() == "Range"
+ - {{ ('Alert.Remediation == true && Alert.GetScope() == "Range" && !(' ~ range_private ~ ')') | to_json }}
 decisions:
  - type: ban
    duration: 4h

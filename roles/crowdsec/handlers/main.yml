@@ -9,7 +9,7 @@
     state: restarted
     daemon_reload: true
 
-# Arch Linux only: on Debian the package restarts it on upgrades
+# Notified when the bouncer config changes (the package only restarts it on upgrades)
 - name: Restart CrowdSec firewall bouncer
   ansible.builtin.systemd:
     name: crowdsec-firewall-bouncer

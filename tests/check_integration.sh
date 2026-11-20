@@ -17,14 +17,14 @@ server_os=${SERVER_OS:-debian13}
 client_os=${CLIENT_OS:-debian13}
 # Arch Linux as published, with systemd but without Python, sudo and sshd
 # renovate: datasource=docker depName=archlinux versioning=regex:^base-(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-arch_image=archlinux:base-20261101.0.620205
+arch_image=archlinux:base-20261108.0.623074@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899
 net=webguard-it
 server=it-server
 client=it-client
 
 cleanup() {
   docker exec "$server" swapoff /swap/swapfile >/dev/null 2>&1 || true
-  docker rm -f "$server" "$client" >/dev/null 2>&1 || true
+  docker rm -f -v "$server" "$client" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
 }
 cleanup # Leftovers of an aborted run
@@ -74,8 +74,10 @@ client_image=$(image_for "$client_os")
 echo "== server: $server_os, client: $client_os"
 
 docker network create "$net" >/dev/null
+# /var/lib/containers as a volume: Podman cannot put its overlay storage on the
+# container's overlayfs (fails on Arch Linux), a real host has no such problem
 docker run -d --name "$server" --hostname "$server" --network "$net" --privileged \
-  --tmpfs /run --tmpfs /run/lock ${mounts[@]+"${mounts[@]}"} "$server_image" /lib/systemd/systemd >/dev/null
+  --tmpfs /run --tmpfs /run/lock -v /var/lib/containers ${mounts[@]+"${mounts[@]}"} "$server_image" /lib/systemd/systemd >/dev/null
 docker run -d --name "$client" --hostname "$client" --network "$net" --privileged \
   --tmpfs /run --tmpfs /run/lock "$client_image" /lib/systemd/systemd >/dev/null
 for host in "$server" "$client"; do
@@ -186,9 +188,11 @@ diagnose() {
 }
 
 echo "== checks"
-check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer rathole'"
+check "server services are active" "on $server 'systemctl is-active caddy crowdsec crowdsec-firewall-bouncer crowdsec-web-ui rathole'"
 check "client tunnel is active" "on $client 'systemctl is-active rathole'"
-check "site answers through the tunnel" "https | grep -q 'hello from the client'"
+# Rathole may still be reconnecting after the handlers of the run
+site_up() { for _ in $(seq 15); do https | grep -q 'hello from the client' && return 0; sleep 2; done; return 1; }
+check "site answers through the tunnel" "site_up"
 https | grep -q 'hello from the client' || diagnose
 headers=$(on "$client" "curl -sk --max-time 5 --resolve web.test:443:$server_ip https://web.test/headers" || true)
 check "the app sees the client IP, the scheme and the host" \
@@ -197,10 +201,56 @@ check "HSTS is sent" "https -I | grep -qi '^strict-transport-security: max-age=3
 check "no Server header" "! https -I | grep -qi '^server:'"
 check "Caddy admin API only on its socket" "on $server 'test -S /run/caddy/admin.sock && ! curl -s --max-time 2 http://localhost:2019/config/'"
 check "Caddy sandbox exposure below 2" "on $server \"systemd-analyze security caddy.service | tail -1 | grep -qE 'level for caddy.service: [01]\\.'\""
+# Reverse service: the client listens, the server connects to its own Local API,
+# which answers without a bouncer key with 401 or 403
+lapi_status() { on "$client" "curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:18443/v1/decisions"; }
+check "a reverse service reaches the server's Local API" "lapi_status | grep -qE '^40[13]\$'"
+check "the reverse service does not listen on the server" "! on $server 'exec 3<>/dev/tcp/127.0.0.1/18443'"
+check "the reverse service opens no port on the server" "! on $server 'nft list table inet webguard' | grep -q 18443"
+# CrowdSec Web UI: a Podman container on the server, reached through the reverse
+# service 'crowdsec-web-ui' (server port 13000, client port 13001 on all addresses)
+ui_health() { curl -s --max-time 5 "http://$1/api/health" | grep -q '"status":"ok"'; }
+ui_listeners() { on "$server" "ss -ltnH 'sport = :13000'" | awk '{print $4}'; }
+ui_files() { on "$server" 'stat -c %a:%U /etc/crowdsec-web-ui/env /etc/crowdsec/web-ui.machine.password' | tr '\n' ' '; }
+ui_user() { on "$server" "podman exec crowdsec-web-ui grep -E '^(Uid|CapEff)' /proc/1/status" | awk '{printf "%s ", $2}'; }
+ui_logs() { on "$server" 'journalctl -u crowdsec-web-ui --no-pager'; }
+check "the Web UI answers on the client through the tunnel" "on $client 'curl -s --max-time 5 http://127.0.0.1:13001/api/health' | grep -q '\"status\":\"ok\"'"
+check "the Web UI answers on the client's LAN address" "on $server 'curl -s --max-time 5 http://$client_ip:13001/api/health' | grep -q '\"status\":\"ok\"'"
+check "the Web UI listens on the server's loopback only" "test \"\$(ui_listeners)\" = 127.0.0.1:13000"
+check "the Web UI port is closed to the network" "! on $client 'curl -s --max-time 3 http://$server_ip:13000/api/health'"
+check "the Web UI runs without root and capabilities" "test \"\$(ui_user)\" = '62500 0000000000000000 '"
+check "the Web UI has its own LAPI machine" "on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
+# The UI sends a heartbeat every 30s after a successful login; the Local API
+# records it on the machine, so a heartbeat proves the connection
+ui_heartbeat() {
+  on "$server" "cscli machines list -o json" | python3 -c '
+import json, sys
+m = [x for x in json.load(sys.stdin) if x.get("machineId") == "crowdsec-web-ui"]
+sys.exit(0 if m and m[0].get("last_heartbeat") else 1)'
+}
+ui_connected() { for _ in $(seq 1 12); do ui_heartbeat && return 0; sleep 5; done; return 1; }
+check "the Web UI is connected to the Local API (heartbeat)" "ui_connected"
+# With the blocklist import on, the UI loads only the engine's alerts and manual bans
+check "the Web UI skips the imported blocklists" "ui_logs | grep -q 'CONFIG_CROWDSEC_ALERT_FILTERS_INCLUDE_ORIGINS'"
+# The log goes to the unit's journal once (the journald log driver wrote every line twice)
+check "the Web UI logs each line once" "test \"\$(ui_logs | grep -c 'Loaded application configuration')\" -ge 1 && ! ui_logs | grep 'Loaded application configuration' | sed 's/^.*crowdsec-web-ui\\[[0-9]*\\]: //' | sort | uniq -d | grep -q ."
+check "the Web UI keeps only the configured image" "test \"\$(on $server 'podman images --quiet ghcr.io/theduffman85/crowdsec-web-ui' | sort -u | wc -l)\" = 1"
+check "the Web UI env file and password file are root only" "test \"\$(ui_files)\" = '600:root 600:root '"
+check "the Web UI opens no port in the firewall" "! on $server 'nft list table inet webguard' | grep -qE '1300[01]'"
 check "firewall opens the passed-through UDP port" "on $server 'nft list table inet webguard' | grep -q 'udp dport { 443, 51820 }'"
 on "$server" "systemd-run --unit it-probe python3 -m http.server 9000" >/dev/null
 check "firewall drops other ports" "! on $client 'curl -s --max-time 3 http://$server_ip:9000/'"
 check "firewall leaves local access" "on $server 'curl -s --max-time 3 http://127.0.0.1:9000/'"
+# A script that logs in over and over without a persistent connection must not hit
+# the new-connection limit (burst 120, 120/minute); 150 is clearly above the old
+# burst of 20 and above the burst, and the logins take long enough to refill it
+many_logins() {
+  local i
+  for i in $(seq 150); do
+    ssh -F "$logs/ssh_config" -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 "$server" true || return 1
+  done
+}
+check "many quick SSH logins pass the limit" many_logins
 check "Caddy bouncer is registered" "on $server 'cscli bouncers list -o raw' | grep -q caddy-bouncer"
 check "failed login scenario is loaded" "on $server 'cscli scenarios list -o raw' | grep -q local/login-bf"
 # A failed handshake on the Rathole port as CrowdSec reads it from the journal; the
@@ -341,6 +391,47 @@ playbook --tags rathole,firewall >"$logs/reload.log" 2>&1 || {
 }
 check "a removed firewall is loaded again" "on $server 'nft list table inet webguard' >/dev/null"
 
+# Rules that lock out the SSH connection must be rolled back. A limit of one new
+# connection per hour does that: with a connection per module call (no
+# ControlMaster), the first new connection after loading passes (the reconnect
+# check), the next one (cancelling the rollback) is dropped, so the playbook
+# fails and the timer removes the table again.
+echo "== rollback on lockout"
+ssh_server() { ssh -F "$logs/ssh_config" -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 "$server" "$@"; }
+if ANSIBLE_SSH_ARGS='-o ControlMaster=no -o ControlPath=none' \
+  playbook --tags rathole,firewall -e firewall_rollback_seconds=30 \
+  -e firewall_conn_limit_rate=1/hour -e firewall_conn_limit_burst=1 >"$logs/lockout.log" 2>&1; then
+  echo "FAIL lockout: the playbook fails"
+  fail=1
+else
+  echo "ok   lockout: the playbook fails"
+fi
+# The rollback runs 30 s after loading
+back=0
+for _ in $(seq 30); do
+  if ssh_server true >/dev/null 2>&1; then
+    back=1
+    break
+  fi
+  sleep 2
+done
+check "lockout: SSH works again after the rollback" "test $back -eq 1"
+check "lockout: rules removed" "! on $server 'nft list table inet webguard'"
+check "lockout: not loaded at boot" "! on $server 'systemctl is-enabled webguard-firewall'"
+if [[ $back -eq 0 ]]; then
+  tail -30 "$logs/lockout.log"
+  # Never leave the server locked out for the next sections
+  on "$server" 'nft delete table inet webguard' || true
+fi
+# Restore: the rules file still has the limit of one per hour, so this changes it
+playbook --tags rathole,firewall >"$logs/restore.log" 2>&1 || {
+  tail -30 "$logs/restore.log"
+  fail=1
+}
+check "the firewall is loaded again after the lockout test" "on $server 'nft list table inet webguard' | grep -q 'rate over 120/minute'"
+check "the firewall is loaded at boot again" "on $server 'systemctl is-enabled webguard-firewall'"
+check "the site answers after the lockout test" "https | grep -q 'hello from the client'"
+
 echo "== firewall off"
 playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
   tail -30 "$logs/off.log"
@@ -348,5 +439,33 @@ playbook -e enable_firewall=false --tags firewall >"$logs/off.log" 2>&1 || {
 }
 check "turning the firewall off removes it" "! on $server 'nft list tables' | grep -q webguard"
 check "the site still answers" "https | grep -q 'hello from the client'"
+
+echo "== CrowdSec Web UI image of an earlier version"
+# A tiny image under the same repository (no download) stands for the old version
+# (an empty import: podman build mounts an overlay over its context, which fails
+# on Arch in CI)
+on "$server" "tar -cf - --files-from /dev/null | podman import --quiet - ghcr.io/theduffman85/crowdsec-web-ui:old" >/dev/null
+playbook --tags crowdsec_web_ui >"$logs/web-ui-old-image.log" 2>&1 || {
+  tail -30 "$logs/web-ui-old-image.log"
+  fail=1
+}
+check "an image of an earlier version is removed" "! on $server 'podman images --format {{.Tag}} ghcr.io/theduffman85/crowdsec-web-ui' | grep -qx old"
+check "the configured image stays" "on $server 'curl -s --max-time 5 http://127.0.0.1:13000/api/health' | grep -q '\"status\":\"ok\"'"
+
+echo "== CrowdSec Web UI off"
+playbook -e enable_crowdsec_web_ui=false --tags crowdsec_web_ui,rathole >"$logs/web-ui-off.log" 2>&1 || {
+  tail -30 "$logs/web-ui-off.log"
+  fail=1
+}
+check "turning the Web UI off stops the service" "! on $server 'systemctl is-active crowdsec-web-ui'"
+check "turning the Web UI off removes the unit and the config" "on $server '! test -e /etc/systemd/system/crowdsec-web-ui.service && ! test -e /etc/crowdsec-web-ui'"
+check "turning the Web UI off removes the container" "! on $server 'podman ps -a --format {{.Names}}' | grep -q crowdsec-web-ui"
+check "turning the Web UI off removes its LAPI machine" "! on $server 'cscli machines list -o raw' | grep -q '^crowdsec-web-ui,'"
+check "turning the Web UI off removes its image" "test -z \"\$(on $server 'podman images --quiet ghcr.io/theduffman85/crowdsec-web-ui')\""
+check "turning the Web UI off keeps its data" "on $server 'test -d /var/lib/crowdsec-web-ui'"
+check "turning the Web UI off closes the client port" "! on $client 'curl -s --max-time 3 http://127.0.0.1:13001/api/health'"
+# The Rathole config changed, so both ends restarted; the client reconnects
+# with a backoff, give it time before checking the site
+check "the site still answers without the Web UI" "site_up"
 
 exit $fail

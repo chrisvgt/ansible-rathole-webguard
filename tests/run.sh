@@ -28,6 +28,9 @@ echo "== run-playbook.sh options"
 echo "== docker.sh options"
 ./tests/check_docker_script.sh
 
+echo "== rathole reverse services"
+./tests/check_rathole_reverse.sh
+
 echo "== crowdsec in docker"
 if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
   ./tests/check_crowdsec_docker.sh

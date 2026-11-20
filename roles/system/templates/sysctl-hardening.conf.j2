@@ -1,0 +1,46 @@
+# File Managed by Ansible
+# roles/system/templates/sysctl-hardening.conf.j2
+# Kernel hardening without effect on legitimate traffic. ip_forward, accept_ra
+# and disable_ipv6 are left alone on purpose (Docker, VPNs, IPv6 SLAAC).
+
+# Reverse path filter in loose mode (2): drops packets whose source address is
+# not routable via any interface. Strict mode (1) would break multi-homed hosts
+# and asymmetric routing, which VPS setups often have.
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
+
+# SYN flood protection
+net.ipv4.tcp_syncookies = 1
+
+# Ignore ICMP redirects and source-routed packets; do not send redirects
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+
+# ICMP: no answers to broadcast pings, ignore bogus error responses
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+# Hide kernel addresses and the kernel log from unprivileged users
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+
+# eBPF: unprivileged users cannot load programs; harden the JIT
+kernel.unprivileged_bpf_disabled = 1
+net.core.bpf_jit_harden = 2
+
+# Protect against link and file races in world-writable directories
+fs.protected_hardlinks = 1
+fs.protected_symlinks = 1
+fs.protected_regular = 2
+fs.protected_fifos = 1
+
+# No core dumps from setuid programs
+fs.suid_dumpable = 0

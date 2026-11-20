@@ -1,0 +1,168 @@
+---
+# tests/test_crowdsec_hardening.yml
+# Rendered CrowdSec files and checks of the hardening settings: rotated Caddy
+# logs, private addresses in the ban profiles, loopback-only LAPI/AppSec, the
+# SSH journal acquisition and the allowlist of the blocklist importer
+
+- name: Check the CrowdSec hardening
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Load CrowdSec defaults
+      ansible.builtin.include_vars: ../roles/crowdsec/defaults/main.yml
+
+    - name: Load blocklist import defaults
+      ansible.builtin.include_vars: ../roles/crowdsec_import/defaults/main.yml
+
+    - name: Check the defaults
+      ansible.builtin.assert:
+        that:
+          - crowdsec_rathole_bf_capacity == 20
+          - crowdsec_import_extra_allowlist == []
+
+    # Caddy rolls <name>.log to <name>-<timestamp>.log: the live file is read, the rolled ones are not
+    - name: Check that rotated Caddy logs are excluded
+      ansible.builtin.assert:
+        that:
+          - test_acquis.filenames == ['/var/log/caddy/*.log']
+          - test_acquis.exclude_regexps | length == 1
+          - test_acquis.labels.type == 'caddy'
+          - test_rotated | select('search', test_acquis.exclude_regexps[0]) | list == test_rotated
+          - test_live | select('search', test_acquis.exclude_regexps[0]) | list == []
+      vars:
+        test_acquis: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/caddy.yaml.j2') | from_yaml }}"
+        test_rotated:
+          - /var/log/caddy/access-2026-11-12T10-00-00.000.log
+          - /var/log/caddy/example.com.access-2026-01-01T00-00-00.123.log
+        test_live:
+          - /var/log/caddy/access.log
+          - /var/log/caddy/example.com.access.log
+          - /var/log/caddy/access-2026.log
+
+    # Private and loopback addresses are never banned, but all other profile filters stay the same
+    - name: Check the ban profiles
+      ansible.builtin.assert:
+        that:
+          - test_profiles | length == 2
+          - test_profiles | map(attribute='name') | list == ['default_ip_remediation', 'default_range_remediation']
+          - test_profiles | map(attribute='filters') | map('first') | select('search', 'Alert.Remediation == true') | list | length == 2
+          - test_profiles[0].filters[0] is search('GetScope\(\) == "Ip"')
+          - test_profiles[1].filters[0] is search('GetScope\(\) == "Range"')
+          - test_profiles | map(attribute='filters') | map('first') | select('search', private_check) | list | length == 2
+          - test_profiles | map(attribute='decisions') | map('first') | map(attribute='duration') | unique | list == ['4h']
+          - test_profiles | selectattr('duration_expr', 'defined') | list == []
+      vars:
+        test_profiles: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/profiles.yaml.j2') | from_yaml_all | list }}"
+        private_check: 'IpInRange\(.*"10\.0\.0\.0/8"\).*"192\.168\.0\.0/16".*"127\.0\.0\.0/8".*"::1/128".*"fc00::/7"'
+
+    - name: Check the ban profiles with ntfy and a growing ban duration
+      ansible.builtin.assert:
+        that:
+          - test_profiles | selectattr('duration_expr', 'defined') | list | length == 2
+          - test_profiles | selectattr('notifications', 'defined') | list | length == 2
+          - test_profiles | map(attribute='filters') | map('first') | select('search', 'IpInRange') | list | length == 2
+      vars:
+        duration_expr: true
+        ntfy_enabled: true
+        test_profiles: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/profiles.yaml.j2') | from_yaml_all | list }}"
+
+    # The journal unit is sshd.service on Arch Linux and ssh.service on Debian and Ubuntu
+    - name: Check the sshd journal acquisition
+      ansible.builtin.assert:
+        that:
+          - test_acquis.source == 'journalctl'
+          - test_acquis.labels.type == 'syslog'
+          - test_acquis.journalctl_filter == ['_SYSTEMD_UNIT=sshd.service', '_SYSTEMD_UNIT=ssh.service']
+      vars:
+        test_acquis: "{{ lookup('ansible.builtin.template', '../roles/crowdsec/templates/acquis-sshd-journal.yaml.j2') | from_yaml }}"
+
+    - name: Accept loopback addresses for the LAPI and AppSec
+      ansible.builtin.include_tasks: tasks/crowdsec_validate.yml
+      vars:
+        crowdsec_lapi_ip: "{{ item[0] }}"
+        crowdsec_appsec_ip: "{{ item[1] }}"
+        test_expect_ok: true
+      loop:
+        - ["127.0.0.1", "127.0.0.1"]
+        - ["127.1.2.3", "::1"]
+        - ["::1", "127.255.255.254"]
+
+    - name: Reject other addresses for the LAPI and AppSec
+      ansible.builtin.include_tasks: tasks/crowdsec_validate.yml
+      vars:
+        crowdsec_lapi_ip: "{{ item[0] }}"
+        crowdsec_appsec_ip: "{{ item[1] }}"
+        test_expect_ok: false
+      loop:
+        - ["0.0.0.0", "127.0.0.1"]
+        - ["127.0.0.1", "0.0.0.0"]
+        - ["192.168.1.5", "127.0.0.1"]
+        - ["127.0.0.1", "203.0.113.10"]
+        - ["::", "127.0.0.1"]
+        - ["127.0.0.1", "localhost"]
+        - ["127.0.0.1.example.com", "127.0.0.1"]
+        - ["1270.0.0.1", "127.0.0.1"]
+
+    # Imported decisions skip the postoverflow whitelist, so own addresses go to the importer's ALLOWLIST
+    - name: Check the importer allowlist without DDNS hostnames
+      ansible.builtin.assert:
+        that:
+          - test_env is search('(?m)^ALLOWLIST=140\.82\.121\.3,140\.82\.121\.4$')
+      vars:
+        test_env: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_import/templates/crowdsec-blocklist-import.env.j2') }}"
+        crowdsec_import_blocklist_bouncer_key: key
+        crowdsec_import_blocklist_machine_password: password
+
+    # set_fact, because include_vars beats the vars of a task
+    - name: Set extra allowlist entries
+      ansible.builtin.set_fact:
+        crowdsec_import_extra_allowlist: [10.8.0.0/24, 203.0.113.9, 198.51.100.20]
+
+    - name: Check the importer allowlist with resolved addresses and extra entries
+      ansible.builtin.assert:
+        that:
+          - test_env is search('(?m)^ALLOWLIST=140\.82\.121\.3,140\.82\.121\.4,198\.51\.100\.20,2001:db8::20,10\.8\.0\.0/24,203\.0\.113\.9$')
+      vars:
+        test_env: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_import/templates/crowdsec-blocklist-import.env.j2') }}"
+        crowdsec_import_blocklist_bouncer_key: key
+        crowdsec_import_blocklist_machine_password: password
+        crowdsec_import_ddns_ips: [198.51.100.20, "2001:db8::20"]
+
+    - name: Remove extra allowlist entries
+      ansible.builtin.set_fact:
+        crowdsec_import_extra_allowlist: []
+
+    - name: Check a user set allowlist
+      ansible.builtin.assert:
+        that:
+          - test_env is search('(?m)^ALLOWLIST=192\.0\.2\.1,192\.0\.2\.0/24,198\.51\.100\.20$')
+      vars:
+        test_env: "{{ lookup('ansible.builtin.template', '../roles/crowdsec_import/templates/crowdsec-blocklist-import.env.j2') }}"
+        crowdsec_import_blocklist_bouncer_key: key
+        crowdsec_import_blocklist_machine_password: password
+        crowdsec_allowlist: "192.0.2.1, 192.0.2.0/24"
+        crowdsec_import_ddns_ips: [198.51.100.20]
+
+    # localhost resolves on every host, a name that does not exist is skipped without an error
+    - name: Resolve DDNS hostnames for the allowlist
+      ansible.builtin.include_tasks: ../roles/crowdsec_import/tasks/allowlist.yml
+      vars:
+        dynamic_whitelist_enabled: true
+        dynamic_ddns_hostnames: [localhost, does-not-exist.invalid]
+
+    - name: Check the resolved addresses
+      ansible.builtin.assert:
+        that:
+          - "'127.0.0.1' in crowdsec_import_ddns_ips"
+          - crowdsec_import_ddns_ips | select('search', '[a-z]') | list | select('search', '^[0-9a-f:]+$') | list == crowdsec_import_ddns_ips | select('search', '[a-z]') | list
+          - crowdsec_import_ddns_ips | reject('match', '^[0-9a-fA-F:.]+$') | list == []
+
+    - name: Resolve nothing without dynamic_whitelist_enabled
+      ansible.builtin.include_tasks: ../roles/crowdsec_import/tasks/allowlist.yml
+      vars:
+        dynamic_whitelist_enabled: false
+        dynamic_ddns_hostnames: [localhost]
+
+    - name: Check that no address was resolved
+      ansible.builtin.assert:
+        that: crowdsec_import_ddns_ips == []

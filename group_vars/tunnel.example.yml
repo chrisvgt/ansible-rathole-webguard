@@ -29,15 +29,14 @@ tunnel_id: home
 #             without a domain that must be reachable directly (VPN, games).
 # domain:     one domain or a list. Without a domain the service is tunnel-only (no Caddy site).
 # type:       tcp (default) or udp; token, nodelay, retry_interval are optional Rathole settings.
+# mode:       forward (default) or reverse. Reverse: the server exposes its own local_addr
+#             and the client listens on bind_addr (default 127.0.0.1:<port>); no domain,
+#             nothing opened on the server. Needs Rathole 0.7.0 or later (the default).
 # All other keys are Caddy site options, see "Services" in the README:
 #   coraza_mode: off | minimal | recommended | moderate | strict
 #   stream: true, disable_appsec: true, cache_paths: "...", rate_limit_events: 500, ...
 #   log_file, log_roll_size, ... only apply with enable_wildcard: false
-#
-# enable_wildcard: false -> one Caddy site and certificate per domain
-# enable_wildcard: true  -> one wildcard certificate per base domain (*.example.com),
-#                           requires enable_cloudflare: true. Apex domains (example.com)
-#                           get their own site.
+# With enable_wildcard: true (group_vars/all.yml) apex domains (example.com) get their own site.
 tunnel_services:
   - name: blog
     domain: blog.example.com
@@ -80,6 +79,14 @@ duration_expr: true # Enable dynamic increase of blocking time
 # crowdsec_allowlist, crowdsec_decision_duration, ... All of them with their
 # defaults are listed in roles/crowdsec_import/defaults/main.yml.
 
+# --- CrowdSec Web UI (only used with enable_crowdsec_web_ui: true) ---
+# Reached at http://<client>:<client port> through the reverse service 'crowdsec-web-ui'.
+# Read by both hosts of the tuple, so set them here, not in host_vars.
+# crowdsec_web_ui_port: 3000 # Port on the server; must not collide with a service's bind_addr port
+# crowdsec_web_ui_client_port: 3000 # Port on the client; must not collide with another reverse service
+# crowdsec_web_ui_client_listen: "127.0.0.1" # "0.0.0.0": reachable from the whole LAN of the client (no TLS)
+# crowdsec_web_ui_memory_max: "512m" # Container memory limit
+
 # --- CrowdSec whitelist: never ban your own (dynamic) home IP ---
 dynamic_whitelist_enabled: false # Resolve the hostnames below and whitelist their IPs
 dynamic_ddns_hostnames:
@@ -96,8 +103,9 @@ ntfy_auth_token: "" # Optional: Your ntfy authentication token
 # /etc/caddy/caddy.env (root, 0600) on the server; no manual env file needed.
 cloudflare_api_token: "{{ vault_cloudflare_api_token_server }}"
 
-# --- Small host tuning (system role, optional) ---
-# system_swap_enabled: true # Recommended on 2 GB RAM hosts (Caddy build)
+# --- System tuning (system role) ---
+# Swap file, server only (the client runs just Rathole); skipped in LXC/OpenVZ containers
+# system_swap_enabled: true # Recommended on 2 GB RAM servers (Caddy build, CrowdSec, Web UI)
 # system_swap_size: "1G"
 # system_swappiness: 10
-# system_journald_max_use: "200M"
+# system_journald_max_use: "200M" # Journal size limit on both hosts

@@ -1,0 +1,37 @@
+---
+# tests/tasks/web_ui_case.yml
+# One CrowdSec Web UI configuration for tests/test_crowdsec_web_ui_tunnel.yml: sets the
+# variables on the server (the client reads them from there), runs the tunnel validation
+# and checks that it is rejected with case.expected in the message.
+
+- name: Set the CrowdSec Web UI variables on the server ({{ case.name }})
+  ansible.builtin.set_fact:
+    enable_crowdsec_web_ui: true
+    crowdsec_web_ui_port: "{{ case.port | default(3000) }}"
+    crowdsec_web_ui_client_port: "{{ case.client_port | default(3000) }}"
+    crowdsec_web_ui_client_listen: "{{ case.client_listen | default('127.0.0.1') }}"
+  delegate_to: srv
+  delegate_facts: true
+
+- name: Set the services ({{ case.name }})
+  ansible.builtin.set_fact:
+    rejected_msg: ""
+    tunnel_services: "{{ case.services | default([{'name': 'web', 'domain': 'web.example.com', 'local_addr': '127.0.0.1:2368'}]) }}"
+
+- name: Run tunnel validation ({{ case.name }})
+  block:
+    - name: Run tunnel validation ({{ case.name }})
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel_validate
+  rescue:
+    - name: Remember failure message ({{ case.name }})
+      ansible.builtin.set_fact:
+        rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+- name: Check that the configuration was rejected ({{ case.name }})
+  ansible.builtin.assert:
+    that:
+      - rejected_msg | length > 0
+      - case.expected in rejected_msg
+    fail_msg: "{{ rejected_msg or 'not rejected' }}"

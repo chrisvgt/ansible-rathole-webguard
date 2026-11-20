@@ -1,0 +1,57 @@
+---
+# tests/test_system_sysctl.yml
+# Kernel hardening: keys are set, nothing that could break routing is touched
+
+- name: Render sysctl hardening
+  hosts: srv
+  gather_facts: false
+  tasks:
+    - name: Load system role defaults
+      ansible.builtin.include_vars: ../roles/system/defaults/main.yml
+
+    - name: Check default
+      ansible.builtin.assert:
+        that: system_sysctl_hardening is true
+
+    - name: Check keys
+      ansible.builtin.assert:
+        that:
+          - item in conf
+        fail_msg: "missing: {{ item }}"
+        quiet: true
+      vars:
+        conf: "{{ lookup('ansible.builtin.template', '../roles/system/templates/sysctl-hardening.conf.j2') }}"
+      loop:
+        - net.ipv4.conf.all.rp_filter = 2
+        - net.ipv4.conf.default.rp_filter = 2
+        - net.ipv4.tcp_syncookies = 1
+        - net.ipv4.conf.all.accept_redirects = 0
+        - net.ipv4.conf.default.accept_redirects = 0
+        - net.ipv6.conf.all.accept_redirects = 0
+        - net.ipv6.conf.default.accept_redirects = 0
+        - net.ipv4.conf.all.send_redirects = 0
+        - net.ipv4.conf.default.send_redirects = 0
+        - net.ipv4.conf.all.accept_source_route = 0
+        - net.ipv4.conf.default.accept_source_route = 0
+        - net.ipv6.conf.all.accept_source_route = 0
+        - net.ipv6.conf.default.accept_source_route = 0
+        - net.ipv4.icmp_echo_ignore_broadcasts = 1
+        - net.ipv4.icmp_ignore_bogus_error_responses = 1
+        - kernel.kptr_restrict = 2
+        - kernel.dmesg_restrict = 1
+        - kernel.unprivileged_bpf_disabled = 1
+        - net.core.bpf_jit_harden = 2
+        - fs.protected_hardlinks = 1
+        - fs.protected_symlinks = 1
+        - fs.protected_regular = 2
+        - fs.protected_fifos = 1
+        - fs.suid_dumpable = 0
+
+    # Comments may mention these keys; only active settings count
+    - name: Check keys that must stay untouched
+      ansible.builtin.assert:
+        that: active | select('search', 'ip_forward|accept_ra|disable_ipv6|forwarding') | list == []
+        fail_msg: "{{ active }}"
+      vars:
+        conf: "{{ lookup('ansible.builtin.template', '../roles/system/templates/sysctl-hardening.conf.j2') }}"
+        active: "{{ conf.splitlines() | reject('match', '^\\s*(#|$)') | list }}"

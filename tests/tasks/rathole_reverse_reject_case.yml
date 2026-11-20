@@ -1,0 +1,26 @@
+---
+# tests/tasks/rathole_reverse_reject_case.yml
+# One configuration the tunnel validation must reject, for tests/test_rathole_tunnel_reverse.yml
+
+- name: Set the services ({{ case.name }})
+  ansible.builtin.set_fact:
+    rejected_msg: ""
+    tunnel_services: "{{ case.services }}"
+
+- name: Run tunnel validation ({{ case.name }})
+  block:
+    - name: Run tunnel validation ({{ case.name }})
+      ansible.builtin.include_role:
+        name: rathole
+        tasks_from: tunnel_validate
+  rescue:
+    - name: Remember failure message ({{ case.name }})
+      ansible.builtin.set_fact:
+        rejected_msg: "{{ ([ansible_failed_result.msg | default('')] + (ansible_failed_result.results | default([]) | map(attribute='msg', default='') | list)) | join(' ') }}"
+
+- name: Check that the configuration was rejected ({{ case.name }})
+  ansible.builtin.assert:
+    that:
+      - rejected_msg | length > 0
+      - case.expected in rejected_msg
+    fail_msg: "{{ rejected_msg or 'not rejected' }}"
