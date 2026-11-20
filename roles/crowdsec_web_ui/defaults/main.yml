@@ -17,7 +17,7 @@ crowdsec_web_ui_client_listen: "127.0.0.1" # Client address: 127.0.0.1 (the clie
 # pinned by tag and digest; Renovate updates both together.
 # Tags starting with "dev-" are development builds and must not be used.
 # renovate: datasource=docker depName=ghcr.io/theduffman85/crowdsec-web-ui
-crowdsec_web_ui_image: "ghcr.io/theduffman85/crowdsec-web-ui:2026.11.10@sha256:9822833b0359983bc8f70b7142028050a4c1dc5569eb6b3bc1b20a9970e61641"
+crowdsec_web_ui_image: "ghcr.io/theduffman85/crowdsec-web-ui:2026.11.12@sha256:5bc8a0bdb6350101bce07f1db55df9784b27f6f2ff49cc1316bd67988628558e"
 
 # Memory: podman --memory is the hard limit of the container (it is killed and
 # restarted above it), the Node heap limit stays below it so Node frees memory
