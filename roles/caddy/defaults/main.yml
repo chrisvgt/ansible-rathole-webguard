@@ -33,7 +33,7 @@ caddy_plugins: []
 # Versions of the built-in plugins (xcaddy --with module@version). A change
 # rebuilds Caddy once, because the plugin list hash changes.
 # renovate: datasource=go depName=github.com/hslatman/caddy-crowdsec-bouncer
-caddy_plugin_crowdsec_version: "v0.15.0"
+caddy_plugin_crowdsec_version: "v0.15.1"
 # renovate: datasource=go depName=github.com/caddy-dns/cloudflare
 caddy_plugin_cloudflare_version: "v0.2.4"
 # renovate: datasource=go depName=github.com/corazawaf/coraza-caddy/v2
